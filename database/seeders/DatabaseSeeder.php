@@ -5,6 +5,8 @@ namespace Database\Seeders;
 use App\Models\GlobalVariable;
 use App\Models\Material;
 use App\Models\Process;
+use App\Models\Quotation;
+use App\Models\QuotationProcess;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -133,7 +135,7 @@ class DatabaseSeeder extends Seeder
         // 5. Seed Sample Quotations (Fastener & Presspart dari Book5.xlsx)
         $swmb = Material::where('spec', 'SWMB')->first();
         if ($swmb) {
-            $quoFastener = \App\Models\Quotation::firstOrCreate(
+            $quoFastener = Quotation::firstOrCreate(
                 ['document_number' => 'QUO-202610-0001'],
                 [
                     'user_id' => $estimator->id,
@@ -163,7 +165,7 @@ class DatabaseSeeder extends Seeder
             foreach ($fastenerProcesses as $pName) {
                 $p = Process::where('name', $pName)->first();
                 if ($p) {
-                    \App\Models\QuotationProcess::firstOrCreate(
+                    QuotationProcess::firstOrCreate(
                         ['quotation_id' => $quoFastener->id, 'process_id' => $p->id],
                         ['process_name' => $p->name, 'applied_cost' => $p->default_cost]
                     );
@@ -173,7 +175,7 @@ class DatabaseSeeder extends Seeder
 
         $sph = Material::where('spec', 'SPH270-OD')->first();
         if ($sph) {
-            $quoPresspart = \App\Models\Quotation::firstOrCreate(
+            $quoPresspart = Quotation::firstOrCreate(
                 ['document_number' => 'QUO-202610-0002'],
                 [
                     'user_id' => $estimator->id,
@@ -202,12 +204,20 @@ class DatabaseSeeder extends Seeder
             foreach ($presspartProcesses as $pName) {
                 $p = Process::where('name', $pName)->first();
                 if ($p) {
-                    \App\Models\QuotationProcess::firstOrCreate(
+                    QuotationProcess::firstOrCreate(
                         ['quotation_id' => $quoPresspart->id, 'process_id' => $p->id],
                         ['process_name' => $p->name, 'applied_cost' => $p->default_cost]
                     );
                 }
             }
         }
+
+        // Call Advanced Enterprise Seeders
+        $this->call([
+            EnterprisePurchasingSeeder::class,
+            ItemMasterRoutingSeeder::class,
+            ToolingAndPurchaseOrderSeeder::class,
+            PriceTrendAndGoodsReceiptSeeder::class,
+        ]);
     }
 }

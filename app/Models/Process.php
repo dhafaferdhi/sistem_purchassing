@@ -21,6 +21,15 @@ class Process extends Model
         'is_active',
     ];
 
+    protected $attributes = [
+        'category' => 'Both',
+        'stage_type' => 'General',
+        'tooling_type' => 'None',
+        'cycle_time_seconds' => 0,
+        'default_cost' => 0,
+        'is_active' => true,
+    ];
+
     protected function casts(): array
     {
         return [
@@ -28,6 +37,18 @@ class Process extends Model
             'cycle_time_seconds' => 'decimal:2',
             'is_active' => 'boolean',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::saving(function (Process $process) {
+            if (empty($process->category)) {
+                $process->category = 'Both';
+            }
+            if (empty($process->stage_type)) {
+                $process->stage_type = 'General';
+            }
+        });
     }
 
     public function machine(): BelongsTo

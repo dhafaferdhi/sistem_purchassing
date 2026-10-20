@@ -2,16 +2,17 @@
 
 namespace App\Filament\Pages;
 
-use App\Models\Currency;
+use App\Filament\Resources\PurchaseOrderResource;
 use App\Models\Part;
 use App\Models\PartQuotation;
-use App\Models\Supplier;
-use Filament\Forms\Components\Select;
+use App\Models\PurchaseOrder;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
+use Filament\Notifications\Actions\Action;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
 
 class PriceComparison extends Page implements HasForms
 {
@@ -42,7 +43,7 @@ class PriceComparison extends Page implements HasForms
 
     public function getSelectedPartProperty(): ?Part
     {
-        if (!$this->selectedPartId) {
+        if (! $this->selectedPartId) {
             return null;
         }
 
@@ -51,7 +52,7 @@ class PriceComparison extends Page implements HasForms
 
     public function getQuotationsProperty(): Collection
     {
-        if (!$this->selectedPart) {
+        if (! $this->selectedPart) {
             return collect();
         }
 
@@ -60,7 +61,9 @@ class PriceComparison extends Page implements HasForms
 
     public function selectWinningSupplier(int $quotationId): void
     {
-        if (!$this->selectedPartId) return;
+        if (! $this->selectedPartId) {
+            return;
+        }
 
         // Reset previous selected
         PartQuotation::where('part_id', $this->selectedPartId)->update(['is_selected' => false]);
@@ -75,5 +78,71 @@ class PriceComparison extends Page implements HasForms
                 ->send();
         }
     }
-}
 
+    public function generatePurchaseOrder(int $quotationId): void
+    {
+        $winner = PartQuotation::with(['part', 'supplier', 'currency'])->find($quotationId);
+        if (! $winner) {
+            return;
+        }
+
+        // Otomatis tandai sebagai pemenang
+        PartQuotation::where('part_id', $winner->part_id)->update(['is_selected' => false]);
+        $winner->update(['is_selected' => true]);
+
+        // Buat Purchase Order
+        $po = PurchaseOrder::create([
+            'supplier_id' => $winner->supplier_id,
+            'user_id' => Auth::id() ?? 1,
+            'order_date' => now(),
+            'delivery_date' => now()->addDays(14),
+            'payment_terms' => 'Net 30 Days',
+            'currency_id' => $winner->currency_id,
+            'exchange_rate' => $winner->exchange_rate_to_idr,
+            'status' => 'Draft',
+            'notes' => "Diterbitkan dari Komparasi Harga untuk Part Number {$winner->part?->part_number}",
+        ]);
+
+        // Cari mapping kode barang vendor jika ada
+        $vendorItemCode = $winner->supplier?->vendorItems()
+            ->where('part_id', $winner->part_id)
+            ->first()?->vendor_item_code;
+
+        $qty = 1000; // Batch standar pengadaan 1.000 pcs
+        $unitPrice = $winner->total_cost_idr;
+        $totalPrice = round($qty * $unitPrice, 2);
+
+        $po->items()->create([
+            'part_id' => $winner->part_id,
+            'item_code' => $winner->part?->item_code ?? $winner->part?->part_number ?? 'PART-ITEM',
+            'description' => $winner->part?->description ?? $winner->part?->part_name ?? 'Item Description',
+            'vendor_item_code' => $vendorItemCode,
+            'quantity' => $qty,
+            'unit' => 'pcs',
+            'unit_price_idr' => $unitPrice,
+            'total_price_idr' => $totalPrice,
+        ]);
+
+        // Hitung Subtotal, PPN 11%, dan Grand Total
+        $taxAmount = round($totalPrice * 0.11, 2);
+        $grandTotal = round($totalPrice + $taxAmount, 2);
+
+        $po->update([
+            'subtotal_idr' => $totalPrice,
+            'tax_percentage' => 11.0,
+            'tax_amount_idr' => $taxAmount,
+            'total_amount_idr' => $grandTotal,
+        ]);
+
+        Notification::make()
+            ->title("PO Berhasil Dibuat: {$po->po_number}")
+            ->body("Draft Purchase Order telah diterbitkan untuk {$winner->supplier?->name} dengan total Rp ".number_format($grandTotal, 2, ',', '.'))
+            ->success()
+            ->actions([
+                Action::make('view_po')
+                    ->label('Buka Draft PO')
+                    ->url(PurchaseOrderResource::getUrl('edit', ['record' => $po->id])),
+            ])
+            ->send();
+    }
+}

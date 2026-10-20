@@ -3,8 +3,8 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\PartResource\Pages;
+use App\Filament\Resources\PartResource\RelationManagers\PriceHistoriesRelationManager;
 use App\Filament\Resources\PartResource\RelationManagers\VendorItemsRelationManager;
-use App\Models\Material;
 use App\Models\Part;
 use Filament\Forms;
 use Filament\Forms\Form;
@@ -182,7 +182,7 @@ class PartResource extends Resource
 
                 Tables\Columns\TextColumn::make('weight')
                     ->label('Berat')
-                    ->formatStateUsing(fn ($state) => number_format($state, 4) . ' kg')
+                    ->formatStateUsing(fn ($state) => number_format($state, 4).' kg')
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('vendor_items_count')
@@ -231,6 +231,7 @@ class PartResource extends Resource
     {
         return [
             VendorItemsRelationManager::class,
+            PriceHistoriesRelationManager::class,
         ];
     }
 

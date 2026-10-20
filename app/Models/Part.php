@@ -24,6 +24,14 @@ class Part extends Model
         'is_active',
     ];
 
+    protected $attributes = [
+        'main_category' => 'Steel',
+        'type' => 'Component',
+        'item_category' => 'Stamping',
+        'unit' => 'pcs',
+        'is_active' => true,
+    ];
+
     protected function casts(): array
     {
         return [
@@ -47,6 +55,13 @@ class Part extends Model
             }
             if (empty($part->part_name)) {
                 $part->part_name = $part->description;
+            }
+            if (empty($part->main_category)) {
+                $part->main_category = match ($part->item_category) {
+                    'Non-Steel' => 'Non-Steel',
+                    'Assembly' => 'Assembly',
+                    default => 'Steel',
+                };
             }
         });
     }
@@ -103,5 +118,10 @@ class Part extends Model
         }
 
         return $node;
+    }
+
+    public function priceHistories(): HasMany
+    {
+        return $this->hasMany(PartPriceHistory::class)->orderBy('price_date', 'desc');
     }
 }

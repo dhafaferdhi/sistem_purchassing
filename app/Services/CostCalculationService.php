@@ -5,7 +5,7 @@ namespace App\Services;
 class CostCalculationService
 {
     /**
-     * Hitung Harga Material (Price IDR) berdasarkan Book5.xlsx:
+     * Hitung Harga Material Dasar (Gross Material Price IDR):
      * - Fastener: Weight * Basic Rate * Exchange Rate
      * - Presspart: Weight * (Basic Rate - Fluktuasi JFE) * Exchange Rate
      */
@@ -20,10 +20,55 @@ class CostCalculationService
             return round($weight * $basicRate * $exchangeRate, 2);
         }
 
-        // Untuk Presspart, Fluktuasi JFE mengurangi/menyesuaikan Basic Rate
-        // Contoh: 1.99 - (-0.02) = 2.01 * 0.15 * 20000 = 6030
+        // Presspart: Effective Rate = basicRate - fluktuasiJfe
         $effectiveRate = $basicRate - $fluktuasiJfe;
+
         return round($weight * $effectiveRate * $exchangeRate, 2);
+    }
+
+    /**
+     * Hitung Scrap Recovery (Nilai Jual Sisa Potongan Plat / Gram Besi Tua):
+     * Scrap Weight = Gross Weight - Net Weight
+     * Scrap Recovery Value = Scrap Weight * Scrap Resale Price/kg
+     */
+    public static function calculateScrapRecovery(
+        float $grossWeight,
+        float $netWeight,
+        float $scrapPricePerKg = 0.0
+    ): array {
+        $scrapWeight = max(0.0, round($grossWeight - $netWeight, 4));
+        $recoveryValue = round($scrapWeight * $scrapPricePerKg, 2);
+
+        return [
+            'scrap_weight' => $scrapWeight,
+            'scrap_recovery_value' => $recoveryValue,
+        ];
+    }
+
+    /**
+     * Hitung Harga Material Bersih (Net Material Cost):
+     * Gross Material Price IDR - Nilai Recovery Scrap
+     */
+    public static function calculateNetMaterialCost(
+        float $grossPriceIdr,
+        float $scrapRecoveryValue
+    ): float {
+        return max(0.0, round($grossPriceIdr - $scrapRecoveryValue, 2));
+    }
+
+    /**
+     * Hitung Biaya Mesin per Pcs dengan pertimbangan Cavity Cetakan:
+     * Machine Cost = (Hourly Rate / Output Capacity per Hour) / Cavity Count
+     */
+    public static function calculateMachineCostWithCavity(
+        float $hourlyMachineRate,
+        int $capacityPerHour,
+        int $cavityCount = 1
+    ): float {
+        $safeCapacity = max(1, $capacityPerHour);
+        $safeCavity = max(1, $cavityCount);
+
+        return round(($hourlyMachineRate / $safeCapacity) / $safeCavity, 2);
     }
 
     /**
@@ -51,4 +96,3 @@ class CostCalculationService
         return round($priceIdr + $totalProcessCost + $profit + $transport + $packing, 2);
     }
 }
-

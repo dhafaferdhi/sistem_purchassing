@@ -27,7 +27,7 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->login()
-            ->brandName('Sistem Estimasi Biaya & Purchasing')
+            ->brandName('PT. FUJI SEAT INDONESIA')
             ->sidebarCollapsibleOnDesktop()
             ->colors([
                 'primary' => Color::Blue,

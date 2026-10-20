@@ -20,6 +20,13 @@ class VendorItem extends Model
         'notes',
     ];
 
+    protected $attributes = [
+        'unit_price' => 0,
+        'moq' => 100,
+        'lead_time_days' => 14,
+        'is_primary_vendor' => false,
+    ];
+
     protected function casts(): array
     {
         return [
@@ -45,4 +52,3 @@ class VendorItem extends Model
         return $this->belongsTo(Currency::class);
     }
 }
-

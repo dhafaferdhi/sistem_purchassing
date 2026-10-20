@@ -127,6 +127,12 @@
             <td width="25%">{{ $quotation->material?->spec ?? '-' }}</td>
         </tr>
         <tr>
+            <th>No. Drawing / Gambar</th>
+            <td>{{ $quotation->drawing_number ?? '-' }} ({{ $quotation->revision_number ?? 'Rev 0' }})</td>
+            <th>Masa Berlaku</th>
+            <td>{{ $quotation->validity_until ? $quotation->validity_until->format('d/m/Y') : '-' }}</td>
+        </tr>
+        <tr>
             @if($quotation->category === 'Fastener')
                 <th>Diameter</th>
                 <td>{{ $quotation->diameter ?? '-' }} mm</td>
@@ -143,8 +149,8 @@
         <tr>
             <th>Weight (Berat)</th>
             <td>{{ number_format($quotation->weight, 4) }} kg</td>
-            <th>-</th>
-            <td>-</td>
+            <th>Cavity / Scrap</th>
+            <td>{{ $quotation->cavity_count ?? 1 }} Cavity @if($quotation->scrap_recovery_value > 0) | Scrap: Rp {{ number_format($quotation->scrap_recovery_value, 2, ',', '.') }} @endif</td>
         </tr>
         @endif
     </table>

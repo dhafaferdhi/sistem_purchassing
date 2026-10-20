@@ -28,6 +28,18 @@ class Material extends Model
         ];
     }
 
+    protected static function booted(): void
+    {
+        static::saving(function (Material $material) {
+            if (empty($material->category)) {
+                $material->category = $material->sub_category ?: ($material->main_category ?: 'Steel');
+            }
+            if (empty($material->main_category)) {
+                $material->main_category = 'Steel';
+            }
+        });
+    }
+
     public function supplier(): BelongsTo
     {
         return $this->belongsTo(Supplier::class);

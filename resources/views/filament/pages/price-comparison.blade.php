@@ -187,20 +187,27 @@
                                 @endforeach
                             </tr>
 
-                            {{-- Action Pilih Pemenang --}}
+                            {{-- Action Pilih Pemenang & Terbitkan PO --}}
                             <tr class="bg-white dark:bg-gray-800">
                                 <td class="p-3 font-semibold text-gray-500 text-xs">Keputusan Purchasing</td>
                                 @foreach($quotes as $q)
                                     <td class="p-3 text-center border-l border-gray-200 dark:border-gray-700">
-                                        @if($q->is_selected)
-                                            <button disabled class="px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-lg shadow-sm cursor-default">
-                                                ✓ Telah Dipilih
+                                        <div class="flex flex-col items-center gap-2">
+                                            @if($q->is_selected)
+                                                <button disabled class="w-full px-3 py-1 bg-blue-600 text-white text-xs font-bold rounded-lg shadow-sm cursor-default">
+                                                    ✓ Supplier Terpilih
+                                                </button>
+                                            @else
+                                                <button wire:click="selectWinningSupplier({{ $q->id }})" wire:loading.attr="disabled" class="w-full px-3 py-1 bg-gray-100 hover:bg-emerald-600 hover:text-white text-gray-700 text-xs font-bold rounded-lg transition border border-gray-300 hover:border-emerald-600">
+                                                    Pilih Supplier Ini
+                                                </button>
+                                            @endif
+
+                                            <button wire:click="generatePurchaseOrder({{ $q->id }})" wire:loading.attr="disabled" class="w-full px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow transition flex items-center justify-center gap-1">
+                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                                Terbitkan PO
                                             </button>
-                                        @else
-                                            <button wire:click="selectWinningSupplier({{ $q->id }})" wire:loading.attr="disabled" class="px-3 py-1.5 bg-gray-100 hover:bg-emerald-600 hover:text-white text-gray-700 text-xs font-bold rounded-lg transition border border-gray-300 hover:border-emerald-600">
-                                                Pilih Supplier Ini
-                                            </button>
-                                        @endif
+                                        </div>
                                     </td>
                                 @endforeach
                             </tr>

@@ -40,6 +40,21 @@ class QuotationResource extends Resource
         $exchangeRate = (float) ($get('snapshot_exchange_rate') ?? 20000);
         $fluktuasi = (float) ($get('snapshot_fluktuasi') ?? 0);
 
+        // Scrap Recovery Calculation
+        $grossWeight = (float) ($get('gross_weight') ?? 0);
+        $netWeight = (float) ($get('net_weight') ?? 0);
+        $scrapPricePerKg = (float) ($get('scrap_price_per_kg') ?? 0);
+
+        if ($grossWeight > 0 && $netWeight > 0) {
+            $scrap = CostCalculationService::calculateScrapRecovery($grossWeight, $netWeight, $scrapPricePerKg);
+            $set('scrap_weight', $scrap['scrap_weight']);
+            $set('scrap_recovery_value', $scrap['scrap_recovery_value']);
+            if ($weight <= 0) {
+                $weight = $grossWeight;
+                $set('weight', $grossWeight);
+            }
+        }
+
         // 1. Hitung Price IDR
         $priceIdr = CostCalculationService::calculatePriceIdr(
             $category,
@@ -48,6 +63,12 @@ class QuotationResource extends Resource
             $exchangeRate,
             $fluktuasi
         );
+
+        // Kurangkan Nilai Scrap Recovery jika ada
+        $scrapRecovery = (float) ($get('scrap_recovery_value') ?? 0);
+        if ($scrapRecovery > 0) {
+            $priceIdr = CostCalculationService::calculateNetMaterialCost($priceIdr, $scrapRecovery);
+        }
         $set('price_idr', $priceIdr);
 
         // 2. Hitung Total Biaya Proses dari Repeater
@@ -85,7 +106,7 @@ class QuotationResource extends Resource
                     ->schema([
                         // SECTION 1: Informasi Dokumen & Spesifikasi Produk
                         Forms\Components\Section::make('1. Spesifikasi Komponen & Material')
-                            ->description('Pilih material dan input spesifikasi dimensi produk')
+                            ->description('Pilih material dan input spesifikasi teknis produk')
                             ->icon('heroicon-o-cube')
                             ->schema([
                                 Forms\Components\TextInput::make('document_number')
@@ -97,6 +118,16 @@ class QuotationResource extends Resource
 
                                 Forms\Components\Hidden::make('user_id')
                                     ->default(fn () => Auth::id()),
+
+                                Forms\Components\TextInput::make('drawing_number')
+                                    ->label('No. Drawing Teknik')
+                                    ->placeholder('Contoh: DWG-STP-001')
+                                    ->columnSpan(1),
+
+                                Forms\Components\TextInput::make('revision_number')
+                                    ->label('Revisi')
+                                    ->default('Rev 0')
+                                    ->columnSpan(1),
 
                                 Forms\Components\Select::make('material_id')
                                     ->label('Pilih Material')
@@ -112,7 +143,9 @@ class QuotationResource extends Resource
                                     ->required()
                                     ->live()
                                     ->afterStateUpdated(function ($state, Get $get, Set $set) {
-                                        if (!$state) return;
+                                        if (! $state) {
+                                            return;
+                                        }
                                         $material = Material::find($state);
                                         if ($material) {
                                             $set('category', $material->category);
@@ -160,6 +193,13 @@ class QuotationResource extends Resource
                                     ->visible(fn (Get $get) => $get('category') === 'Presspart')
                                     ->columnSpan(1),
 
+                                Forms\Components\TextInput::make('cavity_count')
+                                    ->label('Jumlah Cavity')
+                                    ->numeric()
+                                    ->default(1)
+                                    ->minValue(1)
+                                    ->columnSpan(1),
+
                                 Forms\Components\TextInput::make('weight')
                                     ->label('Weight (Berat komponen - kg)')
                                     ->required()
@@ -169,6 +209,63 @@ class QuotationResource extends Resource
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::updateCalculations($get, $set))
                                     ->helperText('Contoh: 0.05 untuk Fastener, 0.15 untuk Presspart')
                                     ->columnSpan(1),
+
+                                Forms\Components\DatePicker::make('validity_until')
+                                    ->label('Masa Berlaku Penawaran')
+                                    ->default(now()->addDays(30))
+                                    ->columnSpan(1),
+
+                                Forms\Components\FileUpload::make('drawing_file')
+                                    ->label('Lampiran Drawing (CAD / PDF / Gambar)')
+                                    ->disk('public')
+                                    ->directory('drawings')
+                                    ->acceptedFileTypes(['application/pdf', 'image/*'])
+                                    ->columnSpan(2),
+                            ])->columns(3),
+
+                        // SECTION 1.5: Scrap Recovery & Efisiensi Material
+                        Forms\Components\Section::make('Efisiensi Material & Scrap Recovery (Khusus Presspart)')
+                            ->description('Perhitungan sisa potongan plat besi / scrap untuk mengurangi HPP')
+                            ->icon('heroicon-o-arrow-path')
+                            ->collapsible()
+                            ->schema([
+                                Forms\Components\TextInput::make('gross_weight')
+                                    ->label('Gross Weight (kg) - Lembaran Awal')
+                                    ->numeric()
+                                    ->step(0.0001)
+                                    ->live(onBlur: true)
+                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::updateCalculations($get, $set))
+                                    ->columnSpan(1),
+
+                                Forms\Components\TextInput::make('net_weight')
+                                    ->label('Net Weight (kg) - Part Jadi')
+                                    ->numeric()
+                                    ->step(0.0001)
+                                    ->live(onBlur: true)
+                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::updateCalculations($get, $set))
+                                    ->columnSpan(1),
+
+                                Forms\Components\TextInput::make('scrap_weight')
+                                    ->label('Scrap Weight (kg)')
+                                    ->readOnly()
+                                    ->numeric()
+                                    ->step(0.0001)
+                                    ->columnSpan(1),
+
+                                Forms\Components\TextInput::make('scrap_price_per_kg')
+                                    ->label('Harga Jual Scrap Besi / kg (IDR)')
+                                    ->prefix('Rp')
+                                    ->numeric()
+                                    ->default(0)
+                                    ->live(onBlur: true)
+                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::updateCalculations($get, $set))
+                                    ->columnSpan(1),
+
+                                Forms\Components\TextInput::make('scrap_recovery_value')
+                                    ->label('Scrap Recovery (Pengurang HPP)')
+                                    ->prefix('Rp')
+                                    ->readOnly()
+                                    ->columnSpan(2),
                             ])->columns(3),
 
                         // SECTION 2: Tahapan Proses Manufaktur
@@ -188,6 +285,7 @@ class QuotationResource extends Resource
                                                 if ($category) {
                                                     $query->whereIn('category', [$category, 'Both']);
                                                 }
+
                                                 return $query->pluck('name', 'id');
                                             })
                                             ->searchable()
@@ -195,7 +293,9 @@ class QuotationResource extends Resource
                                             ->required()
                                             ->live()
                                             ->afterStateUpdated(function ($state, Set $set, Get $get) {
-                                                if (!$state) return;
+                                                if (! $state) {
+                                                    return;
+                                                }
                                                 $proc = Process::find($state);
                                                 if ($proc) {
                                                     $set('process_name', $proc->name);
@@ -337,24 +437,41 @@ class QuotationResource extends Resource
                     ->searchable()
                     ->sortable(),
 
+                Tables\Columns\TextColumn::make('drawing_number')
+                    ->label('No. Drawing')
+                    ->placeholder('-')
+                    ->searchable()
+                    ->toggleable(),
+
+                Tables\Columns\TextColumn::make('revision_number')
+                    ->label('Rev')
+                    ->badge()
+                    ->color('gray')
+                    ->toggleable(),
+
                 Tables\Columns\TextColumn::make('weight')
                     ->label('Berat (kg)')
-                    ->formatStateUsing(fn ($state) => number_format($state, 4) . ' kg')
+                    ->formatStateUsing(fn ($state) => number_format($state, 4).' kg')
                     ->sortable(),
+
+                Tables\Columns\TextColumn::make('scrap_recovery_value')
+                    ->label('Scrap Recovery')
+                    ->formatStateUsing(fn ($state) => $state > 0 ? 'Rp '.number_format($state, 2, ',', '.') : '-')
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('price_idr')
                     ->label('Price IDR')
-                    ->formatStateUsing(fn ($state) => 'Rp ' . number_format($state, 2, ',', '.'))
+                    ->formatStateUsing(fn ($state) => 'Rp '.number_format($state, 2, ',', '.'))
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('total_process_cost')
                     ->label('Biaya Proses')
-                    ->formatStateUsing(fn ($state) => 'Rp ' . number_format($state, 2, ',', '.'))
+                    ->formatStateUsing(fn ($state) => 'Rp '.number_format($state, 2, ',', '.'))
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('profit')
                     ->label('Profit')
-                    ->formatStateUsing(fn ($state) => 'Rp ' . number_format($state, 2, ',', '.'))
+                    ->formatStateUsing(fn ($state) => 'Rp '.number_format($state, 2, ',', '.'))
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
 
@@ -362,7 +479,7 @@ class QuotationResource extends Resource
                     ->label('Total Cost')
                     ->weight('bold')
                     ->color('success')
-                    ->formatStateUsing(fn ($state) => 'Rp ' . number_format($state, 2, ',', '.'))
+                    ->formatStateUsing(fn ($state) => 'Rp '.number_format($state, 2, ',', '.'))
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('status')
@@ -467,7 +584,7 @@ class QuotationResource extends Resource
                     ->action(function (Quotation $record, array $data) {
                         $record->update([
                             'status' => 'rejected',
-                            'notes' => ($record->notes ? $record->notes . "\n" : '') . "[Ditolak]: " . $data['rejection_note'],
+                            'notes' => ($record->notes ? $record->notes."\n" : '').'[Ditolak]: '.$data['rejection_note'],
                         ]);
                         Notification::make()
                             ->title("Dokumen {$record->document_number} telah ditolak.")
@@ -518,6 +635,19 @@ class QuotationResource extends Resource
                         Infolists\Components\TextEntry::make('material.spec')
                             ->label('Material Spec')
                             ->weight('bold'),
+                        Infolists\Components\TextEntry::make('drawing_number')
+                            ->label('No. Drawing')
+                            ->placeholder('-'),
+                        Infolists\Components\TextEntry::make('revision_number')
+                            ->label('Revisi')
+                            ->badge(),
+                        Infolists\Components\TextEntry::make('cavity_count')
+                            ->label('Jumlah Cavity')
+                            ->placeholder('1'),
+                        Infolists\Components\TextEntry::make('validity_until')
+                            ->label('Masa Berlaku')
+                            ->date('d M Y')
+                            ->placeholder('-'),
                         Infolists\Components\TextEntry::make('diameter')
                             ->label('Diameter (mm)')
                             ->visible(fn (Quotation $record) => $record->category === 'Fastener'),
@@ -529,7 +659,19 @@ class QuotationResource extends Resource
                             ->visible(fn (Quotation $record) => $record->category === 'Presspart'),
                         Infolists\Components\TextEntry::make('weight')
                             ->label('Weight (Berat)')
-                            ->formatStateUsing(fn ($state) => number_format($state, 4) . ' kg'),
+                            ->formatStateUsing(fn ($state) => number_format($state, 4).' kg'),
+                        Infolists\Components\TextEntry::make('gross_weight')
+                            ->label('Gross Weight')
+                            ->formatStateUsing(fn ($state) => $state ? number_format($state, 4).' kg' : '-')
+                            ->visible(fn (Quotation $record) => (float) $record->gross_weight > 0),
+                        Infolists\Components\TextEntry::make('net_weight')
+                            ->label('Net Weight')
+                            ->formatStateUsing(fn ($state) => $state ? number_format($state, 4).' kg' : '-')
+                            ->visible(fn (Quotation $record) => (float) $record->net_weight > 0),
+                        Infolists\Components\TextEntry::make('scrap_recovery_value')
+                            ->label('Scrap Recovery')
+                            ->formatStateUsing(fn ($state) => 'Rp '.number_format($state, 2, ',', '.'))
+                            ->visible(fn (Quotation $record) => (float) $record->scrap_recovery_value > 0),
                         Infolists\Components\TextEntry::make('user.name')
                             ->label('Estimator'),
                         Infolists\Components\TextEntry::make('created_at')
@@ -545,7 +687,7 @@ class QuotationResource extends Resource
                             ->money('USD'),
                         Infolists\Components\TextEntry::make('snapshot_exchange_rate')
                             ->label('Exchange Rate (IDR)')
-                            ->formatStateUsing(fn ($state) => 'Rp ' . number_format($state, 0, ',', '.')),
+                            ->formatStateUsing(fn ($state) => 'Rp '.number_format($state, 0, ',', '.')),
                         Infolists\Components\TextEntry::make('snapshot_fluktuasi')
                             ->label('Fluktuasi JFE')
                             ->formatStateUsing(fn ($state, Quotation $record) => $record->category === 'Presspart' ? number_format($state, 4) : 'N/A'),
@@ -553,7 +695,7 @@ class QuotationResource extends Resource
                             ->label('Harga Material (Price IDR)')
                             ->weight('bold')
                             ->color('primary')
-                            ->formatStateUsing(fn ($state) => 'Rp ' . number_format($state, 2, ',', '.')),
+                            ->formatStateUsing(fn ($state) => 'Rp '.number_format($state, 2, ',', '.')),
                     ])->columns(4),
 
                 Infolists\Components\Section::make('3. Rincian Proses Manufaktur')
@@ -567,7 +709,7 @@ class QuotationResource extends Resource
                                     ->weight('bold'),
                                 Infolists\Components\TextEntry::make('applied_cost')
                                     ->label('Biaya Terkunci')
-                                    ->formatStateUsing(fn ($state) => 'Rp ' . number_format($state, 2, ',', '.')),
+                                    ->formatStateUsing(fn ($state) => 'Rp '.number_format($state, 2, ',', '.')),
                             ])->columns(2),
                     ]),
 
@@ -576,25 +718,25 @@ class QuotationResource extends Resource
                     ->schema([
                         Infolists\Components\TextEntry::make('price_idr')
                             ->label('Total Material')
-                            ->formatStateUsing(fn ($state) => 'Rp ' . number_format($state, 2, ',', '.')),
+                            ->formatStateUsing(fn ($state) => 'Rp '.number_format($state, 2, ',', '.')),
                         Infolists\Components\TextEntry::make('total_process_cost')
                             ->label('Total Proses')
-                            ->formatStateUsing(fn ($state) => 'Rp ' . number_format($state, 2, ',', '.')),
+                            ->formatStateUsing(fn ($state) => 'Rp '.number_format($state, 2, ',', '.')),
                         Infolists\Components\TextEntry::make('profit')
-                            ->label('Profit (' . $infolist->record->profit_percentage . '%)')
-                            ->formatStateUsing(fn ($state) => 'Rp ' . number_format($state, 2, ',', '.')),
+                            ->label('Profit ('.$infolist->record->profit_percentage.'%)')
+                            ->formatStateUsing(fn ($state) => 'Rp '.number_format($state, 2, ',', '.')),
                         Infolists\Components\TextEntry::make('transport')
                             ->label('Biaya Transport')
-                            ->formatStateUsing(fn ($state) => 'Rp ' . number_format($state, 2, ',', '.')),
+                            ->formatStateUsing(fn ($state) => 'Rp '.number_format($state, 2, ',', '.')),
                         Infolists\Components\TextEntry::make('packing')
                             ->label('Biaya Packing')
-                            ->formatStateUsing(fn ($state) => 'Rp ' . number_format($state, 2, ',', '.')),
+                            ->formatStateUsing(fn ($state) => 'Rp '.number_format($state, 2, ',', '.')),
                         Infolists\Components\TextEntry::make('total_cost')
                             ->label('GRAND TOTAL (HPP FINAL)')
                             ->weight('heavy')
                             ->size(Infolists\Components\TextEntry\TextEntrySize::Large)
                             ->color('success')
-                            ->formatStateUsing(fn ($state) => 'Rp ' . number_format($state, 2, ',', '.')),
+                            ->formatStateUsing(fn ($state) => 'Rp '.number_format($state, 2, ',', '.')),
                         Infolists\Components\TextEntry::make('notes')
                             ->label('Catatan Dokumen')
                             ->columnSpanFull()
