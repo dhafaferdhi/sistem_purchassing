@@ -33,4 +33,3 @@ class PartBom extends Model
         return $this->belongsTo(Part::class, 'component_part_id');
     }
 }
-

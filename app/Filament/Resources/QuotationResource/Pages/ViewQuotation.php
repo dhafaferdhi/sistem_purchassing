@@ -4,6 +4,7 @@ namespace App\Filament\Resources\QuotationResource\Pages;
 
 use App\Filament\Resources\QuotationResource;
 use Filament\Actions;
+use Filament\Forms\Components\Textarea;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
 use Illuminate\Support\Facades\Auth;
@@ -15,6 +16,12 @@ class ViewQuotation extends ViewRecord
     protected function getHeaderActions(): array
     {
         return [
+            Actions\Action::make('back')
+                ->label('Kembali')
+                ->icon('heroicon-o-arrow-left')
+                ->color('gray')
+                ->url(static::getResource()::getUrl('index')),
+
             Actions\Action::make('pdf')
                 ->label('Cetak PDF')
                 ->icon('heroicon-o-arrow-down-tray')
@@ -46,14 +53,14 @@ class ViewQuotation extends ViewRecord
                 ->color('danger')
                 ->visible(fn () => $this->record->status === 'submitted' && (Auth::user()?->isAdmin() || Auth::user()?->isApprover()))
                 ->form([
-                    \Filament\Forms\Components\Textarea::make('rejection_note')
+                    Textarea::make('rejection_note')
                         ->label('Alasan Penolakan')
                         ->required(),
                 ])
                 ->action(function (array $data) {
                     $this->record->update([
                         'status' => 'rejected',
-                        'notes' => ($this->record->notes ? $this->record->notes . "\n" : '') . "[Ditolak]: " . $data['rejection_note'],
+                        'notes' => ($this->record->notes ? $this->record->notes."\n" : '').'[Ditolak]: '.$data['rejection_note'],
                     ]);
                     Notification::make()
                         ->title("Dokumen {$this->record->document_number} telah ditolak.")
@@ -65,4 +72,3 @@ class ViewQuotation extends ViewRecord
         ];
     }
 }
-

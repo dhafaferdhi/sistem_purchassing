@@ -32,4 +32,3 @@ class VendorItemPolicy
         return $user->isAdmin();
     }
 }
-

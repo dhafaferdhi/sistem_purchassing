@@ -83,4 +83,3 @@ class CostCalculationTest extends TestCase
         $this->assertEquals(7553.00, $totalCost);
     }
 }
-

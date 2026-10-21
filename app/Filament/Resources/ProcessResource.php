@@ -15,6 +15,8 @@ class ProcessResource extends Resource
 {
     protected static ?string $model = Process::class;
 
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static ?string $navigationIcon = 'heroicon-o-cog-6-tooth';
 
     protected static ?string $navigationGroup = 'Master Data';
@@ -58,7 +60,8 @@ class ProcessResource extends Resource
                             ->label('Mesin yang Digunakan (Routing Machine)')
                             ->options(function () {
                                 return Machine::all()->mapWithKeys(function ($m) {
-                                    $rate = 'Rp ' . number_format($m->hourly_rate, 0, ',', '.') . '/jam';
+                                    $rate = 'Rp '.number_format($m->hourly_rate, 0, ',', '.').'/jam';
+
                                     return [$m->id => "{$m->name} [{$m->stamping_type} - {$m->tonnage}] ({$rate})"];
                                 });
                             })
@@ -87,7 +90,7 @@ class ProcessResource extends Resource
                             ->placeholder('Contoh: Dies Progressive Bracket Front')
                             ->visible(fn (Forms\Get $get) => in_array($get('tooling_type'), ['Dies', 'Mold', 'Jig'])),
 
-                        Forms\Components\TextInput::make('cycle_time_seconds')
+                        Forms\Components\TextInput::make('cycle_time_ econds')
                             ->label('Waktu Siklus (Cycle Time)')
                             ->numeric()
                             ->default(15)
@@ -155,7 +158,7 @@ class ProcessResource extends Resource
 
                 Tables\Columns\TextColumn::make('default_cost')
                     ->label('Biaya Standar')
-                    ->formatStateUsing(fn ($state) => 'Rp ' . number_format($state, 2, ',', '.'))
+                    ->formatStateUsing(fn ($state) => 'Rp '.number_format($state, 2, ',', '.'))
                     ->sortable(),
 
                 Tables\Columns\IconColumn::make('is_active')

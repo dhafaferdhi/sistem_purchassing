@@ -23,9 +23,9 @@ class MaterialMassUpdateService
     /**
      * Lakukan Mass Update kenaikan harga material dan sinkronisasi ke seluruh Part terdampak
      *
-     * @param Material $material Material yang mengalami kenaikan harga
-     * @param float $percentageChange Persentase kenaikan/penurunan (misal: 10 untuk +10%)
-     * @param array $selectedPartIds Daftar ID part yang dipilih (atau kosong untuk semua)
+     * @param  Material  $material  Material yang mengalami kenaikan harga
+     * @param  float  $percentageChange  Persentase kenaikan/penurunan (misal: 10 untuk +10%)
+     * @param  array  $selectedPartIds  Daftar ID part yang dipilih (atau kosong untuk semua)
      * @return array Ringkasan hasil update
      */
     public static function massUpdatePrice(
@@ -43,7 +43,7 @@ class MaterialMassUpdateService
 
             // 2. Cari part yang terdampak (Where-Used)
             $query = Part::where('material_id', $material->id);
-            if (!empty($selectedPartIds)) {
+            if (! empty($selectedPartIds)) {
                 $query->whereIn('id', $selectedPartIds);
             }
             $affectedParts = $query->get();
@@ -81,4 +81,3 @@ class MaterialMassUpdateService
         });
     }
 }
-

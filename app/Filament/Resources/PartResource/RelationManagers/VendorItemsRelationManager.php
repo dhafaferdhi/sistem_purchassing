@@ -3,7 +3,6 @@
 namespace App\Filament\Resources\PartResource\RelationManagers;
 
 use App\Models\Currency;
-use App\Models\Supplier;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\RelationManagers\RelationManager;
@@ -101,12 +100,12 @@ class VendorItemsRelationManager extends RelationManager
 
                 Tables\Columns\TextColumn::make('unit_price')
                     ->label('Harga Penawaran')
-                    ->formatStateUsing(fn ($state, $record) => ($record->currency?->symbol ?? 'Rp') . ' ' . number_format($state, 2, ',', '.'))
+                    ->formatStateUsing(fn ($state, $record) => ($record->currency?->symbol ?? 'Rp').' '.number_format($state, 2, ',', '.'))
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('lead_time_days')
                     ->label('Lead Time')
-                    ->formatStateUsing(fn ($state) => $state . ' hari'),
+                    ->formatStateUsing(fn ($state) => $state.' hari'),
 
                 Tables\Columns\IconColumn::make('is_primary_vendor')
                     ->label('Vendor Utama')
@@ -127,4 +126,3 @@ class VendorItemsRelationManager extends RelationManager
             ]);
     }
 }
-

@@ -28,6 +28,7 @@ class VendorItemsRelationManager extends RelationManager
                         return Part::all()->mapWithKeys(function ($p) {
                             $code = $p->item_code ?: $p->part_number;
                             $desc = $p->description ?: $p->part_name;
+
                             return [$p->id => "[{$code}] {$desc} ({$p->item_category})"];
                         });
                     })
@@ -108,12 +109,12 @@ class VendorItemsRelationManager extends RelationManager
 
                 Tables\Columns\TextColumn::make('unit_price')
                     ->label('Harga Penawaran')
-                    ->formatStateUsing(fn ($state, $record) => ($record->currency?->symbol ?? 'Rp') . ' ' . number_format($state, 2, ',', '.'))
+                    ->formatStateUsing(fn ($state, $record) => ($record->currency?->symbol ?? 'Rp').' '.number_format($state, 2, ',', '.'))
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('lead_time_days')
                     ->label('Lead Time')
-                    ->formatStateUsing(fn ($state) => $state . ' hari'),
+                    ->formatStateUsing(fn ($state) => $state.' hari'),
 
                 Tables\Columns\IconColumn::make('is_primary_vendor')
                     ->label('Vendor Utama')
@@ -134,4 +135,3 @@ class VendorItemsRelationManager extends RelationManager
             ]);
     }
 }
-

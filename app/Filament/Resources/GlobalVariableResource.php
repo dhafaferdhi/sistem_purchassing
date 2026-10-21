@@ -15,13 +15,15 @@ class GlobalVariableResource extends Resource
 {
     protected static ?string $model = GlobalVariable::class;
 
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static ?string $navigationIcon = 'heroicon-o-variable';
 
     protected static ?string $navigationGroup = 'Master Data';
 
     protected static ?string $navigationLabel = 'Variabel Global';
 
-    protected static ?int $navigationSort = 1;
+    protected static ?int $navigationSort = 5;
 
     public static function form(Form $form): Form
     {
@@ -70,11 +72,12 @@ class GlobalVariableResource extends Resource
                     ->label('Nilai')
                     ->formatStateUsing(function ($state, GlobalVariable $record) {
                         if ($record->key === 'exchange_rate') {
-                            return 'Rp ' . number_format($state, 2, ',', '.');
+                            return 'Rp '.number_format($state, 2, ',', '.');
                         }
                         if ($record->key === 'default_profit_percentage') {
-                            return number_format($state, 2) . ' %';
+                            return number_format($state, 2).' %';
                         }
+
                         return number_format($state, 4);
                     })
                     ->sortable(),
@@ -94,6 +97,7 @@ class GlobalVariableResource extends Resource
                 Tables\Actions\EditAction::make()
                     ->mutateRecordDataUsing(function (array $data): array {
                         $data['updated_by'] = Auth::id();
+
                         return $data;
                     }),
             ])

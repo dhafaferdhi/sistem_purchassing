@@ -14,7 +14,7 @@ return new class extends Migration
             $table->foreignId('supplier_id')->constrained('suppliers')->cascadeOnDelete();
             $table->foreignId('currency_id')->constrained('currencies');
             $table->decimal('exchange_rate_to_idr', 16, 4)->default(1);
-            
+
             // Komponen Biaya Asal & IDR
             $table->decimal('material_cost_original', 16, 4)->default(0);
             $table->decimal('material_cost_idr', 16, 2)->default(0);
@@ -48,4 +48,3 @@ return new class extends Migration
         Schema::dropIfExists('part_quotations');
     }
 };
-

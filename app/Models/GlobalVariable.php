@@ -29,7 +29,7 @@ class GlobalVariable extends Model
     public static function getValue(string $key, float $default = 0.0): float
     {
         $record = static::where('key', $key)->first();
+
         return $record ? (float) $record->value : $default;
     }
 }
-

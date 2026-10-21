@@ -9,7 +9,7 @@ class QuotationExportController extends Controller
 {
     public function exportCsv(): StreamedResponse
     {
-        $fileName = 'Rekap_Estimasi_Purchasing_' . date('Ymd_His') . '.csv';
+        $fileName = 'Rekap_Estimasi_Purchasing_'.date('Ymd_His').'.csv';
 
         $headers = [
             'Content-Type' => 'text/csv; charset=UTF-8',
@@ -45,7 +45,7 @@ class QuotationExportController extends Controller
 
         $callback = function () use ($columns) {
             $file = fopen('php://output', 'w');
-            
+
             // Add UTF-8 BOM so Excel opens indonesian/symbols properly
             fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
 
@@ -67,7 +67,7 @@ class QuotationExportController extends Controller
                     $q->snapshot_fluktuasi,
                     $q->price_idr,
                     $q->total_process_cost,
-                    $q->profit_percentage . '%',
+                    $q->profit_percentage.'%',
                     $q->profit,
                     $q->transport,
                     $q->packing,
@@ -85,4 +85,3 @@ class QuotationExportController extends Controller
         return response()->stream($callback, 200, $headers);
     }
 }
-

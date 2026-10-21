@@ -32,4 +32,3 @@ class GlobalVariablePolicy
         return $user->isAdmin();
     }
 }
-

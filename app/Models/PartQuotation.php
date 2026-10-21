@@ -98,4 +98,3 @@ class PartQuotation extends Model
         return $this->belongsTo(Currency::class);
     }
 }
-

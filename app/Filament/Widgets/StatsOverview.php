@@ -3,14 +3,18 @@
 namespace App\Filament\Widgets;
 
 use App\Models\GlobalVariable;
-use App\Models\Material;
 use App\Models\Quotation;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 
 class StatsOverview extends BaseWidget
 {
-    protected static ?int $sort = 1;
+    public static function canView(): bool
+    {
+        return false;
+    }
+
+    protected static ?int $sort = 6;
 
     protected function getStats(): array
     {
@@ -36,11 +40,10 @@ class StatsOverview extends BaseWidget
                 ->descriptionIcon('heroicon-m-check-badge')
                 ->color('success'),
 
-            Stat::make('Exchange Rate & JFE', 'Rp ' . number_format($exchangeRate, 0, ',', '.'))
-                ->description('Fluktuasi JFE: ' . number_format($fluktuasiJfe, 4))
+            Stat::make('Exchange Rate & JFE', 'Rp '.number_format($exchangeRate, 0, ',', '.'))
+                ->description('Fluktuasi JFE: '.number_format($fluktuasiJfe, 4))
                 ->descriptionIcon('heroicon-m-currency-dollar')
                 ->color('info'),
         ];
     }
 }
-

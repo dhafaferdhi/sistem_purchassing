@@ -32,4 +32,3 @@ class MaterialPolicy
         return $user->isAdmin();
     }
 }
-

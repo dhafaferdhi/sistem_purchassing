@@ -49,4 +49,3 @@ class QuotationPolicy
         return false;
     }
 }
-

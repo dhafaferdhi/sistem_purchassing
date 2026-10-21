@@ -192,4 +192,3 @@ class ItemMasterRoutingSeeder extends Seeder
         );
     }
 }
-

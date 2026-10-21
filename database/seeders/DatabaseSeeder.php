@@ -218,6 +218,10 @@ class DatabaseSeeder extends Seeder
             ItemMasterRoutingSeeder::class,
             ToolingAndPurchaseOrderSeeder::class,
             PriceTrendAndGoodsReceiptSeeder::class,
+            MaterialSteelSeeder::class,
+            StampingPartSeeder::class,
+            FastenerSeeder::class,
+            PudRequestSeeder::class,
         ]);
     }
 }

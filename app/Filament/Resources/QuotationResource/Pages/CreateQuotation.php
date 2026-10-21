@@ -4,12 +4,30 @@ namespace App\Filament\Resources\QuotationResource\Pages;
 
 use App\Filament\Resources\QuotationResource;
 use App\Services\CostCalculationService;
+use Filament\Actions\Action;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Support\Facades\Auth;
 
 class CreateQuotation extends CreateRecord
 {
     protected static string $resource = QuotationResource::class;
+
+    protected function getHeaderActions(): array
+    {
+        return [
+            Action::make('back')
+                ->label('Kembali')
+                ->icon('heroicon-o-arrow-left')
+                ->color('gray')
+                ->url(static::getResource()::getUrl('index')),
+        ];
+    }
+
+    protected function getCancelFormAction(): Action
+    {
+        return parent::getCancelFormAction()
+            ->label('Kembali');
+    }
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
@@ -30,7 +48,7 @@ class CreateQuotation extends CreateRecord
         );
 
         $totalProcess = 0.0;
-        if (!empty($data['quotationProcesses']) && is_array($data['quotationProcesses'])) {
+        if (! empty($data['quotationProcesses']) && is_array($data['quotationProcesses'])) {
             foreach ($data['quotationProcesses'] as $proc) {
                 $totalProcess += (float) ($proc['applied_cost'] ?? 0);
             }

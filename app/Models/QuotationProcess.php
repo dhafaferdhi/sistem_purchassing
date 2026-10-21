@@ -31,4 +31,3 @@ class QuotationProcess extends Model
         return $this->belongsTo(Process::class);
     }
 }
-

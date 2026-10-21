@@ -7,9 +7,14 @@ use Filament\Widgets\ChartWidget;
 
 class QuotationChart extends ChartWidget
 {
+    public static function canView(): bool
+    {
+        return false;
+    }
+
     protected static ?string $heading = 'Distribusi Estimasi Biaya per Kategori';
 
-    protected static ?int $sort = 2;
+    protected static ?int $sort = 7;
 
     protected function getData(): array
     {
@@ -36,4 +41,3 @@ class QuotationChart extends ChartWidget
         return 'doughnut';
     }
 }
-

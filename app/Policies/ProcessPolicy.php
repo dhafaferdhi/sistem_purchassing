@@ -32,4 +32,3 @@ class ProcessPolicy
         return $user->isAdmin();
     }
 }
-

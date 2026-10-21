@@ -13,10 +13,13 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class MaterialResource extends Resource
 {
     protected static ?string $model = Material::class;
+
+    protected static bool $shouldRegisterNavigation = false;
 
     protected static ?string $navigationIcon = 'heroicon-o-cube';
 
@@ -66,6 +69,7 @@ class MaterialResource extends Resource
                                         'Cover (Kain)' => 'Cover (Kain / Fabric / Kulit)',
                                     ];
                                 }
+
                                 return [
                                     'Frame' => 'Frame',
                                     'Bolt' => 'Bolt',
@@ -150,7 +154,8 @@ class MaterialResource extends Resource
                     ->label('Basic Rate')
                     ->formatStateUsing(function ($state, Material $record) {
                         $sym = $record->currency?->symbol ?? '$';
-                        return $sym . ' ' . number_format($state, 4, ',', '.') . ' / ' . $record->unit;
+
+                        return $sym.' '.number_format($state, 4, ',', '.').' / '.$record->unit;
                     })
                     ->sortable(),
 
@@ -193,6 +198,7 @@ class MaterialResource extends Resource
                     ->modalDescription('Berikut adalah seluruh Part Number dan Assembly yang menggunakan material ini:')
                     ->modalContent(function (Material $record) {
                         $parts = MaterialMassUpdateService::getWhereUsedParts($record);
+
                         return view('filament.components.where-used-modal', compact('record', 'parts'));
                     })
                     ->modalSubmitAction(false)
@@ -204,7 +210,7 @@ class MaterialResource extends Resource
                     ->icon('heroicon-o-arrow-trending-up')
                     ->color('warning')
                     ->modalHeading(fn (Material $record) => "Mass Update Kenaikan Harga: {$record->spec}")
-                    ->modalDescription(fn (Material $record) => "Harga saat ini: {$record->currency?->symbol} " . number_format($record->basic_rate, 4) . ". Masukkan persentase kenaikan harga untuk otomatis memperbarui harga seluruh Part terdampak.")
+                    ->modalDescription(fn (Material $record) => "Harga saat ini: {$record->currency?->symbol} ".number_format($record->basic_rate, 4).'. Masukkan persentase kenaikan harga untuk otomatis memperbarui harga seluruh Part terdampak.')
                     ->form([
                         Forms\Components\TextInput::make('percentage_change')
                             ->label('Persentase Perubahan Harga (%)')
@@ -221,7 +227,7 @@ class MaterialResource extends Resource
 
                         Notification::make()
                             ->title("Mass Update Berhasil untuk {$record->spec}")
-                            ->body("Rate baru: Rp/USD " . number_format($result['new_basic_rate'], 4) . " (" . ($percent > 0 ? "+{$percent}" : "{$percent}") . "%). Sebanyak {$result['affected_parts_count']} part & {$result['updated_quotations_count']} quotation berhasil di-recalculate otomatis.")
+                            ->body('Rate baru: Rp/USD '.number_format($result['new_basic_rate'], 4).' ('.($percent > 0 ? "+{$percent}" : "{$percent}")."%). Sebanyak {$result['affected_parts_count']} part & {$result['updated_quotations_count']} quotation berhasil di-recalculate otomatis.")
                             ->success()
                             ->send();
                     }),
@@ -234,6 +240,13 @@ class MaterialResource extends Resource
                     Tables\Actions\DeleteBulkAction::make(),
                 ]),
             ]);
+    }
+
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()
+            ->with(['supplier', 'currency'])
+            ->withCount('parts');
     }
 
     public static function getRelations(): array

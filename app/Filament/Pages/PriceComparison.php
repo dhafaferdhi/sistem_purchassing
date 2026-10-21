@@ -20,6 +20,8 @@ class PriceComparison extends Page implements HasForms
 
     protected static ?string $navigationIcon = 'heroicon-o-scale';
 
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static ?string $navigationGroup = 'Kalkulator & Purchasing';
 
     protected static ?string $navigationLabel = 'Komparasi Harga Supplier';

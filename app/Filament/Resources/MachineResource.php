@@ -14,6 +14,8 @@ class MachineResource extends Resource
 {
     protected static ?string $model = Machine::class;
 
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static ?string $navigationIcon = 'heroicon-o-cpu-chip';
 
     protected static ?string $navigationGroup = 'Master Data';
@@ -124,12 +126,12 @@ class MachineResource extends Resource
 
                 Tables\Columns\TextColumn::make('hourly_rate')
                     ->label('Cost Per Hour (Mesin)')
-                    ->formatStateUsing(fn ($state) => 'Rp ' . number_format($state, 0, ',', '.') . ' / jam')
+                    ->formatStateUsing(fn ($state) => 'Rp '.number_format($state, 0, ',', '.').' / jam')
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('default_capacity_per_hour')
                     ->label('Kapasitas Output')
-                    ->formatStateUsing(fn ($state) => $state . ' pcs/jam')
+                    ->formatStateUsing(fn ($state) => $state.' pcs/jam')
                     ->sortable(),
 
                 Tables\Columns\IconColumn::make('is_active')

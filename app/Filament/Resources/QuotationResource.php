@@ -18,6 +18,7 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
 
 class QuotationResource extends Resource
@@ -26,11 +27,13 @@ class QuotationResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-calculator';
 
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static ?string $navigationGroup = 'Kalkulator & Purchasing';
 
     protected static ?string $navigationLabel = 'Estimasi Biaya (Quotation)';
 
-    protected static ?int $navigationSort = 1;
+    protected static ?int $navigationSort = 3;
 
     public static function updateCalculations(Get $get, Set $set): void
     {
@@ -750,6 +753,12 @@ class QuotationResource extends Resource
                             ->placeholder('-'),
                     ])->columns(3),
             ]);
+    }
+
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()
+            ->with(['user', 'material', 'approvedBy']);
     }
 
     public static function getRelations(): array

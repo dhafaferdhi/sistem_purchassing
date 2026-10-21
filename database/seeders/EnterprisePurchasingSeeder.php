@@ -8,7 +8,6 @@ use App\Models\Material;
 use App\Models\Part;
 use App\Models\PartBom;
 use App\Models\PartQuotation;
-use App\Models\Process;
 use App\Models\Supplier;
 use Illuminate\Database\Seeder;
 
@@ -350,4 +349,3 @@ class EnterprisePurchasingSeeder extends Seeder
         );
     }
 }
-

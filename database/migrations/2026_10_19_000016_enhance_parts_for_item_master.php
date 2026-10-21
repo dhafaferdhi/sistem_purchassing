@@ -16,7 +16,7 @@ return new class extends Migration
         });
 
         // Sync existing data
-        DB::statement("UPDATE parts SET item_code = part_number, description = part_name");
+        DB::statement('UPDATE parts SET item_code = part_number, description = part_name');
     }
 
     public function down(): void
@@ -26,4 +26,3 @@ return new class extends Migration
         });
     }
 };
-

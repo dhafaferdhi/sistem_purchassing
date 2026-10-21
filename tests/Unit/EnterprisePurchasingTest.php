@@ -144,4 +144,3 @@ class EnterprisePurchasingTest extends TestCase
         $this->assertEquals(32000.0, $quote->total_cost_idr);         // 22000 + 10000
     }
 }
-

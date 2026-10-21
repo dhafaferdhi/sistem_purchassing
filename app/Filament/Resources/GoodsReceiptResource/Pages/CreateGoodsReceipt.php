@@ -4,11 +4,29 @@ namespace App\Filament\Resources\GoodsReceiptResource\Pages;
 
 use App\Filament\Resources\GoodsReceiptResource;
 use App\Models\PurchaseOrder;
+use Filament\Actions\Action;
 use Filament\Resources\Pages\CreateRecord;
 
 class CreateGoodsReceipt extends CreateRecord
 {
     protected static string $resource = GoodsReceiptResource::class;
+
+    protected function getHeaderActions(): array
+    {
+        return [
+            Action::make('back')
+                ->label('Kembali')
+                ->icon('heroicon-o-arrow-left')
+                ->color('gray')
+                ->url(static::getResource()::getUrl('index')),
+        ];
+    }
+
+    protected function getCancelFormAction(): Action
+    {
+        return parent::getCancelFormAction()
+            ->label('Kembali');
+    }
 
     public function mount(): void
     {

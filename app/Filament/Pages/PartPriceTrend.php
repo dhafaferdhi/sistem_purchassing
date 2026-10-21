@@ -14,6 +14,8 @@ class PartPriceTrend extends Page implements HasForms
 
     protected static ?string $navigationIcon = 'heroicon-o-chart-bar';
 
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static ?string $navigationGroup = 'Kalkulator & Purchasing';
 
     protected static ?string $navigationLabel = 'Tren Harga Part (Price Trend)';
