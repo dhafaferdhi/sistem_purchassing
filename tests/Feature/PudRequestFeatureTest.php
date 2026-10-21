@@ -15,6 +15,8 @@ use App\Filament\Widgets\PudRequestTrendChart;
 use App\Models\PudRequest;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Tests\TestCase;
 
@@ -379,5 +381,34 @@ class PudRequestFeatureTest extends TestCase
             ->test(ListPudMonitorings::class)
             ->assertActionDoesNotExist('create_request')
             ->assertActionDoesNotExist('create');
+    }
+
+    public function test_can_upload_photo_when_creating_user_request(): void
+    {
+        Storage::fake('public');
+        $file = UploadedFile::fake()->image('test-part.jpg', 600, 600);
+
+        Livewire::actingAs($this->admin)
+            ->test(CreateUserRequest::class)
+            ->fillForm([
+                'user_name' => 'PHOTO UPLOADER',
+                'plant' => 'SUNTER',
+                'division' => 'MTC',
+                'part_name' => 'PROXIMITY SENSOR E2B',
+                'brand' => 'OMRON',
+                'type' => 'E2B-M12KS04',
+                'qty' => 2,
+                'unit' => 'Pcs',
+                'purpose' => 'SPAREPART CONVEYOR',
+                'spec' => 'M12 PNP NO Flush',
+                'photo' => $file,
+            ])
+            ->call('create')
+            ->assertHasNoFormErrors();
+
+        $saved = PudRequest::where('part_name', 'PROXIMITY SENSOR E2B')->first();
+        $this->assertNotNull($saved);
+        $this->assertNotNull($saved->photo);
+        Storage::disk('public')->assertExists($saved->photo);
     }
 }

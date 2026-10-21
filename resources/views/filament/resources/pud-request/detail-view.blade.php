@@ -132,9 +132,17 @@
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Dokumentasi fisik barang</p>
             </div>
             <div class="p-4 flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-800/40">
-                @if($r->photo)
-                    <a href="{{ asset('storage/' . $r->photo) }}" target="_blank" title="Klik untuk membuka ukuran penuh">
-                        <img src="{{ asset('storage/' . $r->photo) }}" alt="Photo {{ $r->part_name }}" class="max-h-60 max-w-full rounded-lg object-contain shadow-sm border border-gray-200 dark:border-gray-700 hover:scale-105 transition duration-200" />
+                @php
+                    $photoUrl = null;
+                    if (!empty($r->photo)) {
+                        $photoUrl = str_starts_with($r->photo, 'http')
+                            ? $r->photo
+                            : (str_starts_with($r->photo, 'storage/') ? asset($r->photo) : asset('storage/' . $r->photo));
+                    }
+                @endphp
+                @if($photoUrl)
+                    <a href="{{ $photoUrl }}" target="_blank" title="Klik untuk membuka ukuran penuh">
+                        <img src="{{ $photoUrl }}" alt="Photo {{ $r->part_name }}" class="max-h-60 max-w-full rounded-lg object-contain shadow-sm border border-gray-200 dark:border-gray-700 hover:scale-105 transition duration-200" />
                     </a>
                 @else
                     <div class="text-center py-10 text-gray-400 dark:text-gray-500">

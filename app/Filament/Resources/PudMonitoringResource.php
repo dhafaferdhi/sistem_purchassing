@@ -89,6 +89,20 @@ class PudMonitoringResource extends Resource
                             ->label('Specification')
                             ->disabled()
                             ->columnSpan(2),
+
+                        Forms\Components\FileUpload::make('photo')
+                            ->label('Photo Barang')
+                            ->disk('public')
+                            ->visibility('public')
+                            ->image()
+                            ->directory('pud-requests')
+                            ->imagePreviewHeight('200')
+                            ->disabled()
+                            ->dehydrated(false)
+                            ->openable()
+                            ->downloadable()
+                            ->columnSpan(4)
+                            ->visible(fn (?PudRequest $record) => ! empty($record?->photo)),
                     ])
                     ->columns(4)
                     ->collapsible(),
@@ -127,6 +141,8 @@ class PudMonitoringResource extends Resource
 
                                 Forms\Components\FileUpload::make('supplier_1_quotation_file')
                                     ->label('Quotation File')
+                                    ->disk('public')
+                                    ->visibility('public')
                                     ->directory('quotations')
                                     ->acceptedFileTypes(['application/pdf', 'image/*'])
                                     ->openable()
@@ -180,6 +196,8 @@ class PudMonitoringResource extends Resource
 
                                 Forms\Components\FileUpload::make('supplier_2_quotation_file')
                                     ->label('Quotation File')
+                                    ->disk('public')
+                                    ->visibility('public')
                                     ->directory('quotations')
                                     ->acceptedFileTypes(['application/pdf', 'image/*'])
                                     ->openable()
@@ -233,6 +251,8 @@ class PudMonitoringResource extends Resource
 
                                 Forms\Components\FileUpload::make('supplier_3_quotation_file')
                                     ->label('Quotation File')
+                                    ->disk('public')
+                                    ->visibility('public')
                                     ->directory('quotations')
                                     ->acceptedFileTypes(['application/pdf', 'image/*'])
                                     ->openable()
@@ -349,6 +369,8 @@ class PudMonitoringResource extends Resource
 
                 Tables\Columns\ImageColumn::make('photo')
                     ->label('Photo')
+                    ->disk('public')
+                    ->visibility('public')
                     ->square()
                     ->defaultImageUrl('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="%23cbd5e1" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>'),
 
