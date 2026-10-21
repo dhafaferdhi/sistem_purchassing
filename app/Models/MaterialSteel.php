@@ -97,11 +97,27 @@ class MaterialSteel extends Model
     protected static function booted(): void
     {
         static::saving(function (MaterialSteel $model) {
-            // Pastikan currency_id terisi
-            if (empty($model->currency_id)) {
-                $model->currency_id = Currency::where('code', $model->currency_code ?: 'USD')->where('year', $model->year)->first()?->id
-                    ?? Currency::where('code', $model->currency_code ?: 'USD')->first()?->id
-                    ?? Currency::first()?->id;
+            // Pastikan currency_id selalu sinkron dengan year, quarter, dan currency_code
+            $curr = $model->currency_id ? Currency::find($model->currency_id) : null;
+            $needsMatch = ! $curr
+                || $curr->year != $model->year
+                || ($model->quarter && $curr->quarter != $model->quarter)
+                || (strtoupper($curr->code) != strtoupper($model->currency_code ?: 'USD'));
+
+            if ($needsMatch) {
+                $matched = Currency::where('code', $model->currency_code ?: 'USD')
+                    ->where('year', $model->year)
+                    ->when($model->quarter, fn ($q) => $q->where('quarter', $model->quarter))
+                    ->first()
+                    ?? Currency::where('code', $model->currency_code ?: 'USD')
+                        ->where('year', $model->year)
+                        ->first()
+                    ?? Currency::where('code', $model->currency_code ?: 'USD')->first()
+                    ?? Currency::first();
+
+                if ($matched) {
+                    $model->currency_id = $matched->id;
+                }
             }
 
             // Bersihkan satuan teks seperti 'mm' dari double_thickness agar murni angka

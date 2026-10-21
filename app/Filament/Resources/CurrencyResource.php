@@ -16,6 +16,7 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 
 class CurrencyResource extends Resource
@@ -99,9 +100,7 @@ class CurrencyResource extends Resource
                             ->step(0.0001)
                             ->required()
                             ->placeholder('Contoh: 16000')
-                            ->helperText('Nilai tukar 1 USD ke Rupiah')
-                            ->visible(fn (string $operation): bool => $operation === 'create')
-                            ->dehydrated(fn (string $operation): bool => $operation === 'create'),
+                            ->helperText('Nilai tukar 1 USD ke Rupiah'),
 
                         Forms\Components\TextInput::make('kurs_jpy')
                             ->label('Kurs JPY')
@@ -110,24 +109,7 @@ class CurrencyResource extends Resource
                             ->step(0.0001)
                             ->required()
                             ->placeholder('Contoh: 105')
-                            ->helperText('Nilai tukar 1 JPY ke Rupiah')
-                            ->visible(fn (string $operation): bool => $operation === 'create')
-                            ->dehydrated(fn (string $operation): bool => $operation === 'create'),
-
-                        // Tampilan untuk Edit record Currency individual:
-                        Forms\Components\TextInput::make('code')
-                            ->label('Mata Uang')
-                            ->disabled()
-                            ->visible(fn (string $operation): bool => $operation === 'edit'),
-
-                        Forms\Components\TextInput::make('exchange_rate_to_idr')
-                            ->label('Nilai Kurs ke IDR (Rupiah)')
-                            ->prefix('Rp')
-                            ->numeric()
-                            ->step(0.0001)
-                            ->required()
-                            ->helperText('Contoh: 16000 (USD) atau 105 (JPY)')
-                            ->visible(fn (string $operation): bool => $operation === 'edit'),
+                            ->helperText('Nilai tukar 1 JPY ke Rupiah'),
                     ])
                     ->columns(2),
             ]);
@@ -136,6 +118,8 @@ class CurrencyResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            ->recordUrl(null)
+            ->defaultSort('year', 'desc')
             ->columns([
                 Tables\Columns\TextColumn::make('period')
                     ->label('Kuartal')
@@ -224,6 +208,21 @@ class CurrencyResource extends Resource
                     ->sortable(),
             ])
             ->filters([
+                Tables\Filters\TernaryFilter::make('has_linked_data')
+                    ->label('Status Kaitan Data')
+                    ->placeholder('Semua Kurs')
+                    ->trueLabel('Hanya yang memiliki data (Baja / Part / Pasterner)')
+                    ->falseLabel('Kurs tanpa kaitan data')
+                    ->queries(
+                        true: fn (Builder $query) => $query->where(function (Builder $q) {
+                            $q->whereHas('materialSteels')
+                                ->orWhereHas('stampingParts')
+                                ->orWhereHas('fasteners');
+                        }),
+                        false: fn (Builder $query) => $query->whereDoesntHave('materialSteels')
+                            ->whereDoesntHave('stampingParts')
+                            ->whereDoesntHave('fasteners'),
+                    ),
                 Tables\Filters\SelectFilter::make('year')
                     ->label('Filter Tahun')
                     ->options(function () {
@@ -278,7 +277,6 @@ class CurrencyResource extends Resource
                             ->success()
                             ->send();
                     }),
-                Tables\Actions\EditAction::make(),
                 Tables\Actions\DeleteAction::make()
                     ->before(function (Currency $record, Tables\Actions\DeleteAction $action) {
                         if (strtoupper($record->code) === 'IDR') {
@@ -327,7 +325,6 @@ class CurrencyResource extends Resource
         return [
             'index' => Pages\ListCurrencies::route('/'),
             'create' => Pages\CreateCurrency::route('/create'),
-            'edit' => Pages\EditCurrency::route('/{record}/edit'),
         ];
     }
 }
