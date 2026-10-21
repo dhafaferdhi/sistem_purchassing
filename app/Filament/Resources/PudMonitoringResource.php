@@ -33,6 +33,11 @@ class PudMonitoringResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-clipboard-document-check';
 
+    public static function canCreate(): bool
+    {
+        return false;
+    }
+
     public static function form(Form $form): Form
     {
         return $form
@@ -72,7 +77,8 @@ class PudMonitoringResource extends Resource
                         Forms\Components\TextInput::make('qty_display')
                             ->label('Quantity')
                             ->formatStateUsing(fn ($state, ?PudRequest $record) => $record ? number_format((float) $record->qty, 0, ',', '.').' '.$record->unit : '')
-                            ->disabled(),
+                            ->disabled()
+                            ->dehydrated(false),
 
                         Forms\Components\Textarea::make('purpose')
                             ->label('Use / Purpose')
@@ -474,6 +480,9 @@ class PudMonitoringResource extends Resource
             ->schema([
                 ViewEntry::make('detail_view')
                     ->view('filament.resources.pud-request.detail-view')
+                    ->viewData(fn (?PudRequest $record): array => [
+                        'record' => $record,
+                    ])
                     ->columnSpanFull(),
             ]);
     }
@@ -487,7 +496,6 @@ class PudMonitoringResource extends Resource
     {
         return [
             'index' => Pages\ListPudMonitorings::route('/'),
-            'create' => Pages\CreatePudMonitoring::route('/create'),
             'view' => Pages\ViewPudMonitoring::route('/{record}'),
             'edit' => Pages\EditPudMonitoring::route('/{record}/edit'),
         ];

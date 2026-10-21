@@ -2,10 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Filament\Resources\PudMonitoringResource;
 use App\Filament\Resources\PudMonitoringResource\Pages\EditPudMonitoring;
 use App\Filament\Resources\PudMonitoringResource\Pages\ListPudMonitorings;
+use App\Filament\Resources\PudMonitoringResource\Pages\ViewPudMonitoring;
 use App\Filament\Resources\UserRequestResource\Pages\CreateUserRequest;
 use App\Filament\Resources\UserRequestResource\Pages\ListUserRequests;
+use App\Filament\Resources\UserRequestResource\Pages\ViewUserRequest;
 use App\Filament\Widgets\PudProgressSlaWidget;
 use App\Filament\Widgets\PudRequestStatsWidget;
 use App\Filament\Widgets\PudRequestTrendChart;
@@ -314,5 +317,67 @@ class PudRequestFeatureTest extends TestCase
         $this->assertNotContains('Estimasi Biaya (Quotation)', $labels);
         $this->assertNotContains('Tren Harga Part (Price Trend)', $labels);
         $this->assertNotContains('Penerimaan Barang (GRN)', $labels);
+    }
+
+    public function test_can_view_user_request_detail_page_without_error(): void
+    {
+        $request = PudRequest::create([
+            'request_number' => 'PUD-2026-000109',
+            'request_date' => now(),
+            'user_name' => 'VIEW TESTER',
+            'division' => 'QUALITY',
+            'plant' => 'SUNTER',
+            'part_name' => 'CALIPER DIGITAL MITUTOYO',
+            'brand' => 'MITUTOYO',
+            'type' => '500-196-30',
+            'qty' => 1,
+            'unit' => 'Pcs',
+            'purpose' => 'QC INSPECTION',
+            'spec' => 'Range 0-150mm, Resolution 0.01mm',
+            'status' => PudRequest::STATUS_DELIVERED,
+        ]);
+
+        Livewire::actingAs($this->admin)
+            ->test(ViewUserRequest::class, ['record' => $request->id])
+            ->assertSuccessful()
+            ->assertSee('PUD-2026-000109')
+            ->assertSee('CALIPER DIGITAL MITUTOYO')
+            ->assertSee('QC INSPECTION');
+    }
+
+    public function test_can_view_pud_monitoring_detail_page_without_error(): void
+    {
+        $request = PudRequest::create([
+            'request_number' => 'PUD-2026-000110',
+            'request_date' => now(),
+            'user_name' => 'VIEW PUD TESTER',
+            'division' => 'MTC',
+            'plant' => 'KIIC',
+            'part_name' => 'HYDRAULIC VALVE YUKEN',
+            'brand' => 'YUKEN',
+            'type' => 'DSG-01-3C2',
+            'qty' => 2,
+            'unit' => 'Pcs',
+            'purpose' => 'REPAIR PRESS 500T',
+            'spec' => 'Solenoid Directional Valve 24VDC',
+            'status' => PudRequest::STATUS_REQUEST_QUOTATION,
+        ]);
+
+        Livewire::actingAs($this->admin)
+            ->test(ViewPudMonitoring::class, ['record' => $request->id])
+            ->assertSuccessful()
+            ->assertSee('PUD-2026-000110')
+            ->assertSee('HYDRAULIC VALVE YUKEN')
+            ->assertSee('REPAIR PRESS 500T');
+    }
+
+    public function test_pud_monitoring_does_not_have_create_request_action(): void
+    {
+        $this->assertFalse(PudMonitoringResource::canCreate());
+
+        Livewire::actingAs($this->admin)
+            ->test(ListPudMonitorings::class)
+            ->assertActionDoesNotExist('create_request')
+            ->assertActionDoesNotExist('create');
     }
 }

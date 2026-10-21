@@ -1,5 +1,18 @@
 @php
-    $r = $record;
+    $r = null;
+    if (isset($record)) {
+        $r = is_callable($record) ? $record() : $record;
+    }
+    if (! $r && isset($getRecord)) {
+        $r = is_callable($getRecord) ? $getRecord() : $getRecord;
+    }
+    if (! $r && isset($entry) && method_exists($entry, 'getRecord')) {
+        $r = $entry->getRecord();
+    }
+    if (is_callable($r)) {
+        $r = $r();
+    }
+
     $statuses = [
         'Delivered to PUD',
         'Request Quotation',
@@ -7,13 +20,18 @@
         'Item Code Created',
         'Closed'
     ];
-    $statusIndex = array_search($r->status, $statuses);
+    $statusIndex = ($r && !empty($r->status)) ? array_search($r->status, $statuses) : false;
     if ($statusIndex === false) {
         $statusIndex = 0;
     }
-    $isCancelled = $r->status === \App\Models\PudRequest::STATUS_CANCELLED;
+    $isCancelled = $r && ($r->status === \App\Models\PudRequest::STATUS_CANCELLED);
 @endphp
 
+@if (! $r)
+    <div class="p-6 text-center text-sm text-gray-500 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800">
+        Data permintaan tidak ditemukan.
+    </div>
+@else
 <div class="space-y-6">
     {{-- 3-Column Top Layout: Identity | Item Detail | Photo --}}
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
@@ -260,4 +278,5 @@
     </div>
     @endif
 </div>
+@endif
 

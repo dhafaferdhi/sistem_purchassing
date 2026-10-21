@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\UserRequestResource\Pages;
 
 use App\Filament\Resources\UserRequestResource;
+use App\Models\PudRequest;
 use Filament\Resources\Pages\CreateRecord;
 
 class CreateUserRequest extends CreateRecord
@@ -12,6 +13,9 @@ class CreateUserRequest extends CreateRecord
     protected function mutateFormDataBeforeCreate(array $data): array
     {
         $data['user_id'] = auth()->id();
+        if (empty($data['request_number'])) {
+            $data['request_number'] = PudRequest::generateRequestNumber();
+        }
         $data['history'] = [
             [
                 'action' => 'Request Created',

@@ -69,11 +69,15 @@ class UserRequestResource extends Resource
 
                         Forms\Components\Select::make('division')
                             ->label('Division *')
-                            ->options(function (Get $get) {
-                                $plant = $get('plant') ?: 'KIIC';
+                            ->options(function (Get $get, ?PudRequest $record) {
+                                $plant = $get('plant') ?: ($record?->plant ?: 'KIIC');
                                 $divs = PudRequest::PLANT_DIVISIONS[$plant] ?? PudRequest::PLANT_DIVISIONS['KIIC'];
+                                $options = array_combine($divs, $divs);
+                                if ($record && $record->division && ! isset($options[$record->division])) {
+                                    $options[$record->division] = $record->division;
+                                }
 
-                                return array_combine($divs, $divs);
+                                return $options;
                             })
                             ->searchable()
                             ->required()
@@ -149,21 +153,25 @@ class UserRequestResource extends Resource
                         Forms\Components\TextInput::make('status')
                             ->label('Status Request')
                             ->disabled()
+                            ->dehydrated(false)
                             ->columnSpan(1),
 
                         Forms\Components\TextInput::make('selected_supplier')
                             ->label('Supplier Terpilih')
                             ->disabled()
+                            ->dehydrated(false)
                             ->columnSpan(1),
 
                         Forms\Components\TextInput::make('item_code')
                             ->label('Item Code')
                             ->disabled()
+                            ->dehydrated(false)
                             ->columnSpan(1),
 
                         Forms\Components\Textarea::make('feedback')
                             ->label('Feedback / Result PUD')
                             ->disabled()
+                            ->dehydrated(false)
                             ->columnSpanFull(),
                     ])
                     ->columns(3)
@@ -341,6 +349,9 @@ class UserRequestResource extends Resource
             ->schema([
                 ViewEntry::make('detail_view')
                     ->view('filament.resources.pud-request.detail-view')
+                    ->viewData(fn (?PudRequest $record): array => [
+                        'record' => $record,
+                    ])
                     ->columnSpanFull(),
             ]);
     }
