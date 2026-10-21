@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Filament\Resources\CurrencyResource;
+use App\Filament\Resources\CurrencyResource\Pages\CreateCurrency;
 use App\Filament\Resources\CurrencyResource\Pages\EditCurrency;
 use App\Filament\Resources\CurrencyResource\Pages\ListCurrencies;
 use App\Filament\Resources\CurrencyResource\RelationManagers\MaterialSteelsRelationManager;
@@ -545,5 +546,104 @@ class CurrencyMaterialSteelLinkTest extends TestCase
         $this->assertEquals(16500.0, (float) $fastener->exchange_rate);
         $this->assertEquals(32175.0, (float) $fastener->coil_price_idr);
         $this->assertEquals(33825.0, (float) $fastener->sheet_price_idr);
+    }
+
+    public function test_can_create_currency_with_only_year_quarter_usd_and_jpy(): void
+    {
+        $initialUsd = Currency::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'code' => 'USD',
+            'name' => 'US Dollar',
+            'symbol' => '$',
+            'exchange_rate_to_idr' => 16000.0,
+        ]);
+
+        $initialJpy = Currency::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'code' => 'JPY',
+            'name' => 'Japanese Yen',
+            'symbol' => '¥',
+            'exchange_rate_to_idr' => 105.0,
+        ]);
+
+        $steel = MaterialSteel::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'steel_spec' => 'SPCC',
+            'currency_id' => $initialUsd->id,
+            'currency_code' => 'USD',
+            'steel_price' => 2.0,
+            'coil_price' => 1.8,
+            'sheet_price' => 1.9,
+        ]);
+
+        $stamping = StampingPart::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'part_name' => 'BRACKET TEST',
+            'steel_spec' => 'SPCC',
+            'currency_id' => $initialUsd->id,
+            'currency_code' => 'USD',
+            'coil_price' => 1.5,
+            'sheet_price' => 1.6,
+        ]);
+
+        $fastener = Fastener::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'steel_spec' => 'BOLT M6',
+            'currency_id' => $initialUsd->id,
+            'currency_code' => 'USD',
+            'coil_price' => 0.5,
+            'sheet_price' => 0.6,
+        ]);
+
+        Livewire::actingAs($this->admin)
+            ->test(CreateCurrency::class)
+            ->fillForm([
+                'year' => 2026,
+                'quarter' => 'Q1',
+                'kurs_usd' => 16500,
+                'kurs_jpy' => 110,
+            ])
+            ->call('create')
+            ->assertHasNoFormErrors();
+
+        $this->assertDatabaseHas('currencies', [
+            'code' => 'USD',
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'exchange_rate_to_idr' => 16500,
+        ]);
+
+        $this->assertDatabaseHas('currencies', [
+            'code' => 'JPY',
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'exchange_rate_to_idr' => 110,
+        ]);
+
+        $steel->refresh();
+        $this->assertEquals(16500, (float) $steel->exchange_rate);
+        $this->assertEquals(33000, (float) $steel->steel_price_idr); // 2.0 * 16500
+
+        $stamping->refresh();
+        $this->assertEquals(16500, (float) $stamping->exchange_rate);
+        $this->assertEquals(24750, (float) $stamping->coil_price_idr); // 1.5 * 16500
+
+        $fastener->refresh();
+        $this->assertEquals(16500, (float) $fastener->exchange_rate);
+        $this->assertEquals(8250, (float) $fastener->coil_price_idr); // 0.5 * 16500
     }
 }

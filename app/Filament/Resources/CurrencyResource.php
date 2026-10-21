@@ -33,10 +33,11 @@ class CurrencyResource extends Resource
     {
         return $form
             ->schema([
-                Forms\Components\Card::make()
+                Forms\Components\Section::make('Kurs Mata Uang')
+                    ->description('Masukkan patokan kurs kuartalan untuk USD dan JPY. Sistem akan otomatis memperbarui harga pada Material Steel, Stamping Part, dan Pasterner.')
                     ->schema([
                         Forms\Components\Select::make('year')
-                            ->label('Tahun Kurs (Fiscal / Budget Year)')
+                            ->label('Tahun')
                             ->options(function () {
                                 $current = (int) date('Y');
                                 $years = [];
@@ -48,67 +49,86 @@ class CurrencyResource extends Resource
                             })
                             ->default((int) date('Y'))
                             ->required()
-                            ->helperText('Tahun berlakunya patokan kurs ini'),
+                            ->live()
+                            ->afterStateUpdated(function (Get $get, Forms\Set $set) {
+                                $y = $get('year');
+                                $q = $get('quarter');
+                                if ($y && $q) {
+                                    $usd = Currency::where('code', 'USD')->where('year', $y)->where('quarter', $q)->first();
+                                    $jpy = Currency::where('code', 'JPY')->where('year', $y)->where('quarter', $q)->first();
+                                    if ($usd) {
+                                        $set('kurs_usd', $usd->exchange_rate_to_idr);
+                                    }
+                                    if ($jpy) {
+                                        $set('kurs_jpy', $jpy->exchange_rate_to_idr);
+                                    }
+                                }
+                            }),
 
                         Forms\Components\Select::make('quarter')
-                            ->label('Kuartal Kurs (Quarter)')
+                            ->label('Quartal')
                             ->options([
-                                'Q1' => 'Q1 (Januari - Maret)',
-                                'Q2' => 'Q2 (April - Juni)',
-                                'Q3' => 'Q3 (Juli - September)',
-                                'Q4' => 'Q4 (Oktober - Desember)',
+                                'Q1' => 'Q1',
+                                'Q2' => 'Q2',
+                                'Q3' => 'Q3',
+                                'Q4' => 'Q4',
                             ])
                             ->default('Q1')
                             ->required()
-                            ->helperText('Pilihan kuartal berlaku (sama seperti Material Steel & Stamping Part)'),
+                            ->live()
+                            ->afterStateUpdated(function (Get $get, Forms\Set $set) {
+                                $y = $get('year');
+                                $q = $get('quarter');
+                                if ($y && $q) {
+                                    $usd = Currency::where('code', 'USD')->where('year', $y)->where('quarter', $q)->first();
+                                    $jpy = Currency::where('code', 'JPY')->where('year', $y)->where('quarter', $q)->first();
+                                    if ($usd) {
+                                        $set('kurs_usd', $usd->exchange_rate_to_idr);
+                                    }
+                                    if ($jpy) {
+                                        $set('kurs_jpy', $jpy->exchange_rate_to_idr);
+                                    }
+                                }
+                            }),
 
-                        Forms\Components\Select::make('month')
-                            ->label('Bulan Kurs')
-                            ->options([
-                                1 => 'Januari (Bulan 1)',
-                                2 => 'Februari (Bulan 2)',
-                                3 => 'Maret (Bulan 3)',
-                                4 => 'April (Bulan 4)',
-                                5 => 'Mei (Bulan 5)',
-                                6 => 'Juni (Bulan 6)',
-                                7 => 'Juli (Bulan 7)',
-                                8 => 'Agustus (Bulan 8)',
-                                9 => 'September (Bulan 9)',
-                                10 => 'Oktober (Bulan 10)',
-                                11 => 'November (Bulan 11)',
-                                12 => 'Desember (Bulan 12)',
-                            ])
-                            ->default((int) date('n'))
+                        Forms\Components\TextInput::make('kurs_usd')
+                            ->label('Kurs USD')
+                            ->prefix('Rp')
+                            ->numeric()
+                            ->step(0.0001)
                             ->required()
-                            ->helperText('Bulan penetapan kurs (Januari - Desember)'),
+                            ->placeholder('Contoh: 16000')
+                            ->helperText('Nilai tukar 1 USD ke Rupiah')
+                            ->visible(fn (string $operation): bool => $operation === 'create')
+                            ->dehydrated(fn (string $operation): bool => $operation === 'create'),
 
+                        Forms\Components\TextInput::make('kurs_jpy')
+                            ->label('Kurs JPY')
+                            ->prefix('Rp')
+                            ->numeric()
+                            ->step(0.0001)
+                            ->required()
+                            ->placeholder('Contoh: 105')
+                            ->helperText('Nilai tukar 1 JPY ke Rupiah')
+                            ->visible(fn (string $operation): bool => $operation === 'create')
+                            ->dehydrated(fn (string $operation): bool => $operation === 'create'),
+
+                        // Tampilan untuk Edit record Currency individual:
                         Forms\Components\TextInput::make('code')
-                            ->label('Kode Mata Uang')
-                            ->placeholder('USD, JPY, IDR')
-                            ->required()
-                            ->maxLength(10)
-                            ->unique(ignoreRecord: true, modifyRuleUsing: fn ($rule, Get $get) => $rule->where('year', $get('year') ?? date('Y'))->where('quarter', $get('quarter') ?? 'Q1')),
-
-                        Forms\Components\TextInput::make('name')
-                            ->label('Nama Mata Uang')
-                            ->placeholder('US Dollar, Japanese Yen, Indonesian Rupiah')
-                            ->required()
-                            ->maxLength(255),
-
-                        Forms\Components\TextInput::make('symbol')
-                            ->label('Simbol')
-                            ->placeholder('$, ¥, Rp')
-                            ->default('Rp')
-                            ->maxLength(10),
+                            ->label('Mata Uang')
+                            ->disabled()
+                            ->visible(fn (string $operation): bool => $operation === 'edit'),
 
                         Forms\Components\TextInput::make('exchange_rate_to_idr')
                             ->label('Nilai Kurs ke IDR (Rupiah)')
                             ->prefix('Rp')
-                            ->required()
                             ->numeric()
                             ->step(0.0001)
-                            ->helperText('Contoh: 16000 (untuk USD) atau 105 (untuk Yen/JPY)'),
-                    ])->columns(2),
+                            ->required()
+                            ->helperText('Contoh: 16000 (USD) atau 105 (JPY)')
+                            ->visible(fn (string $operation): bool => $operation === 'edit'),
+                    ])
+                    ->columns(2),
             ]);
     }
 
