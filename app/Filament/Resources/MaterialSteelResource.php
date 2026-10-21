@@ -93,26 +93,77 @@ class MaterialSteelResource extends Resource
     public static function recalculateFormPrices(Get $get, Set $set): void
     {
         $coil = (float) ($get('coil_price') ?? 0);
+        $sheet = (float) ($get('sheet_price') ?? 0);
         $gapMt = (float) ($get('gap_steel_usd') ?? 0);
         $rate = (float) ($get('exchange_rate') ?? 1);
 
-        $gapKg = round($gapMt / 1000, 4);
-        $set('gap_steel_kg_usd', $gapKg);
-        $set('fluktuasi_jfe', $gapKg);
-
-        if ($gapMt != 0.0 || ! $get('sheet_price')) {
+        if ($gapMt > 0 && $sheet == 0.0 && $coil > 0) {
+            $gapKg = round($gapMt / 1000, 4);
             $sheet = round($coil + $gapKg, 4);
             $set('sheet_price', $sheet);
-        } else {
-            $sheet = (float) ($get('sheet_price') ?? $coil);
+            $set('gap_steel_kg_usd', $gapKg);
+            $set('fluktuasi_jfe', $gapKg);
+        } elseif ($sheet > 0 && $coil > 0) {
+            $gapKg = round($sheet - $coil, 4);
+            $gapMt = round($gapKg * 1000, 4);
+            $set('gap_steel_usd', $gapMt);
+            $set('gap_steel_kg_usd', $gapKg);
+            $set('fluktuasi_jfe', $gapKg);
         }
 
         $coilIdr = round($coil * $rate, 2);
         $sheetIdr = round($sheet * $rate, 2);
-        $gapIdr = round($gapMt * $rate, 2);
 
         $set('coil_price_idr', $coilIdr);
         $set('sheet_price_idr', $sheetIdr);
+
+        $steelPrice = $coil > 0 ? $coil : $sheet;
+        $set('steel_price', $steelPrice);
+        $set('steel_price_idr', round($steelPrice * $rate, 2));
+    }
+
+    public static function updatePricesFromCoil(Get $get, Set $set): void
+    {
+        $coil = (float) ($get('coil_price') ?? 0);
+        $sheet = (float) ($get('sheet_price') ?? 0);
+        $gapMt = (float) ($get('gap_steel_usd') ?? 0);
+        $rate = (float) ($get('exchange_rate') ?? 1);
+
+        $set('coil_price_idr', round($coil * $rate, 2));
+
+        if ($sheet > 0) {
+            $gapKg = round($sheet - $coil, 4);
+            $set('gap_steel_usd', round($gapKg * 1000, 4));
+            $set('gap_steel_kg_usd', $gapKg);
+            $set('fluktuasi_jfe', $gapKg);
+        } elseif ($gapMt > 0) {
+            $gapKg = round($gapMt / 1000, 4);
+            $sheet = round($coil + $gapKg, 4);
+            $set('sheet_price', $sheet);
+            $set('sheet_price_idr', round($sheet * $rate, 2));
+            $set('gap_steel_kg_usd', $gapKg);
+            $set('fluktuasi_jfe', $gapKg);
+        }
+
+        $steelPrice = $coil > 0 ? $coil : $sheet;
+        $set('steel_price', $steelPrice);
+        $set('steel_price_idr', round($steelPrice * $rate, 2));
+    }
+
+    public static function updatePricesFromSheet(Get $get, Set $set): void
+    {
+        $sheet = (float) ($get('sheet_price') ?? 0);
+        $coil = (float) ($get('coil_price') ?? 0);
+        $rate = (float) ($get('exchange_rate') ?? 1);
+
+        $set('sheet_price_idr', round($sheet * $rate, 2));
+
+        if ($sheet > 0 && $coil > 0) {
+            $gapKg = round($sheet - $coil, 4);
+            $set('gap_steel_usd', round($gapKg * 1000, 4));
+            $set('gap_steel_kg_usd', $gapKg);
+            $set('fluktuasi_jfe', $gapKg);
+        }
 
         $steelPrice = $coil > 0 ? $coil : $sheet;
         $set('steel_price', $steelPrice);
@@ -301,8 +352,8 @@ class MaterialSteelResource extends Resource
                                     ->placeholder('Contoh: 1.9800')
                                     ->required()
                                     ->live(onBlur: true)
-                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::recalculateFormPrices($get, $set))
-                                    ->helperText('Harga dasar baja gulungan ($/kg)')
+                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromCoil($get, $set))
+                                    ->helperText('Otomatis menghitung Total Coil (IDR/Kg)')
                                     ->columnSpan(1),
 
                                 Forms\Components\TextInput::make('gap_steel_usd')
@@ -314,7 +365,7 @@ class MaterialSteelResource extends Resource
                                     ->default(0)
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::recalculateFormPrices($get, $set))
-                                    ->helperText('Otomatis dihitung: Gap / Kg = Gap / MT ÷ 1.000')
+                                    ->helperText('Otomatis: (Sheet - Coil) × 1.000 atau diisi manual')
                                     ->columnSpan(1),
 
                                 Forms\Components\TextInput::make('sheet_price')
@@ -322,9 +373,11 @@ class MaterialSteelResource extends Resource
                                     ->numeric()
                                     ->step(0.0001)
                                     ->prefix('$')
-                                    ->readOnly()
+                                    ->placeholder('Contoh: 2.1000')
+                                    ->live(onBlur: true)
+                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromSheet($get, $set))
                                     ->dehydrated()
-                                    ->helperText('Otomatis: Coil ($) + (Gap MT ÷ 1.000)')
+                                    ->helperText('Dapat diubah bebas, otomatis menghitung Total Sheet (IDR/Kg)')
                                     ->columnSpan(1),
 
                                 Forms\Components\TextInput::make('coil_price_idr')
