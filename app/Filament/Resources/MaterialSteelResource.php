@@ -313,7 +313,8 @@ class MaterialSteelResource extends Resource
                                 Forms\Components\Hidden::make('material_id'),
                                 Forms\Components\Hidden::make('currency_id'),
                                 Forms\Components\Hidden::make('currency_code')->default('USD'),
-                                Forms\Components\Hidden::make('gap_steel_kg_usd'),
+                                Forms\Components\Hidden::make('gap_steel_usd')->default(0),
+                                Forms\Components\Hidden::make('gap_steel_kg_usd')->default(0),
                                 Forms\Components\Hidden::make('steel_price'),
                                 Forms\Components\Hidden::make('steel_price_idr'),
                                 Forms\Components\Hidden::make('fluktuasi_jfe')->default(0),
@@ -321,7 +322,7 @@ class MaterialSteelResource extends Resource
 
                         // SECTION 2: Penetapan Harga & Kurs
                         Forms\Components\Section::make('2. Harga Bahan Baku & Kurs')
-                            ->description('Input harga coil, kenaikan gap MT, dan konversi kurs rupiah otomatis')
+                            ->description('Input harga coil ($) dan sheet ($). Nilai dalam Rupiah (IDR) otomatis mengikuti kurs USD.')
                             ->icon('heroicon-o-currency-dollar')
                             ->schema([
                                 Forms\Components\TextInput::make('exchange_rate')
@@ -342,7 +343,7 @@ class MaterialSteelResource extends Resource
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::recalculateFormPrices($get, $set))
                                     ->helperText('Otomatis ditarik dari Master Kurs, dapat disesuaikan')
-                                    ->columnSpan(1),
+                                    ->columnSpanFull(),
 
                                 Forms\Components\TextInput::make('coil_price')
                                     ->label('Harga Coil ($/Kg)')
@@ -353,19 +354,15 @@ class MaterialSteelResource extends Resource
                                     ->required()
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromCoil($get, $set))
-                                    ->helperText('Otomatis menghitung Total Coil (IDR/Kg)')
+                                    ->helperText('Input harga dasar baja coil dalam USD')
                                     ->columnSpan(1),
 
-                                Forms\Components\TextInput::make('gap_steel_usd')
-                                    ->label('Kenaikan / Gap MT ($/MT)')
-                                    ->numeric()
-                                    ->step(0.0001)
-                                    ->prefix('$')
-                                    ->placeholder('0.00 atau 120')
-                                    ->default(0)
-                                    ->live(onBlur: true)
-                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::recalculateFormPrices($get, $set))
-                                    ->helperText('Otomatis: (Sheet - Coil) × 1.000 atau diisi manual')
+                                Forms\Components\TextInput::make('coil_price_idr')
+                                    ->label('Total Coil (IDR/Kg)')
+                                    ->prefix('Rp')
+                                    ->readOnly()
+                                    ->dehydrated()
+                                    ->helperText('Otomatis: Coil ($) × Kurs USD')
                                     ->columnSpan(1),
 
                                 Forms\Components\TextInput::make('sheet_price')
@@ -380,14 +377,6 @@ class MaterialSteelResource extends Resource
                                     ->helperText('Dapat diubah bebas, otomatis menghitung Total Sheet (IDR/Kg)')
                                     ->columnSpan(1),
 
-                                Forms\Components\TextInput::make('coil_price_idr')
-                                    ->label('Total Coil (IDR/Kg)')
-                                    ->prefix('Rp')
-                                    ->readOnly()
-                                    ->dehydrated()
-                                    ->helperText('Otomatis: Coil ($) × Kurs USD')
-                                    ->columnSpan(1),
-
                                 Forms\Components\TextInput::make('sheet_price_idr')
                                     ->label('Total Sheet (IDR/Kg)')
                                     ->prefix('Rp')
@@ -395,7 +384,7 @@ class MaterialSteelResource extends Resource
                                     ->dehydrated()
                                     ->helperText('Otomatis: Sheet ($) × Kurs USD')
                                     ->columnSpan(1),
-                            ])->columns(3),
+                            ])->columns(2),
 
                         // SECTION 3: Catatan & Status (Collapsible)
                         Forms\Components\Section::make('3. Catatan & Status (Opsional)')
