@@ -646,4 +646,79 @@ class CurrencyMaterialSteelLinkTest extends TestCase
         $this->assertEquals(16500, (float) $fastener->exchange_rate);
         $this->assertEquals(8250, (float) $fastener->coil_price_idr); // 0.5 * 16500
     }
+
+    public function test_can_delete_currency_without_integrity_constraint_violation_and_relinks_sibling(): void
+    {
+        $usdQ1 = Currency::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'month' => 1,
+            'code' => 'USD',
+            'name' => 'US Dollar Q1',
+            'symbol' => '$',
+            'exchange_rate_to_idr' => 16000.0,
+        ]);
+
+        $usdQ2 = Currency::create([
+            'year' => 2026,
+            'quarter' => 'Q2',
+            'month' => 4,
+            'code' => 'USD',
+            'name' => 'US Dollar Q2',
+            'symbol' => '$',
+            'exchange_rate_to_idr' => 16500.0,
+        ]);
+
+        $steel = MaterialSteel::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'steel_spec' => 'SPCC-SD',
+            'currency_id' => $usdQ1->id,
+            'currency_code' => 'USD',
+            'coil_price' => 2.0,
+            'sheet_price' => 2.1,
+            'gap_steel_usd' => 100.0,
+            'exchange_rate' => 16000.0,
+        ]);
+
+        // Delete $usdQ1
+        $usdQ1->delete();
+
+        $this->assertDatabaseMissing('currencies', [
+            'id' => $usdQ1->id,
+        ]);
+
+        // MaterialSteel should automatically be re-linked to the sibling USD ($usdQ2)
+        $steel->refresh();
+        $this->assertEquals($usdQ2->id, $steel->currency_id);
+        $this->assertEquals('USD', $steel->currency_code);
+    }
+
+    public function test_cannot_delete_base_idr_currency_in_filament(): void
+    {
+        $idr = Currency::firstOrCreate(
+            ['code' => 'IDR'],
+            [
+                'name' => 'Indonesian Rupiah',
+                'symbol' => 'Rp',
+                'year' => 2026,
+                'quarter' => 'Q1',
+                'month' => 1,
+                'exchange_rate_to_idr' => 1.0,
+            ]
+        );
+
+        Livewire::actingAs($this->admin)
+            ->test(EditCurrency::class, ['record' => $idr->id])
+            ->callAction('delete')
+            ->assertNotified('Gagal Menghapus Kurs!');
+
+        $this->assertDatabaseHas('currencies', [
+            'id' => $idr->id,
+            'code' => 'IDR',
+        ]);
+    }
 }

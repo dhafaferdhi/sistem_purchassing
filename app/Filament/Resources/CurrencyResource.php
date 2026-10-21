@@ -16,6 +16,7 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Collection;
 
 class CurrencyResource extends Resource
 {
@@ -277,10 +278,37 @@ class CurrencyResource extends Resource
                             ->success()
                             ->send();
                     }),
+                Tables\Actions\EditAction::make(),
+                Tables\Actions\DeleteAction::make()
+                    ->before(function (Currency $record, Tables\Actions\DeleteAction $action) {
+                        if (strtoupper($record->code) === 'IDR') {
+                            Notification::make()
+                                ->danger()
+                                ->title('Gagal Menghapus Kurs!')
+                                ->body('Mata uang IDR (Rupiah) merupakan mata uang dasar sistem dan tidak dapat dihapus.')
+                                ->send();
+
+                            $action->cancel();
+                        }
+                    })
+                    ->successNotificationTitle('Data Kurs Mata Uang Berhasil Dihapus!'),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                    Tables\Actions\DeleteBulkAction::make()
+                        ->before(function (Tables\Actions\DeleteBulkAction $action, Collection $records) {
+                            $hasIdr = $records->contains(fn ($c) => strtoupper($c->code) === 'IDR');
+                            if ($hasIdr) {
+                                Notification::make()
+                                    ->danger()
+                                    ->title('Gagal Menghapus!')
+                                    ->body('Mata uang IDR (Rupiah) merupakan patokan dasar sistem dan tidak dapat dihapus.')
+                                    ->send();
+
+                                $action->cancel();
+                            }
+                        })
+                        ->successNotificationTitle('Data Kurs Mata Uang Berhasil Dihapus!'),
                 ]),
             ]);
     }

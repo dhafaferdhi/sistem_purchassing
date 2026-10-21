@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\CurrencyResource\Pages;
 
 use App\Filament\Resources\CurrencyResource;
+use App\Models\Currency;
 use App\Models\Fastener;
 use App\Models\MaterialSteel;
 use App\Models\StampingPart;
@@ -23,7 +24,19 @@ class EditCurrency extends EditRecord
                 ->icon('heroicon-o-arrow-left')
                 ->color('gray')
                 ->url(static::getResource()::getUrl('index')),
-            Actions\DeleteAction::make(),
+            Actions\DeleteAction::make()
+                ->before(function (Currency $record, Actions\DeleteAction $action) {
+                    if (strtoupper($record->code) === 'IDR') {
+                        Notification::make()
+                            ->danger()
+                            ->title('Gagal Menghapus Kurs!')
+                            ->body('Mata uang IDR (Rupiah) merupakan mata uang dasar sistem dan tidak dapat dihapus.')
+                            ->send();
+
+                        $action->cancel();
+                    }
+                })
+                ->successNotificationTitle('Data Kurs Mata Uang Berhasil Dihapus!'),
         ];
     }
 

@@ -63,6 +63,40 @@ class Currency extends Model
                 CurrencyRecalculationService::recalculateForCurrency($currency);
             }
         });
+
+        static::deleting(function (Currency $currency) {
+            // Cari mata uang pengganti dengan kode yang sama jika ada (misal USD periode lain)
+            $replacement = static::where('code', $currency->code)
+                ->where('id', '!=', $currency->id)
+                ->first();
+
+            $replacementId = $replacement?->id;
+
+            // Re-assign atau detach foreign key di model-model terkait
+            MaterialSteel::where('currency_id', $currency->id)
+                ->update([
+                    'currency_id' => $replacementId,
+                    'currency_code' => $currency->code,
+                ]);
+
+            StampingPart::where('currency_id', $currency->id)
+                ->update([
+                    'currency_id' => $replacementId,
+                    'currency_code' => $currency->code,
+                ]);
+
+            Fastener::where('currency_id', $currency->id)
+                ->update([
+                    'currency_id' => $replacementId,
+                    'currency_code' => $currency->code,
+                ]);
+
+            Material::where('currency_id', $currency->id)
+                ->update(['currency_id' => $replacementId]);
+
+            PartQuotation::where('currency_id', $currency->id)
+                ->update(['currency_id' => $replacementId]);
+        });
     }
 
     public function materials(): HasMany
