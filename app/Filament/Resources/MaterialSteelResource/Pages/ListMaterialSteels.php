@@ -110,20 +110,6 @@ class ListMaterialSteels extends ListRecords
                     }
                 }),
 
-            Actions\Action::make('download_template')
-                ->label('Unduh Template Excel')
-                ->icon('heroicon-o-arrow-down-tray')
-                ->color('gray')
-                ->action(function () {
-                    $csv = ExcelImportService::generateSampleCsv('material_steel');
-
-                    return response()->streamDownload(function () use ($csv) {
-                        echo $csv;
-                    }, 'template-import-material-steel.csv', [
-                        'Content-Type' => 'text/csv',
-                    ]);
-                }),
-
             Actions\Action::make('copy_period_data')
                 ->label('Salin Data dari Periode Lalu')
                 ->icon('heroicon-o-document-duplicate')
