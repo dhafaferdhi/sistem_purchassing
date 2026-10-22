@@ -9,6 +9,7 @@ use App\Models\Currency;
 use App\Models\MaterialSteel;
 use App\Models\Supplier;
 use App\Models\User;
+use App\Services\ExcelImportService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Livewire;
@@ -523,5 +524,67 @@ class MaterialSteelQuarterlyTest extends TestCase
             'sheet_price_idr' => 31200.00,
             'exchange_rate' => 16000.0,
         ]);
+    }
+
+    public function test_can_generate_material_steel_template_csv(): void
+    {
+        $csv = ExcelImportService::generateMaterialSteelTemplateCsv();
+
+        $this->assertNotEmpty($csv);
+        $this->assertStringContainsString('Kuartal', $csv);
+        $this->assertStringContainsString('Spesifikasi Baja', $csv);
+        $this->assertStringContainsString('Ketebalan (mm)', $csv);
+        $this->assertStringContainsString('AR Coil (USD)', $csv);
+        $this->assertStringContainsString('AR Sheet (USD)', $csv);
+        $this->assertStringContainsString('SPH270C-OD', $csv);
+    }
+
+    public function test_can_import_material_steel_from_template_csv(): void
+    {
+        $csvContent = ExcelImportService::generateMaterialSteelTemplateCsv();
+        $tmpFile = tempnam(sys_get_temp_dir(), 'steel_import_').'.csv';
+        file_put_contents($tmpFile, $csvContent);
+
+        $result = ExcelImportService::importMaterialSteel($tmpFile, [
+            'year' => 2026,
+            'quarter' => 'Q4',
+        ]);
+
+        @unlink($tmpFile);
+
+        $this->assertGreaterThan(0, $result['total']);
+        $this->assertEmpty($result['errors']);
+
+        $this->assertDatabaseHas('material_steels', [
+            'year' => 2026,
+            'quarter' => 'Q4',
+            'steel_spec' => 'SPH270C-OD',
+            'double_thickness' => '1.6',
+            'coil_price' => 1.1206,
+            'sheet_price' => 1.1456,
+            'exchange_rate' => 17796.0,
+            'gap_steel_usd' => -20.0,
+        ]);
+
+        $this->assertDatabaseHas('material_steels', [
+            'year' => 2026,
+            'quarter' => 'Q4',
+            'steel_spec' => 'SPH270C-OD',
+            'double_thickness' => '1.8',
+            'coil_price' => 1.1146,
+            'sheet_price' => 1.1396,
+        ]);
+    }
+
+    public function test_create_and_list_pages_have_import_and_download_template_actions(): void
+    {
+        $this->actingAs($this->admin);
+
+        Livewire::test(CreateMaterialSteel::class)
+            ->assertActionExists('download_template')
+            ->assertActionExists('import_excel');
+
+        Livewire::test(ListMaterialSteels::class)
+            ->assertActionExists('import_excel');
     }
 }

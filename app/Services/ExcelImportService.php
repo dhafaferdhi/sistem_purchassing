@@ -214,20 +214,217 @@ class ExcelImportService
             'year' => ['year', 'tahun', 'thn', 'fiscal_year', 'tahun_kurs'],
             'vendor_code' => ['vendor_code', 'kode_vendor', 'supplier_code', 'kode_supplier', 'code', 'vendor', 'kode'],
             'supplier_name' => ['supplier_name', 'nama_supplier', 'supplier', 'suplier', 'vendor_name', 'nama_vendor', 'company', 'perusahaan'],
-            'steel_spec' => ['steel_spec', 'spec', 'spesifikasi', 'material_spec', 'material', 'spesifikasi_baja', 'part_spec', 'spesifikasi_material'],
-            'double_thickness' => ['double_thickness', 'thickness', 'thickness(mm)', 'thickness_mm', 'ketebalan', 'tebal', 'thick', 'tikhnes', 't', 'thickness_mm'],
-            'size' => ['size', 'ukuran', 'dimensi', 'dimension'],
+            'steel_spec' => ['steel_spec', 'spec', 'spesifikasi', 'material_spec', 'material', 'spesifikasi_baja', 'part_spec', 'spesifikasi_material', 'nama_spesifikasi'],
+            'double_thickness' => ['double_thickness', 'thickness', 'thickness(mm)', 'thickness_mm', 'ketebalan', 'tebal', 'thick', 'tikhnes', 't', 'thickness_mm', 'ketebalan_mm'],
+            'size' => ['size', 'ukuran', 'dimensi', 'dimension', 'ukuran_size', 'size_material'],
             'berat' => ['berat', 'weight', 'berat_kg', 'weight_kg', 'berat(kg)', 'weight(kg)', 'berat_part'],
-            'gap_steel_usd' => ['gap_steel_usd', 'gap/mt', 'gap/mt(usd)', 'gap_mt', 'gap_mt_usd', 'gap_usd', 'gap/mt_usd', 'gap_steel_mt'],
+            'gap_steel_usd' => ['gap_steel_usd', 'gap/mt', 'gap/mt(usd)', 'gap_mt', 'gap_mt_usd', 'gap_usd', 'gap/mt_usd', 'gap_steel_mt', 'gap_mt_usd'],
             'gap_steel_kg_usd' => ['gap_steel_kg_usd', 'gap/kg', 'gap/kg(usd)', 'gap_kg', 'gap_kg_usd', 'gap/kg_usd', 'gap_steel_kg'],
-            'exchange_rate' => ['exchange_rate', 'ex_rate', 'ex_rate(idr)', 'kurs', 'kurs_idr', 'rate', 'ex_rate_idr', 'kurs_usd', 'ex_rate_kurs'],
-            'coil_price' => ['coil_price', 'coil', 'coil(usd)', 'coil_usd', 'harga_coil', 'basic_rate', 'coil_price_usd', 'coil_usd_price'],
-            'coil_price_idr' => ['coil_price_idr', 'coil(idr)', 'coil_idr', 'harga_coil_idr'],
-            'sheet_price' => ['sheet_price', 'sheet', 'sheet(usd)', 'sheet_usd', 'harga_sheet', 'sheet_price_usd', 'sheet_usd_price'],
-            'sheet_price_idr' => ['sheet_price_idr', 'sheet(idr)', 'sheet_idr', 'harga_sheet_idr'],
+            'exchange_rate' => ['exchange_rate', 'ex_rate', 'ex_rate(idr)', 'kurs', 'kurs_idr', 'rate', 'ex_rate_idr', 'kurs_usd', 'ex_rate_kurs', 'kurs_usd_idr'],
+            'coil_price' => ['coil_price', 'coil', 'coil(usd)', 'coil_usd', 'harga_coil', 'basic_rate', 'coil_price_usd', 'coil_usd_price', 'ar - coil ($)', 'ar - coil', 'ar_coil', 'ar_coil_usd', 'arcoilusd', 'arcoil', 'ap - coil ($)', 'ap - coil', 'ap_coil', 'ap_coil_usd', 'coil (usd)'],
+            'coil_price_idr' => ['coil_price_idr', 'coil(idr)', 'coil_idr', 'harga_coil_idr', 'ar - coil (idr)', 'ar_coil_idr', 'arcoilidr', 'ap - coil (idr)', 'ap_coil_idr', 'apcoilidr'],
+            'sheet_price' => ['sheet_price', 'sheet', 'sheet(usd)', 'sheet_usd', 'harga_sheet', 'sheet_price_usd', 'sheet_usd_price', 'ar sheet ($)', 'ar - sheet ($)', 'ar sheet', 'ar_sheet', 'ar_sheet_usd', 'arsheetusd', 'arsheet', 'ap sheet ($)', 'ap - sheet ($)', 'ap sheet', 'ap_sheet', 'sheet (usd)'],
+            'sheet_price_idr' => ['sheet_price_idr', 'sheet(idr)', 'sheet_idr', 'harga_sheet_idr', 'ar - sheet (idr)', 'ar_sheet_idr', 'arsheetidr', 'ap - sheet (idr)', 'ap_sheet_idr', 'apsheetidr'],
             'fluktuasi_jfe' => ['fluktuasi_jfe', 'jfe', 'fluktuasi', 'jfe_fluctuation'],
             'status' => ['status', 'status_kontrak'],
             'notes' => ['notes', 'catatan', 'keterangan', 'remark', 'remarks'],
+        ];
+    }
+
+    /**
+     * Deteksi khusus format matriks eskalasi harga berkala / multi-kuartal
+     * (format master purchasing PT HSSI / perusahan dengan kolom Q1-2020 s.d Q4-2026 ke samping)
+     *
+     * @param  array<int, array<int, string>>  $grid
+     * @param  array<string, mixed>  $defaults
+     * @return array{header_row: int|null, column_map: array<string, int>, data_rows: array<int, array<string, mixed>>}|null
+     */
+    public static function detectQuarterlyMatrixLayout(array $grid, array $defaults = []): ?array
+    {
+        // Cari blok periode kuartal di baris 1-6
+        $periods = [];
+        foreach (array_slice($grid, 0, 6, true) as $rIdx => $cols) {
+            foreach ($cols as $colIdx => $val) {
+                if (preg_match('/(Q[1-4])[-_\s]*(\d{4})/i', (string) $val, $m)) {
+                    $q = strtoupper($m[1]);
+                    $y = (int) $m[2];
+
+                    // Cari Kurs di baris atasnya atau sekitarnya
+                    $rate = null;
+                    for ($checkR = 1; $checkR < $rIdx; $checkR++) {
+                        $possibleRate = $grid[$checkR][$colIdx] ?? ($grid[$checkR][$colIdx + 1] ?? null);
+                        if ($possibleRate && is_numeric($possibleRate) && (float) $possibleRate >= 10000) {
+                            $rate = (float) $possibleRate;
+                            break;
+                        }
+                    }
+
+                    // Cari Gap MT dari teks header, misal "HR -20$/MT"
+                    $gapMt = 0.0;
+                    if (preg_match('/([+-]?\d+(?:[.,]\d+)?)\s*\$\s*\/\s*MT/i', (string) $val, $gm)) {
+                        $gapMt = (float) str_replace(',', '.', $gm[1]);
+                    }
+
+                    $periods[] = [
+                        'quarter' => $q,
+                        'year' => $y,
+                        'col_start' => $colIdx,
+                        'header_row' => $rIdx,
+                        'rate' => $rate,
+                        'gap_mt' => $gapMt,
+                        'raw_title' => $val,
+                    ];
+                }
+            }
+        }
+
+        // Jika tidak ditemukan minimal 2 blok kuartal di header, bukan layout matriks
+        if (count($periods) < 2) {
+            return null;
+        }
+
+        // Cari supplier dari baris 1-4
+        $supplierName = $defaults['supplier_name'] ?? null;
+        if (! $supplierName) {
+            $hasHssi = false;
+            $foundSupplier = null;
+            foreach (array_slice($grid, 0, 4, true) as $r => $cols) {
+                foreach ($cols as $val) {
+                    if (stripos((string) $val, 'HSSI') !== false) {
+                        $hasHssi = true;
+                        break 2;
+                    } elseif (stripos((string) $val, 'USCI') !== false) {
+                        $foundSupplier = 'PT USCI';
+                    } elseif (! $foundSupplier && stripos((string) $val, 'KENAIKAN') !== false && preg_match('/KENAIKAN\s+([A-Z0-9]+)/i', (string) $val, $m)) {
+                        $cand = strtoupper($m[1]);
+                        if ($cand !== 'ADM') {
+                            $foundSupplier = 'PT '.$cand;
+                        }
+                    }
+                }
+            }
+            $supplierName = $hasHssi ? 'PT HSSI' : ($foundSupplier ?? 'PT HSSI');
+        }
+
+        // Tentukan periode mana yang diambil
+        $targetQuarter = $defaults['quarter'] ?? null;
+        $targetYear = ! empty($defaults['year']) ? (int) $defaults['year'] : null;
+
+        $selectedPeriod = null;
+        if ($targetQuarter && $targetYear) {
+            foreach ($periods as $p) {
+                if ($p['quarter'] === $targetQuarter && $p['year'] === $targetYear) {
+                    $selectedPeriod = $p;
+                    break;
+                }
+            }
+        }
+
+        // Jika tidak ditemukan atau tidak ditentukan, ambil periode paling akhir (terbaru)
+        if (! $selectedPeriod) {
+            $selectedPeriod = end($periods);
+        }
+
+        $startCol = $selectedPeriod['col_start'];
+        $rate = $selectedPeriod['rate'] ?? ($defaults['exchange_rate'] ?? 17796);
+
+        // Cari baris pertama yang memuat spec baja di kolom 0 atau 1
+        $firstDataRow = null;
+        for ($r = 1; $r <= count($grid); $r++) {
+            if (! isset($grid[$r])) {
+                continue;
+            }
+            $c0 = (string) ($grid[$r][0] ?? '');
+            $c1 = (string) ($grid[$r][1] ?? '');
+
+            if (preg_match('/SP[HC]\d+/i', $c0) || preg_match('/SP[HC]\d+/i', $c1) || preg_match('/NSC\d+/i', $c1)) {
+                $firstDataRow = $r;
+                break;
+            }
+        }
+
+        if (! $firstDataRow) {
+            $firstDataRow = 8;
+        }
+
+        $dataRows = [];
+        for ($r = $firstDataRow; $r <= count($grid); $r++) {
+            if (! isset($grid[$r])) {
+                continue;
+            }
+            $rawSpec = trim((string) ($grid[$r][1] ?? ''));
+            if (empty($rawSpec)) {
+                $rawSpec = trim((string) ($grid[$r][0] ?? ''));
+            }
+
+            if (empty($rawSpec)) {
+                continue;
+            }
+
+            // Hilangkan keterangan seperti "==> New Spec"
+            $rawSpec = preg_replace('/\s*==>.*$/', '', $rawSpec);
+
+            // Ekstrak ketebalan: misal "SPH270C-OD T1.6" -> spec="SPH270C-OD", thickness="1.6"
+            $thickness = '';
+            $spec = $rawSpec;
+            if (preg_match('/^(.*?)\s+T(\d+(?:\.\d+)?)/i', $rawSpec, $sm)) {
+                $spec = trim($sm[1]);
+                $thickness = $sm[2];
+            } elseif (preg_match('/(\d+(?:\.\d+)?)\s*(?:mm)?$/i', $rawSpec, $sm)) {
+                $thickness = $sm[1];
+            }
+
+            // Ambil harga dari kolom target periode
+            $coilUsd = (float) static::cleanNumeric($grid[$r][$startCol] ?? 0);
+            $coilIdr = (float) static::cleanNumeric($grid[$r][$startCol + 1] ?? 0);
+            $sheetUsd = (float) static::cleanNumeric($grid[$r][$startCol + 2] ?? 0);
+            $sheetIdr = (float) static::cleanNumeric($grid[$r][$startCol + 3] ?? 0);
+
+            if ($coilUsd <= 0 && $sheetUsd <= 0) {
+                continue;
+            }
+
+            $code = trim((string) ($grid[$r][2] ?? ''));
+            $gapMt = $selectedPeriod['gap_mt'];
+            if ($gapMt == 0.0 && $coilUsd > 0 && $sheetUsd > 0) {
+                $gapMt = round(($sheetUsd - $coilUsd) * 1000, 4);
+            }
+
+            $size = ! empty($thickness) ? "{$thickness} x 1219 x C" : '';
+
+            $dataRows[] = [
+                'year' => $selectedPeriod['year'],
+                'quarter' => $selectedPeriod['quarter'],
+                'supplier_name' => $supplierName,
+                'vendor_code' => ! empty($code) ? $code : 'VND-HSSI',
+                'steel_spec' => $spec,
+                'double_thickness' => $thickness,
+                'diameter' => $thickness,
+                'size' => $size,
+                'exchange_rate' => $rate,
+                'coil_price' => $coilUsd,
+                'coil_price_idr' => $coilIdr > 0 ? $coilIdr : round($coilUsd * $rate, 2),
+                'sheet_price' => $sheetUsd,
+                'sheet_price_idr' => $sheetIdr > 0 ? $sheetIdr : round($sheetUsd * $rate, 2),
+                'gap_steel_usd' => $gapMt,
+                'gap_steel_kg_usd' => round($gapMt / 1000, 4),
+                'fluktuasi_jfe' => round($gapMt / 1000, 4),
+                'status' => 'Active',
+                'notes' => "Diimpor dari Excel: {$selectedPeriod['quarter']}-{$selectedPeriod['year']} ({$selectedPeriod['raw_title']})",
+            ];
+        }
+
+        return [
+            'header_row' => $selectedPeriod['header_row'],
+            'column_map' => [
+                'steel_spec' => 1,
+                'vendor_code' => 2,
+                'coil_price' => $startCol,
+                'coil_price_idr' => $startCol + 1,
+                'sheet_price' => $startCol + 2,
+                'sheet_price_idr' => $startCol + 3,
+            ],
+            'data_rows' => $dataRows,
         ];
     }
 
@@ -239,6 +436,12 @@ class ExcelImportService
      */
     public static function detectColumnsAndData(array $grid, array $defaults = []): array
     {
+        // 1. Cek apakah format merupakan matriks eskalasi kuartalan berkala
+        $matrixResult = static::detectQuarterlyMatrixLayout($grid, $defaults);
+        if ($matrixResult !== null && ! empty($matrixResult['data_rows'])) {
+            return $matrixResult;
+        }
+
         $aliases = static::getColumnAliases();
         $bestHeaderRow = null;
         $bestMatchCount = 0;
@@ -289,6 +492,9 @@ class ExcelImportService
         // Jika baris header standar memiliki minimal 3 atribut berbeda (misal Spec, Harga, Kurs/Vendor), gunakan tabel horizontal
         if ($bestMatchCount >= 3) {
             $dataRows = [];
+            $lastSpec = null;
+            $lastVendor = null;
+
             foreach ($grid as $rIdx => $rowCols) {
                 if ($rIdx <= $bestHeaderRow) {
                     continue;
@@ -305,7 +511,24 @@ class ExcelImportService
                     $rowRecord[$fieldKey] = $val;
                 }
 
-                if (! $hasData || (empty($rowRecord['steel_spec']) && empty($rowRecord['coil_price']) && empty($rowRecord['sheet_price']))) {
+                if (! $hasData) {
+                    continue;
+                }
+
+                // Carry forward spec jika merged-cell (spec diisi di baris pertama saja untuk beberapa ketebalan)
+                if (! empty($rowRecord['steel_spec'])) {
+                    $lastSpec = $rowRecord['steel_spec'];
+                } elseif (! empty($lastSpec) && (! empty($rowRecord['double_thickness']) || ! empty($rowRecord['coil_price']) || ! empty($rowRecord['sheet_price']))) {
+                    $rowRecord['steel_spec'] = $lastSpec;
+                }
+
+                if (! empty($rowRecord['supplier_name'])) {
+                    $lastVendor = $rowRecord['supplier_name'];
+                } elseif (! empty($lastVendor)) {
+                    $rowRecord['supplier_name'] = $lastVendor;
+                }
+
+                if (empty($rowRecord['steel_spec']) && empty($rowRecord['coil_price']) && empty($rowRecord['sheet_price'])) {
                     continue;
                 }
 
@@ -447,9 +670,18 @@ class ExcelImportService
         $thickness = trim((string) ($row['double_thickness'] ?? ''));
         $thickness = preg_replace('/[a-zA-Z\s]+/', '', $thickness);
 
-        // Jika thickness kosong tapi ada di spec (misal SPCC-SD 1.2mm), ekstrak ketebalan dari spec
-        if (empty($thickness) && preg_match('/(?:\s+|-)\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*$/i', $spec, $m)) {
+        // Jika thickness kosong tapi ada di spec (misal SPCC-SD 1.2mm, SPH270C-OD T1.6), ekstrak ketebalan dari spec
+        if (empty($thickness) && preg_match('/(?:T|\s+|-)\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*$/i', $spec, $m)) {
             $thickness = $m[1];
+        }
+
+        $size = trim((string) ($row['size'] ?? ($row['ukuran'] ?? '')));
+        if (empty($thickness) && ! empty($size) && preg_match('/^(\d+(?:\.\d+)?)/', $size, $sm)) {
+            $thickness = $sm[1];
+        }
+
+        if (empty($size) && ! empty($thickness)) {
+            $size = "{$thickness} x 1219 x C";
         }
 
         // Bersihkan angka ketebalan dan satuan mm dari spec
@@ -474,15 +706,23 @@ class ExcelImportService
             $coilPrice = $sheetPrice;
         }
 
-        // Gap USD per MT & per KG
-        $gapUsd = static::cleanNumeric($row['gap_steel_usd'] ?? null);
-        $gapKgUsd = static::cleanNumeric($row['gap_steel_kg_usd'] ?? null);
+        // Gap USD per MT & per KG (bisa bernilai negatif, misal -20$/MT)
+        $hasExplicitGap = isset($row['gap_steel_usd']) && $row['gap_steel_usd'] !== '' && $row['gap_steel_usd'] !== null;
+        $gapUsd = $hasExplicitGap ? static::cleanNumeric($row['gap_steel_usd']) : null;
 
-        if ($gapUsd <= 0 && $coilPrice > 0 && $sheetPrice > 0) {
+        $hasExplicitGapKg = isset($row['gap_steel_kg_usd']) && $row['gap_steel_kg_usd'] !== '' && $row['gap_steel_kg_usd'] !== null;
+        $gapKgUsd = $hasExplicitGapKg ? static::cleanNumeric($row['gap_steel_kg_usd']) : null;
+
+        if ($gapUsd === null && $coilPrice > 0 && $sheetPrice > 0) {
             $gapUsd = round(($sheetPrice - $coilPrice) * 1000, 4);
+        } elseif ($gapUsd === null) {
+            $gapUsd = 0.0;
         }
-        if ($gapKgUsd <= 0 && $gapUsd > 0) {
+
+        if ($gapKgUsd === null && $gapUsd != 0.0) {
             $gapKgUsd = round($gapUsd / 1000, 4);
+        } elseif ($gapKgUsd === null) {
+            $gapKgUsd = 0.0;
         }
 
         $coilPriceIdr = static::cleanNumeric($row['coil_price_idr'] ?? null);
@@ -495,7 +735,7 @@ class ExcelImportService
             $sheetPriceIdr = round($sheetPrice * $rate, 2);
         }
 
-        $size = trim((string) ($row['size'] ?? ($row['ukuran'] ?? '')));
+        $steelPrice = (float) ($row['steel_price'] ?? ($coilPrice ?: $sheetPrice ?: 0));
         $berat = static::cleanNumeric($row['berat'] ?? $row['weight'] ?? null);
 
         return [
@@ -510,6 +750,8 @@ class ExcelImportService
             'berat' => $berat,
             'currency_code' => 'USD',
             'exchange_rate' => $rate,
+            'steel_price' => $steelPrice,
+            'steel_price_idr' => round($steelPrice * $rate, 2),
             'coil_price' => $coilPrice,
             'coil_price_idr' => $coilPriceIdr,
             'sheet_price' => $sheetPrice,
@@ -602,33 +844,44 @@ class ExcelImportService
                     $row['supplier_name'] = $supplier->name;
                 }
 
-                // Cek apakah data sudah ada berdasarkan (year, quarter, supplier_name/id, steel_spec)
+                // Cek apakah data sudah ada berdasarkan (year, quarter, steel_spec, double_thickness, supplier_id)
                 $existing = MaterialSteel::where('year', $row['year'])
                     ->where('quarter', $row['quarter'])
                     ->where('steel_spec', $row['steel_spec'])
+                    ->when(! empty($row['double_thickness']), fn ($q) => $q->where('double_thickness', $row['double_thickness']))
                     ->when($supplierId, fn ($q) => $q->where('supplier_id', $supplierId))
                     ->first();
 
                 if ($existing) {
                     if ($updateExisting) {
                         $existing->update([
-                            'vendor_code' => $row['vendor_code'],
-                            'supplier_name' => $row['supplier_name'],
-                            'double_thickness' => $row['double_thickness'],
-                            'exchange_rate' => $row['exchange_rate'],
-                            'coil_price' => $row['coil_price'],
-                            'coil_price_idr' => $row['coil_price_idr'],
-                            'sheet_price' => $row['sheet_price'],
-                            'sheet_price_idr' => $row['sheet_price_idr'],
+                            'vendor_code' => $row['vendor_code'] ?: $existing->vendor_code,
+                            'supplier_name' => $row['supplier_name'] ?: $existing->supplier_name,
+                            'double_thickness' => $row['double_thickness'] ?: $existing->double_thickness,
+                            'diameter' => $row['diameter'] ?: $existing->diameter,
+                            'size' => ! empty($row['size']) ? $row['size'] : $existing->size,
+                            'exchange_rate' => $row['exchange_rate'] > 0 ? $row['exchange_rate'] : $existing->exchange_rate,
+                            'steel_price' => $row['steel_price'] > 0 ? $row['steel_price'] : $existing->steel_price,
+                            'steel_price_idr' => $row['steel_price_idr'] > 0 ? $row['steel_price_idr'] : $existing->steel_price_idr,
+                            'coil_price' => $row['coil_price'] > 0 ? $row['coil_price'] : $existing->coil_price,
+                            'coil_price_idr' => $row['coil_price_idr'] > 0 ? $row['coil_price_idr'] : $existing->coil_price_idr,
+                            'sheet_price' => $row['sheet_price'] > 0 ? $row['sheet_price'] : $existing->sheet_price,
+                            'sheet_price_idr' => $row['sheet_price_idr'] > 0 ? $row['sheet_price_idr'] : $existing->sheet_price_idr,
                             'gap_steel_usd' => $row['gap_steel_usd'],
                             'gap_steel_kg_usd' => $row['gap_steel_kg_usd'],
                             'fluktuasi_jfe' => $row['fluktuasi_jfe'],
-                            'status' => $row['status'],
-                            'notes' => $row['notes'],
+                            'status' => $row['status'] ?: $existing->status,
+                            'notes' => $row['notes'] ?: $existing->notes,
                         ]);
                         $updated++;
                     }
                 } else {
+                    if (empty($row['currency_id'])) {
+                        $currency = Currency::where('code', 'USD')->first();
+                        if ($currency) {
+                            $row['currency_id'] = $currency->id;
+                        }
+                    }
                     MaterialSteel::create($row);
                     $imported++;
                 }
@@ -912,6 +1165,49 @@ class ExcelImportService
         }
 
         $out = fopen('php://memory', 'r+');
+        fputcsv($out, $headers);
+        foreach ($sampleRows as $row) {
+            fputcsv($out, $row);
+        }
+        rewind($out);
+        $csv = stream_get_contents($out);
+        fclose($out);
+
+        return (string) $csv;
+    }
+
+    /**
+     * Hasilkan file template CSV resmi untuk Material Steel sesuai format master purchasing
+     */
+    public static function generateMaterialSteelTemplateCsv(): string
+    {
+        $headers = [
+            'Kuartal',
+            'Tahun',
+            'Vendor Code',
+            'Nama Supplier',
+            'Spesifikasi Baja',
+            'Ketebalan (mm)',
+            'Ukuran (Size)',
+            'AR Coil (USD)',
+            'AR Sheet (USD)',
+            'Kurs USD',
+            'Gap MT (USD)',
+            'Status',
+            'Catatan',
+        ];
+
+        $sampleRows = [
+            ['Q4', '2026', '27016', 'PT HSSI', 'SPH270C-OD', '1.6', '1.6 x 1219 x C', '1.1206', '1.1456', '17796', '-20', 'Active', 'Master Pricing Q4 2026'],
+            ['Q4', '2026', '27018', 'PT HSSI', 'SPH270C-OD', '1.8', '1.8 x 1219 x C', '1.1146', '1.1396', '17796', '-20', 'Active', 'Master Pricing Q4 2026'],
+            ['Q4', '2026', '27020', 'PT HSSI', 'SPH270C-OD', '2.0', '2.0 x 1219 x C', '1.1106', '1.1356', '17796', '-20', 'Active', 'Master Pricing Q4 2026'],
+            ['Q4', '2026', '44016', 'PT HSSI', 'SPH440-OD', '1.6', '1.6 x 1219 x C', '1.1556', '1.2306', '17796', '-20', 'Active', 'Master Pricing Q4 2026'],
+            ['Q4', '2026', '59016', 'PT HSSI', 'SPC590', '1.6', '1.6 x 1219 x C', '1.2506', '1.3106', '17796', '-20', 'Active', 'Master Pricing Q4 2026'],
+        ];
+
+        $out = fopen('php://memory', 'r+');
+        // UTF-8 BOM agar Excel membukanya langsung rapi tanpa karakter berantakan
+        fwrite($out, "\xEF\xBB\xBF");
         fputcsv($out, $headers);
         foreach ($sampleRows as $row) {
             fputcsv($out, $row);
