@@ -194,7 +194,7 @@ class MaterialSteelQuarterlyTest extends TestCase
         $responseEdit->assertSuccessful();
     }
 
-    public function test_can_filter_material_steel_by_quarter_and_vendor_code(): void
+    public function test_can_filter_material_steel_by_quarter_and_supplier(): void
     {
         $this->actingAs($this->admin);
 
@@ -234,7 +234,7 @@ class MaterialSteelQuarterlyTest extends TestCase
             ->assertCanSeeTableRecords([$steelQ1])
             ->assertCanNotSeeTableRecords([$steelQ2])
             ->resetTableFilters()
-            ->filterTable('vendor_code', ['VND-OTHER-99'])
+            ->filterTable('supplier_name', [$supplier2->name])
             ->assertCanSeeTableRecords([$steelQ2])
             ->assertCanNotSeeTableRecords([$steelQ1]);
     }
@@ -352,6 +352,7 @@ class MaterialSteelQuarterlyTest extends TestCase
         ]);
 
         Livewire::test(ListMaterialSteels::class)
+            ->assertTableColumnDoesNotExist('vendor_code')
             ->assertTableColumnExists('steel_spec')
             ->assertTableColumnExists('double_thickness')
             ->assertTableColumnExists('hr_steel_usd')

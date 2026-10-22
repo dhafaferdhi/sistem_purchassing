@@ -401,12 +401,8 @@ class MaterialSteelResource extends Resource
                                                 }
                                             }),
 
-                                        Forms\Components\TextInput::make('code')
-                                            ->label('Vendor Code (Kode Supplier)')
-                                            ->placeholder('Contoh: VND-KRAK-01')
-                                            ->required()
-                                            ->unique('suppliers', 'code')
-                                            ->maxLength(50),
+                                        Forms\Components\Hidden::make('code')
+                                            ->default(fn () => 'VND-SUP-'.rand(100, 999)),
                                     ])
                                     ->columnSpan(1),
 
@@ -732,15 +728,8 @@ class MaterialSteelResource extends Resource
                     })
                     ->sortable(['year', 'quarter']),
 
-                Tables\Columns\TextColumn::make('vendor_code')
-                    ->label('Vendor Code')
-                    ->badge()
-                    ->color('gray')
-                    ->searchable()
-                    ->sortable(),
-
                 Tables\Columns\TextColumn::make('supplier_name')
-                    ->label('Supplier Name')
+                    ->label('Supplier')
                     ->weight('bold')
                     ->searchable()
                     ->sortable(),
@@ -845,29 +834,28 @@ class MaterialSteelResource extends Resource
                     })
                     ->multiple(),
 
-                Tables\Filters\SelectFilter::make('vendor_code')
-                    ->label('Filter Vendor Code')
+                Tables\Filters\SelectFilter::make('supplier_name')
+                    ->label('Filter Supplier')
                     ->options(function () {
                         $counts = MaterialSteel::query()
-                            ->whereNotNull('vendor_code')
-                            ->selectRaw('vendor_code, count(*) as total')
-                            ->groupBy('vendor_code')
-                            ->pluck('total', 'vendor_code');
+                            ->whereNotNull('supplier_name')
+                            ->selectRaw('supplier_name, count(*) as total')
+                            ->groupBy('supplier_name')
+                            ->pluck('total', 'supplier_name');
 
                         $supplierMap = Supplier::query()
-                            ->orderBy('code')
-                            ->pluck('name', 'code')
+                            ->orderBy('name')
+                            ->pluck('name', 'name')
                             ->toArray();
 
                         $options = [];
-                        foreach ($counts as $code => $total) {
-                            $name = $supplierMap[$code] ?? $code;
-                            $options[$code] = "{$code} — {$name} ({$total} data)";
+                        foreach ($counts as $name => $total) {
+                            $options[$name] = "{$name} ({$total} data)";
                         }
 
-                        foreach ($supplierMap as $code => $name) {
-                            if (! isset($options[$code])) {
-                                $options[$code] = "{$code} — {$name} (0 data)";
+                        foreach ($supplierMap as $name) {
+                            if (! isset($options[$name])) {
+                                $options[$name] = "{$name} (0 data)";
                             }
                         }
 
