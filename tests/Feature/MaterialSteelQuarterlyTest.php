@@ -899,4 +899,57 @@ class MaterialSteelQuarterlyTest extends TestCase
         $this->assertEquals('SPC270C', $parsed['data_rows'][1]['steel_spec']);
         $this->assertEquals(1.0240, $parsed['data_rows'][1]['coil_price']);
     }
+
+    public function test_create_q1_baseline_has_empty_hr_cr_and_create_q2_with_negative_20_mt_calculates_prices(): void
+    {
+        $this->actingAs($this->admin);
+
+        // 1. Create Q1 Baseline
+        Livewire::test(CreateMaterialSteel::class)
+            ->fillForm([
+                'year' => 2026,
+                'quarter' => 'Q1',
+                'supplier_id' => $this->supplier->id,
+                'steel_spec' => 'SPH270C-OD',
+                'double_thickness' => '1.6',
+                'coil_price' => 1.1000,
+                'sheet_price' => 1.3000,
+                'exchange_rate' => 16000.0,
+            ])
+            ->call('create')
+            ->assertHasNoFormErrors();
+
+        // Di Q1: HR dan CR Dolar/MT harus 0 (tampilan '-')
+        $q1 = MaterialSteel::where('year', 2026)->where('quarter', 'Q1')->where('steel_spec', 'SPH270C-OD')->first();
+        $this->assertNotNull($q1);
+        $this->assertEquals(0, (float) $q1->hr_steel_usd);
+        $this->assertEquals(0, (float) $q1->cr_steel_usd);
+        $this->assertEquals(0, (float) $q1->gap_steel_usd);
+
+        // 2. Create Q2 dengan penyesuaian -20 $/MT
+        Livewire::test(CreateMaterialSteel::class)
+            ->fillForm([
+                'year' => 2026,
+                'quarter' => 'Q2',
+                'supplier_id' => $this->supplier->id,
+                'steel_spec' => 'SPH270C-OD',
+                'double_thickness' => '1.6',
+                'price_mode' => 'adjustment',
+                'hr_steel_usd' => -20.0,
+                'cr_steel_usd' => -20.0,
+                'exchange_rate' => 16500.0,
+            ])
+            ->call('create')
+            ->assertHasNoFormErrors();
+
+        // Di Q2: Coil turun 0.0200 ($1.0800), Sheet turun 0.0200 ($1.2800), HR Dolar/MT = -20
+        $q2 = MaterialSteel::where('year', 2026)->where('quarter', 'Q2')->where('steel_spec', 'SPH270C-OD')->first();
+        $this->assertNotNull($q2);
+        $this->assertEquals(1.0800, (float) $q2->coil_price);
+        $this->assertEquals(1.2800, (float) $q2->sheet_price);
+        $this->assertEquals(-20.0, (float) $q2->hr_steel_usd);
+        $this->assertEquals(-0.0200, (float) $q2->gap_steel_kg_usd);
+        $this->assertEquals(17820.00, (float) $q2->coil_price_idr); // 1.0800 * 16500
+        $this->assertEquals(21120.00, (float) $q2->sheet_price_idr); // 1.2800 * 16500
+    }
 }

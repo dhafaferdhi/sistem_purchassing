@@ -20,6 +20,11 @@ class MaterialSteelSeeder extends Seeder
             ['name' => 'US Dollar', 'symbol' => '$', 'exchange_rate_to_idr' => 16000.0, 'month' => 1, 'last_updated_at' => now()]
         );
 
+        $curr2026Q2 = Currency::firstOrCreate(
+            ['code' => 'USD', 'year' => 2026, 'quarter' => 'Q2'],
+            ['name' => 'US Dollar', 'symbol' => '$', 'exchange_rate_to_idr' => 16500.0, 'month' => 4, 'last_updated_at' => now()]
+        );
+
         $curr2026Q4 = Currency::firstOrCreate(
             ['code' => 'USD', 'year' => 2026, 'quarter' => 'Q4'],
             ['name' => 'US Dollar', 'symbol' => '$', 'exchange_rate_to_idr' => 17796.0, 'month' => 10, 'last_updated_at' => now()]
@@ -31,8 +36,9 @@ class MaterialSteelSeeder extends Seeder
             ['name' => 'US Dollar', 'symbol' => '$', 'exchange_rate_to_idr' => 18000.0, 'month' => 1, 'last_updated_at' => now()]
         );
 
-        $rate2026Q4 = 17796.0;
         $rate2026Q1 = 16000.0;
+        $rate2026Q2 = 16500.0;
+        $rate2026Q4 = 17796.0;
 
         $supHssi = Supplier::firstOrCreate(
             ['code' => 'VND-HSSI'],
@@ -110,42 +116,9 @@ class MaterialSteelSeeder extends Seeder
             ['spec' => 'SPC590', 'size' => '1.8 x 1251 x C', 'thickness' => '1.8', 'coil' => 1.0640, 'sheet' => 1.0740],
         ];
 
-        // SEED Q4 2026 (Ada Kenaikan/Gap MT: -20 USD/MT, Kurs: 17796)
+        // 1. SEED Q1 2026 (Data Awal / Baseline — Tanpa Gap MT / HR & CR Kosong = 0)
         foreach ($steelItems as $item) {
-            $coilIdr = round($item['coil'] * $rate2026Q4, 2);
-            $sheetIdr = round($item['sheet'] * $rate2026Q4, 2);
-
-            MaterialSteel::create([
-                'year' => 2026,
-                'quarter' => 'Q4',
-                'supplier_id' => $supHssi->id,
-                'vendor_code' => $supHssi->code,
-                'supplier_name' => $supHssi->name,
-                'steel_spec' => $item['spec'],
-                'size' => $item['size'],
-                'double_thickness' => $item['thickness'],
-                'currency_id' => $curr2026Q4->id,
-                'currency_code' => 'USD',
-                'coil_price' => $item['coil'],
-                'coil_price_idr' => $coilIdr,
-                'sheet_price' => $item['sheet'],
-                'sheet_price_idr' => $sheetIdr,
-                'gap_steel_usd' => -20.0000,
-                'gap_steel_kg_usd' => -0.0200,
-                'gap_steel_idr' => round(-20.0000 * $rate2026Q4, 2),
-                'steel_price' => $item['coil'],
-                'exchange_rate' => $rate2026Q4,
-                'steel_price_idr' => $coilIdr,
-                'fluktuasi_jfe' => -0.0200,
-                'status' => 'Active',
-                'notes' => 'Q4-2026 A.R (HR -20$/MT CR -20$/MT) PT HSSI',
-                'created_by' => $admin?->id,
-            ]);
-        }
-
-        // SEED Q1 2026 (Data Awal / Baseline — Tanpa Gap MT / Gap = 0)
-        foreach ($steelItems as $item) {
-            $baseCoil = round($item['coil'] + 0.0200, 4); // Sebelum diskon -20$/MT di Q4
+            $baseCoil = round($item['coil'] + 0.0200, 4); // Harga dasar acuan awal
             $baseSheet = round($item['sheet'] + 0.0200, 4);
             $coilIdr = round($baseCoil * $rate2026Q1, 2);
             $sheetIdr = round($baseSheet * $rate2026Q1, 2);
@@ -165,6 +138,8 @@ class MaterialSteelSeeder extends Seeder
                 'coil_price_idr' => $coilIdr,
                 'sheet_price' => $baseSheet,
                 'sheet_price_idr' => $sheetIdr,
+                'hr_steel_usd' => 0,
+                'cr_steel_usd' => 0,
                 'gap_steel_usd' => 0,
                 'gap_steel_kg_usd' => 0,
                 'gap_steel_idr' => 0,
@@ -174,6 +149,48 @@ class MaterialSteelSeeder extends Seeder
                 'fluktuasi_jfe' => 0,
                 'status' => 'Active',
                 'notes' => 'Q1-2026 Baseline Patokan Awal PT HSSI',
+                'created_by' => $admin?->id,
+            ]);
+        }
+
+        // 2. SEED Q2 2026 (Data sama seperti Q1 dengan Penyesuaian: HR -20$/MT dan CR -20$/MT)
+        foreach ($steelItems as $item) {
+            $baseCoil = round($item['coil'] + 0.0200, 4);
+            $baseSheet = round($item['sheet'] + 0.0200, 4);
+
+            $adjKg = -0.0200; // -20 $/MT / 1000 = -0.0200 $/Kg
+            $newCoil = round($baseCoil + $adjKg, 4);
+            $newSheet = round($baseSheet + $adjKg, 4);
+
+            $coilIdr = round($newCoil * $rate2026Q2, 2);
+            $sheetIdr = round($newSheet * $rate2026Q2, 2);
+
+            MaterialSteel::create([
+                'year' => 2026,
+                'quarter' => 'Q2',
+                'supplier_id' => $supHssi->id,
+                'vendor_code' => $supHssi->code,
+                'supplier_name' => $supHssi->name,
+                'steel_spec' => $item['spec'],
+                'size' => $item['size'],
+                'double_thickness' => $item['thickness'],
+                'currency_id' => $curr2026Q2->id,
+                'currency_code' => 'USD',
+                'coil_price' => $newCoil,
+                'coil_price_idr' => $coilIdr,
+                'sheet_price' => $newSheet,
+                'sheet_price_idr' => $sheetIdr,
+                'hr_steel_usd' => -20.0000,
+                'cr_steel_usd' => -20.0000,
+                'gap_steel_usd' => -20.0000,
+                'gap_steel_kg_usd' => -0.0200,
+                'gap_steel_idr' => round(-20.0000 * $rate2026Q2, 2),
+                'steel_price' => $newCoil,
+                'exchange_rate' => $rate2026Q2,
+                'steel_price_idr' => $coilIdr,
+                'fluktuasi_jfe' => -0.0200,
+                'status' => 'Active',
+                'notes' => 'Q2-2026 Penyesuaian Pasar (HR -20$/MT CR -20$/MT) PT HSSI',
                 'created_by' => $admin?->id,
             ]);
         }

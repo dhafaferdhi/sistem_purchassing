@@ -154,7 +154,12 @@ class MaterialSteel extends Model
 
             // Perhitungan Rumus Gap Steel:
             // Gap / MT (USD) dan Gap / Kg (USD) [Rumus Excel: Gap / Kg = Gap / MT / 1000]
-            if ($model->gap_steel_usd !== null) {
+            if ($model->quarter === 'Q1' && ($model->hr_steel_usd === null || (float) $model->hr_steel_usd == 0) && ($model->cr_steel_usd === null || (float) $model->cr_steel_usd == 0)) {
+                $model->gap_steel_usd = 0;
+                $model->gap_steel_kg_usd = 0;
+                $model->hr_steel_usd = 0;
+                $model->cr_steel_usd = 0;
+            } elseif ($model->gap_steel_usd !== null) {
                 $model->gap_steel_kg_usd = round((float) $model->gap_steel_usd / 1000, 4);
             } elseif ($model->gap_steel_kg_usd !== null) {
                 $model->gap_steel_usd = round((float) $model->gap_steel_kg_usd * 1000, 4);

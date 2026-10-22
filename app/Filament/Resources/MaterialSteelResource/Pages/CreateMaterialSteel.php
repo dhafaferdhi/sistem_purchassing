@@ -193,38 +193,36 @@ class CreateMaterialSteel extends CreateRecord
         $crVal = isset($data['cr_steel_usd']) && $data['cr_steel_usd'] !== '' ? (float) $data['cr_steel_usd'] : null;
         $gapVal = isset($data['gap_steel_usd']) && $data['gap_steel_usd'] !== '' ? (float) $data['gap_steel_usd'] : null;
 
-        if ($steelType === 'HR') {
-            if ($hrVal !== null && $hrVal != 0.0) {
-                $data['gap_steel_usd'] = $hrVal;
-            } elseif ($gapVal !== null && $gapVal != 0.0) {
-                $data['hr_steel_usd'] = $gapVal;
-                $data['gap_steel_usd'] = $gapVal;
-            }
+        if ($priceMode === 'baseline' || $quarter === 'Q1') {
+            $data['hr_steel_usd'] = 0;
+            $data['cr_steel_usd'] = 0;
+            $data['gap_steel_usd'] = 0;
+            $data['gap_steel_kg_usd'] = 0;
+            $data['fluktuasi_jfe'] = 0;
         } else {
-            if ($crVal !== null && $crVal != 0.0) {
-                $data['gap_steel_usd'] = $crVal;
-            } elseif ($gapVal !== null && $gapVal != 0.0) {
-                $data['cr_steel_usd'] = $gapVal;
-                $data['gap_steel_usd'] = $gapVal;
+            if ($steelType === 'HR') {
+                if ($hrVal !== null && $hrVal != 0.0) {
+                    $data['gap_steel_usd'] = $hrVal;
+                } elseif ($gapVal !== null && $gapVal != 0.0) {
+                    $data['hr_steel_usd'] = $gapVal;
+                    $data['gap_steel_usd'] = $gapVal;
+                }
+            } else {
+                if ($crVal !== null && $crVal != 0.0) {
+                    $data['gap_steel_usd'] = $crVal;
+                } elseif ($gapVal !== null && $gapVal != 0.0) {
+                    $data['cr_steel_usd'] = $gapVal;
+                    $data['gap_steel_usd'] = $gapVal;
+                }
             }
-        }
 
-        if ($priceMode === 'baseline') {
-            if ($quarter !== 'Q1' && ($data['coil_price'] ?? 0) > 0) {
-                $data['gap_steel_usd'] = 0;
-                $data['gap_steel_kg_usd'] = 0;
-                $data['hr_steel_usd'] = 0;
-                $data['cr_steel_usd'] = 0;
+            if (! empty($data['gap_steel_usd']) && (float) $data['gap_steel_usd'] != 0.0) {
+                $data['gap_steel_usd'] = (float) $data['gap_steel_usd'];
+                $data['gap_steel_kg_usd'] = round($data['gap_steel_usd'] / 1000, 4);
             } else {
                 $data['gap_steel_usd'] = round(($sheetPrice - $coilPrice) * 1000, 4);
                 $data['gap_steel_kg_usd'] = round($data['gap_steel_usd'] / 1000, 4);
             }
-        } elseif (! empty($data['gap_steel_usd']) && (float) $data['gap_steel_usd'] != 0.0) {
-            $data['gap_steel_usd'] = (float) $data['gap_steel_usd'];
-            $data['gap_steel_kg_usd'] = round($data['gap_steel_usd'] / 1000, 4);
-        } else {
-            $data['gap_steel_usd'] = round(($sheetPrice - $coilPrice) * 1000, 4);
-            $data['gap_steel_kg_usd'] = round($data['gap_steel_usd'] / 1000, 4);
         }
 
         // Jika mode adjustment, terapkan penyesuaian terhadap harga acuan kuartal sebelumnya
