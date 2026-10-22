@@ -214,6 +214,12 @@ class MaterialSteelResource extends Resource
         $prevCoil = $get('prev_coil_price');
         $prevSheet = $get('prev_sheet_price');
 
+        if ($prevCoil === null && $prevSheet === null) {
+            static::lookupPreviousQuarterRecord($get, $set);
+            $prevCoil = $get('prev_coil_price');
+            $prevSheet = $get('prev_sheet_price');
+        }
+
         if ($prevCoil !== null && (float) $prevCoil > 0) {
             $newCoil = round((float) $prevCoil + $gapKg, 4);
             $set('coil_price', $newCoil);
@@ -417,6 +423,18 @@ class MaterialSteelResource extends Resource
                                         'adjustment' => 'Pembaruan Kuartalan (Ada Kenaikan / Penurunan Gap MT)',
                                     ])
                                     ->default(fn (Get $get) => ($get('quarter') ?? 'Q1') === 'Q1' ? 'baseline' : 'adjustment')
+                                    ->formatStateUsing(function ($state, Get $get, ?MaterialSteel $record) {
+                                        if ($state !== null && $state !== '') {
+                                            return $state;
+                                        }
+                                        if ($record) {
+                                            $hasGap = $record->gap_steel_usd !== null && (float) $record->gap_steel_usd != 0.0;
+
+                                            return ($record->quarter === 'Q1' && ! $hasGap) ? 'baseline' : 'adjustment';
+                                        }
+
+                                        return ($get('quarter') ?? 'Q1') === 'Q1' ? 'baseline' : 'adjustment';
+                                    })
                                     ->live()
                                     ->afterStateUpdated(function ($state, Set $set, Get $get) {
                                         if ($state === 'baseline') {
@@ -432,19 +450,79 @@ class MaterialSteelResource extends Resource
 
                                 Forms\Components\Placeholder::make('prev_quarter_info')
                                     ->label('Status Data Acuan')
-                                    ->content(function (Get $get) {
+                                    ->content(function (Get $get, ?MaterialSteel $record) {
                                         $found = $get('prev_record_found');
-                                        $prevLabel = $get('prev_quarter_label') ?? 'Kuartal Sebelumnya';
+                                        $prevLabel = $get('prev_quarter_label');
                                         $prevCoil = $get('prev_coil_price');
                                         $prevSheet = $get('prev_sheet_price');
+
+                                        if (! $found && $record) {
+                                            $quarter = $get('quarter') ?? $record->quarter;
+                                            $year = (int) ($get('year') ?? $record->year);
+                                            $supplierId = $get('supplier_id') ?? $record->supplier_id;
+                                            $spec = $get('steel_spec') ?? $record->steel_spec;
+                                            $thick = $get('double_thickness') ?? $record->double_thickness;
+
+                                            $prevQuarter = match ($quarter) {
+                                                'Q1' => 'Q4',
+                                                'Q2' => 'Q1',
+                                                'Q3' => 'Q2',
+                                                'Q4' => 'Q3',
+                                                default => 'Q1',
+                                            };
+                                            $prevYear = ($quarter === 'Q1') ? ($year - 1) : $year;
+                                            $prevLabel = "{$prevQuarter} {$prevYear}";
+
+                                            if ($supplierId && $spec) {
+                                                $cleanSpec = MaterialSteel::cleanSteelSpec($spec);
+                                                $cleanThick = ! empty($thick) ? trim(preg_replace('/[a-zA-Z\s]+/', '', (string) $thick)) : null;
+                                                $supplier = Supplier::find($supplierId);
+
+                                                $prevRecord = MaterialSteel::where(function ($q) use ($supplierId, $supplier) {
+                                                    $q->where('supplier_id', $supplierId);
+                                                    if ($supplier) {
+                                                        $q->orWhere('vendor_code', $supplier->code)
+                                                            ->orWhere('supplier_name', $supplier->name);
+                                                    }
+                                                })
+                                                    ->where(function ($q) use ($spec, $cleanSpec) {
+                                                        $q->where('steel_spec', $cleanSpec)
+                                                            ->orWhere('steel_spec', $spec)
+                                                            ->orWhere('steel_spec', 'like', $cleanSpec.'%');
+                                                    })
+                                                    ->where('quarter', $prevQuarter)
+                                                    ->where('year', $prevYear)
+                                                    ->when(! empty($cleanThick), function ($q) use ($cleanThick) {
+                                                        $q->where(function ($sub) use ($cleanThick) {
+                                                            $sub->where('double_thickness', $cleanThick)
+                                                                ->orWhere('double_thickness', 'like', $cleanThick.'%');
+                                                        });
+                                                    })
+                                                    ->first();
+
+                                                if ($prevRecord) {
+                                                    $prevCoil = $prevRecord->coil_price;
+                                                    $prevSheet = $prevRecord->sheet_price;
+                                                    $found = true;
+                                                }
+                                            }
+                                        }
 
                                         if ($found && $prevCoil !== null) {
                                             return "📌 Ditemukan data acuan {$prevLabel}: Harga Coil \${$prevCoil} | Sheet \${$prevSheet}. Masukkan Kenaikan/Penurunan Gap MT di bawah untuk menghitung harga baru secara otomatis.";
                                         }
 
-                                        return "ℹ️ Belum ada data di {$prevLabel} untuk spesifikasi ini (Spesifikasi Baru). Silakan masukkan Harga Coil dan Sheet langsung di bawah.";
+                                        return 'ℹ️ Belum ada data di '.($prevLabel ?? 'Kuartal Sebelumnya').' untuk spesifikasi ini (Spesifikasi Baru). Silakan masukkan Harga Coil dan Sheet langsung di bawah.';
                                     })
-                                    ->visible(fn (Get $get) => $get('price_mode') === 'adjustment')
+                                    ->visible(function (Get $get, ?MaterialSteel $record) {
+                                        $mode = $get('price_mode');
+                                        if ($mode !== null) {
+                                            return $mode === 'adjustment';
+                                        }
+                                        $quarter = $get('quarter') ?? $record?->quarter ?? 'Q1';
+
+                                        return $quarter !== 'Q1';
+                                    })
                                     ->columnSpanFull(),
 
                                 Forms\Components\TextInput::make('gap_steel_usd')
@@ -454,10 +532,24 @@ class MaterialSteelResource extends Resource
                                     ->prefix('$')
                                     ->placeholder('Contoh: 0.5 atau -20 (0 jika tidak ada perubahan)')
                                     ->default(0)
-                                    ->visible(fn (Get $get) => $get('price_mode') === 'adjustment')
+                                    ->visible(function (Get $get, ?MaterialSteel $record) {
+                                        $mode = $get('price_mode');
+                                        if ($mode !== null) {
+                                            return $mode === 'adjustment';
+                                        }
+                                        $quarter = $get('quarter') ?? $record?->quarter ?? 'Q1';
+                                        $hasGap = $record && $record->gap_steel_usd !== null && (float) $record->gap_steel_usd != 0.0;
+
+                                        return $quarter !== 'Q1' || $hasGap;
+                                    })
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromGap($get, $set))
-                                    ->columnSpan(fn (Get $get) => $get('price_mode') === 'adjustment' ? 1 : 2),
+                                    ->columnSpan(function (Get $get, ?MaterialSteel $record) {
+                                        $mode = $get('price_mode');
+                                        $isAdj = $mode !== null ? ($mode === 'adjustment') : (($get('quarter') ?? $record?->quarter ?? 'Q1') !== 'Q1');
+
+                                        return $isAdj ? 1 : 2;
+                                    }),
 
                                 Forms\Components\TextInput::make('exchange_rate')
                                     ->label('Perubahan Dolar Rupiah (Kurs IDR)')

@@ -31,6 +31,16 @@ class EditMaterialSteel extends EditRecord
             ->label('Kembali');
     }
 
+    protected function mutateFormDataBeforeFill(array $data): array
+    {
+        $quarter = $data['quarter'] ?? 'Q1';
+        $hasGap = isset($data['gap_steel_usd']) && (float) $data['gap_steel_usd'] != 0.0;
+
+        $data['price_mode'] = ($quarter === 'Q1' && ! $hasGap) ? 'baseline' : 'adjustment';
+
+        return $data;
+    }
+
     protected function mutateFormDataBeforeSave(array $data): array
     {
         // Pastikan vendor_code dan supplier_name terisi atau buat supplier otomatis jika diinput manual
