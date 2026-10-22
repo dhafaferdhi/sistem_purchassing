@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Filament\Resources\MaterialSteelResource;
 use App\Filament\Resources\MaterialSteelResource\Pages\CreateMaterialSteel;
+use App\Filament\Resources\MaterialSteelResource\Pages\EditMaterialSteel;
 use App\Filament\Resources\MaterialSteelResource\Pages\ListMaterialSteels;
 use App\Models\Currency;
 use App\Models\MaterialSteel;
@@ -730,6 +731,43 @@ class MaterialSteelQuarterlyTest extends TestCase
             'gap_steel_usd' => 0.0,
             'coil_price_idr' => 21000.00, // 1.2 * 17500
             'sheet_price_idr' => 21875.00, // 1.25 * 17500
+        ]);
+    }
+
+    public function test_can_edit_material_steel_record(): void
+    {
+        $this->actingAs($this->admin);
+
+        $steel = MaterialSteel::create([
+            'year' => 2026,
+            'quarter' => 'Q2',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'steel_spec' => 'SPCC-EDIT-TEST',
+            'double_thickness' => '1.2',
+            'coil_price' => 1.8000,
+            'sheet_price' => 1.9000,
+            'exchange_rate' => 16000.0,
+            'currency_id' => $this->currency->id,
+        ]);
+
+        Livewire::test(EditMaterialSteel::class, ['record' => $steel->getKey()])
+            ->fillForm([
+                'price_mode' => 'adjustment',
+                'coil_price' => 1.8500,
+                'sheet_price' => 1.9500,
+                'gap_steel_usd' => 10.0,
+            ])
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        $this->assertDatabaseHas('material_steels', [
+            'id' => $steel->id,
+            'steel_spec' => 'SPCC-EDIT-TEST',
+            'coil_price' => 1.8500,
+            'sheet_price' => 1.9500,
+            'gap_steel_usd' => 10.0,
         ]);
     }
 }
