@@ -28,6 +28,11 @@ class MonthlyRollover extends Page implements HasForms
 
     protected static ?int $navigationSort = 5;
 
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     protected static string $view = 'filament.pages.monthly-rollover';
 
     public string $activeTab = 'all'; // all, currency, material_steel, stamping_part, history

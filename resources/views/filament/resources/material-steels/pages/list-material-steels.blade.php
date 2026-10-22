@@ -64,57 +64,6 @@
     </style>
 
     <div class="flex flex-col gap-y-4">
-        <!-- Control Bar: Pilihan Tahun di Atas Kuartal Q1-Q4 -->
-        <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <!-- Left: Quick Year Switcher Buttons -->
-            <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                <span class="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    <svg class="h-4 w-4 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-                    </svg>
-                    Pilih Tahun:
-                </span>
-
-                <button
-                    type="button"
-                    wire:click="$set('selectedYear', '')"
-                    class="rounded-lg px-3 py-1.5 text-xs font-semibold transition {{ empty($selectedYear) ? 'bg-primary-600 text-white shadow-sm ring-1 ring-primary-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700' }}"
-                >
-                    Semua Tahun
-                </button>
-
-                @foreach ($this->getAvailableYears() as $year)
-                    <button
-                        type="button"
-                        wire:click="$set('selectedYear', '{{ $year }}')"
-                        class="rounded-lg px-3 py-1.5 text-xs font-semibold transition {{ $selectedYear == $year ? 'bg-primary-600 text-white shadow-sm ring-1 ring-primary-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700' }}"
-                    >
-                        Tahun {{ $year }}
-                    </button>
-                @endforeach
-            </div>
-
-            <!-- Right: Dropdown Selector & Status Label -->
-            <div class="flex items-center gap-2.5">
-                <span class="hidden text-xs text-gray-500 sm:inline dark:text-gray-400">
-                    Filter Aktif: <strong class="font-bold text-primary-600 dark:text-primary-400">{{ $selectedYear ? "Tahun {$selectedYear}" : "Semua Tahun" }}</strong>
-                </span>
-
-                <select
-                    wire:model.live="selectedYear"
-                    class="rounded-lg border-gray-300 py-1 pl-2.5 pr-8 text-xs font-semibold text-gray-700 shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                >
-                    <option value="">Semua Tahun</option>
-                    @foreach ($this->getAvailableYears() as $year)
-                        <option value="{{ $year }}">Tahun {{ $year }}</option>
-                    @endforeach
-                </select>
-            </div>
-        </div>
-
-        <!-- Filament Tabs Kuartal (Q1 - Q4) di Bawah Pilihan Tahun -->
-        <x-filament-panels::resources.tabs />
-
         {{ \Filament\Support\Facades\FilamentView::renderHook(\Filament\View\PanelsRenderHook::RESOURCE_PAGES_LIST_RECORDS_TABLE_BEFORE, scopes: $this->getRenderHookScopes()) }}
 
         {{ $this->table }}

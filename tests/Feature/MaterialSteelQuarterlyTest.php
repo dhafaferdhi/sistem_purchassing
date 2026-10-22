@@ -267,13 +267,13 @@ class MaterialSteelQuarterlyTest extends TestCase
         ]);
 
         Livewire::test(ListMaterialSteels::class)
-            ->set('selectedYear', '2026')
+            ->filterTable('year', 2026)
             ->assertCanSeeTableRecords([$steel2026Q1])
             ->assertCanNotSeeTableRecords([$steel2025Q1])
-            ->set('selectedYear', '2025')
+            ->filterTable('year', 2025)
             ->assertCanSeeTableRecords([$steel2025Q1])
             ->assertCanNotSeeTableRecords([$steel2026Q1])
-            ->set('selectedYear', '')
+            ->resetTableFilters()
             ->assertCanSeeTableRecords([$steel2025Q1, $steel2026Q1]);
     }
 
@@ -486,9 +486,9 @@ class MaterialSteelQuarterlyTest extends TestCase
 
         Livewire::test(ListMaterialSteels::class)
             ->assertCanSeeTableRecords([$q1Record1, $q1Record2])
-            ->set('activeTab', 'Q1')
+            ->filterTable('quarter', ['Q1'])
             ->assertCanSeeTableRecords([$q1Record1, $q1Record2])
-            ->set('selectedYear', '2027')
+            ->filterTable('year', 2027)
             ->assertCanSeeTableRecords([$q1Record1, $q1Record2]);
     }
 
