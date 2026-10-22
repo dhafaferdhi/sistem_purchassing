@@ -275,7 +275,7 @@ class MaterialSteelResource extends Resource
 
                                 Forms\Components\TextInput::make('steel_spec')
                                     ->label('Spesifikasi Baja (Spec)')
-                                    ->placeholder('Contoh: SPCC-SD, SPH270-OD, SPHC')
+                                    ->placeholder('Contoh: SPH270C-OD, SPC270C, SPH440-OD')
                                     ->required()
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(function (Get $get, Set $set, ?string $state) {
@@ -288,11 +288,24 @@ class MaterialSteelResource extends Resource
                                         static::updateHistoricalLookback($get, $set);
                                     })
                                     ->dehydrateStateUsing(fn (?string $state) => MaterialSteel::cleanSteelSpec($state))
-                                    ->columnSpan(2),
+                                    ->columnSpan(1),
+
+                                Forms\Components\TextInput::make('size')
+                                    ->label('Size / Dimensi (Opsional)')
+                                    ->placeholder('Contoh: 1.6 x 1219 x C')
+                                    ->live(onBlur: true)
+                                    ->afterStateUpdated(function ($state, Set $set, Get $get) {
+                                        if ($state && empty($get('double_thickness'))) {
+                                            if (preg_match('/^([0-9]+(?:\.[0-9]+)?)/', trim($state), $matches)) {
+                                                $set('double_thickness', $matches[1]);
+                                            }
+                                        }
+                                    })
+                                    ->columnSpan(1),
 
                                 Forms\Components\TextInput::make('double_thickness')
                                     ->label('Thickness (mm)')
-                                    ->placeholder('Contoh: 1.2 atau 2.0')
+                                    ->placeholder('Contoh: 1.6 atau 2.0')
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(function ($state, Set $set) {
                                         if ($state) {
@@ -467,6 +480,7 @@ class MaterialSteelResource extends Resource
 
                         return trim(preg_replace('/[a-zA-Z\s]+/', '', (string) $state));
                     })
+                    ->description(fn (MaterialSteel $record) => $record->size ?: null)
                     ->placeholder('-')
                     ->searchable()
                     ->sortable(),
@@ -476,22 +490,6 @@ class MaterialSteelResource extends Resource
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state, MaterialSteel $record) => $state !== null && (float) $state != 0 ? "{$record->currency_code} ".number_format((float) $state, 2) : '-')
                     ->weight('bold')
-                    ->alignRight()
-                    ->sortable(),
-
-                Tables\Columns\TextColumn::make('gap_steel_kg_usd')
-                    ->label('Gap/Kg (USD)')
-                    ->wrapHeader()
-                    ->formatStateUsing(function ($state, MaterialSteel $record) {
-                        if ($state !== null && (float) $state != 0) {
-                            return "{$record->currency_code} ".number_format((float) $state, 4);
-                        }
-                        if ($record->gap_steel_usd !== null && (float) $record->gap_steel_usd != 0) {
-                            return "{$record->currency_code} ".number_format((float) $record->gap_steel_usd / 1000, 4);
-                        }
-
-                        return '-';
-                    })
                     ->alignRight()
                     ->sortable(),
 

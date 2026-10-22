@@ -14,23 +14,25 @@ class MaterialSteelSeeder extends Seeder
     {
         $admin = User::where('role', 'admin')->first() ?? User::first();
 
-        // 1. Pastikan Currency untuk 2026 dan 2027 (Q1, Q2, Q4) tersedia
-        $curr2026Q4 = Currency::firstOrCreate(
-            ['code' => 'USD', 'year' => 2026, 'month' => 10],
-            ['quarter' => 'Q4', 'name' => 'US Dollar', 'symbol' => '$', 'exchange_rate_to_idr' => 17000.0, 'last_updated_at' => now()]
-        );
-        $curr2027Q1 = Currency::firstOrCreate(
-            ['code' => 'USD', 'year' => 2027, 'month' => 1],
-            ['quarter' => 'Q1', 'name' => 'US Dollar', 'symbol' => '$', 'exchange_rate_to_idr' => 19000.0, 'last_updated_at' => now()]
-        );
-        $curr2027Q2 = Currency::firstOrCreate(
-            ['code' => 'USD', 'year' => 2027, 'month' => 4],
-            ['quarter' => 'Q2', 'name' => 'US Dollar', 'symbol' => '$', 'exchange_rate_to_idr' => 19500.0, 'last_updated_at' => now()]
+        // 1. Pastikan Currency tersedia
+        $curr2026Q1 = Currency::firstOrCreate(
+            ['code' => 'USD', 'year' => 2026, 'quarter' => 'Q1'],
+            ['name' => 'US Dollar', 'symbol' => '$', 'exchange_rate_to_idr' => 16000.0, 'month' => 1, 'last_updated_at' => now()]
         );
 
-        $rate2026Q4 = $curr2026Q4 ? (float) $curr2026Q4->exchange_rate_to_idr : 17000.0;
-        $rate2027Q1 = $curr2027Q1 ? (float) $curr2027Q1->exchange_rate_to_idr : 19000.0;
-        $rate2027Q2 = $curr2027Q2 ? (float) $curr2027Q2->exchange_rate_to_idr : 19500.0;
+        $curr2026Q4 = Currency::firstOrCreate(
+            ['code' => 'USD', 'year' => 2026, 'quarter' => 'Q4'],
+            ['name' => 'US Dollar', 'symbol' => '$', 'exchange_rate_to_idr' => 17796.0, 'month' => 10, 'last_updated_at' => now()]
+        );
+        $curr2026Q4->update(['exchange_rate_to_idr' => 17796.0]);
+
+        $curr2027Q1 = Currency::firstOrCreate(
+            ['code' => 'USD', 'year' => 2027, 'quarter' => 'Q1'],
+            ['name' => 'US Dollar', 'symbol' => '$', 'exchange_rate_to_idr' => 18000.0, 'month' => 1, 'last_updated_at' => now()]
+        );
+
+        $rate2026Q4 = 17796.0;
+        $rate2026Q1 = 16000.0;
 
         $supHssi = Supplier::firstOrCreate(
             ['code' => 'VND-HSSI'],
@@ -53,198 +55,127 @@ class MaterialSteelSeeder extends Seeder
 
         MaterialSteel::query()->delete();
 
-        $records = [
-            // ==========================================
-            // TAHUN 2026 - Q4
-            // ==========================================
-            [
-                'year' => 2026,
-                'quarter' => 'Q4',
-                'supplier_id' => $supHssi->id,
-                'vendor_code' => $supHssi->code,
-                'supplier_name' => $supHssi->name,
-                'steel_spec' => 'SPCC-SD',
-                'double_thickness' => '1.2',
-                'currency_id' => $curr2026Q4->id,
-                'currency_code' => 'USD',
-                'coil_price' => 1.9500,
-                'coil_price_idr' => round(1.9500 * $rate2026Q4, 2),
-                'sheet_price' => 2.0500,
-                'sheet_price_idr' => round(2.0500 * $rate2026Q4, 2),
-                'gap_steel_usd' => 100.0000,
-                'gap_steel_kg_usd' => 0.1000,
-                'gap_steel_idr' => round(100.0000 * $rate2026Q4, 2),
-                'steel_price' => 1.9500,
-                'exchange_rate' => $rate2026Q4,
-                'steel_price_idr' => round(1.9500 * $rate2026Q4, 2),
-                'fluktuasi_jfe' => 0.1000,
-                'status' => 'Active',
-                'notes' => 'Kontrak Baja Q4 2026 Supplier PT HSSI',
-                'created_by' => $admin?->id,
-            ],
-            [
-                'year' => 2026,
-                'quarter' => 'Q4',
-                'supplier_id' => $supUsci->id,
-                'vendor_code' => $supUsci->code,
-                'supplier_name' => $supUsci->name,
-                'steel_spec' => 'SPH270-OD',
-                'double_thickness' => '1.6',
-                'currency_id' => $curr2026Q4->id,
-                'currency_code' => 'USD',
-                'coil_price' => 1.8900,
-                'coil_price_idr' => round(1.8900 * $rate2026Q4, 2),
-                'sheet_price' => 1.9500,
-                'sheet_price_idr' => round(1.9500 * $rate2026Q4, 2),
-                'gap_steel_usd' => 60.0000,
-                'gap_steel_kg_usd' => 0.0600,
-                'gap_steel_idr' => round(60.0000 * $rate2026Q4, 2),
-                'steel_price' => 1.8900,
-                'exchange_rate' => $rate2026Q4,
-                'steel_price_idr' => round(1.8900 * $rate2026Q4, 2),
-                'fluktuasi_jfe' => 0.0600,
-                'status' => 'Active',
-                'notes' => 'Kontrak Baja Q4 2026 Supplier PT USCI',
-                'created_by' => $admin?->id,
-            ],
+        // Master item baja aktual sesuai spreadsheet purchasing
+        $steelItems = [
+            // SPH270C-OD (Hot Rolled 270)
+            ['spec' => 'SPH270C-OD', 'size' => '1.6 x 1219 x C', 'thickness' => '1.6', 'coil' => 0.9740, 'sheet' => 0.9840],
+            ['spec' => 'SPH270C-OD', 'size' => '1.8 x 1219 x C', 'thickness' => '1.8', 'coil' => 0.9660, 'sheet' => 0.9760],
+            ['spec' => 'SPH270C-OD', 'size' => '2.0 x 1219 x C', 'thickness' => '2.0', 'coil' => 0.9600, 'sheet' => 0.9700],
+            ['spec' => 'SPH270C-OD', 'size' => '2.3 x 1219 x C', 'thickness' => '2.3', 'coil' => 0.9600, 'sheet' => 0.9700],
+            ['spec' => 'SPH270C-OD', 'size' => '2.6 x 1219 x C', 'thickness' => '2.6', 'coil' => 0.9590, 'sheet' => 0.9690],
+            ['spec' => 'SPH270C-OD', 'size' => '3.2 x 1219 x C', 'thickness' => '3.2', 'coil' => 0.9590, 'sheet' => 0.9690],
+            ['spec' => 'SPH270C-OD', 'size' => '4.0 x 1219 x C', 'thickness' => '4.0', 'coil' => 0.9590, 'sheet' => 0.9690],
+            ['spec' => 'SPH270C-OD', 'size' => '5.0 x 1219 x C', 'thickness' => '5.0', 'coil' => 0.9550, 'sheet' => 0.9700],
 
-            // ==========================================
-            // TAHUN 2027 - Q1
-            // ==========================================
-            [
-                'year' => 2027,
-                'quarter' => 'Q1',
-                'supplier_id' => $supHssi->id,
-                'vendor_code' => $supHssi->code,
-                'supplier_name' => $supHssi->name,
-                'steel_spec' => 'SPCC-SD',
-                'double_thickness' => '1.2',
-                'currency_id' => $curr2027Q1->id,
-                'currency_code' => 'USD',
-                'coil_price' => 1.9800,
-                'coil_price_idr' => round(1.9800 * $rate2027Q1, 2),
-                'sheet_price' => 2.0800,
-                'sheet_price_idr' => round(2.0800 * $rate2027Q1, 2),
-                'gap_steel_usd' => 100.0000,
-                'gap_steel_kg_usd' => 0.1000,
-                'gap_steel_idr' => round(100.0000 * $rate2027Q1, 2),
-                'steel_price' => 1.9800,
-                'exchange_rate' => $rate2027Q1,
-                'steel_price_idr' => round(1.9800 * $rate2027Q1, 2),
-                'fluktuasi_jfe' => 0.1000,
-                'status' => 'Active',
-                'notes' => 'Kontrak Baja Q1 2027 Supplier PT HSSI',
-                'created_by' => $admin?->id,
-            ],
-            [
-                'year' => 2027,
-                'quarter' => 'Q1',
-                'supplier_id' => $supUsci->id,
-                'vendor_code' => $supUsci->code,
-                'supplier_name' => $supUsci->name,
-                'steel_spec' => 'SPH270-OD',
-                'double_thickness' => '2.0',
-                'currency_id' => $curr2027Q1->id,
-                'currency_code' => 'USD',
-                'coil_price' => 1.9200,
-                'coil_price_idr' => round(1.9200 * $rate2027Q1, 2),
-                'sheet_price' => 2.0200,
-                'sheet_price_idr' => round(2.0200 * $rate2027Q1, 2),
-                'gap_steel_usd' => 100.0000,
-                'gap_steel_kg_usd' => 0.1000,
-                'gap_steel_idr' => round(100.0000 * $rate2027Q1, 2),
-                'steel_price' => 1.9200,
-                'exchange_rate' => $rate2027Q1,
-                'steel_price_idr' => round(1.9200 * $rate2027Q1, 2),
-                'fluktuasi_jfe' => 0.1000,
-                'status' => 'Active',
-                'notes' => 'Kontrak Baja Q1 2027 Supplier PT USCI',
-                'created_by' => $admin?->id,
-            ],
+            // SPH440-OD (Hot Rolled 440)
+            ['spec' => 'SPH440-OD', 'size' => '1.6 x 1219 x C', 'thickness' => '1.6', 'coil' => 1.0090, 'sheet' => 1.0190],
+            ['spec' => 'SPH440-OD', 'size' => '1.8 x 1219 x C', 'thickness' => '1.8', 'coil' => 1.0010, 'sheet' => 1.0110],
+            ['spec' => 'SPH440-OD', 'size' => '2.0 x 1219 x C', 'thickness' => '2.0', 'coil' => 0.9950, 'sheet' => 1.0050],
+            ['spec' => 'SPH440-OD', 'size' => '2.3 x 1219 x C', 'thickness' => '2.3', 'coil' => 0.9950, 'sheet' => 1.0050],
+            ['spec' => 'SPH440-OD', 'size' => '2.6 x 1219 x C', 'thickness' => '2.6', 'coil' => 0.9940, 'sheet' => 1.0040],
+            ['spec' => 'SPH440-OD', 'size' => '3.2 x 1219 x C', 'thickness' => '3.2', 'coil' => 0.9940, 'sheet' => 1.0040],
+            ['spec' => 'SPH440-OD', 'size' => '4.0 x 1219 x C', 'thickness' => '4.0', 'coil' => 0.9940, 'sheet' => 1.0040],
 
-            // ==========================================
-            // TAHUN 2027 - Q2 (KENAIKAN MT & KURS DARI Q1)
-            // ==========================================
-            [
-                'year' => 2027,
-                'quarter' => 'Q2',
-                'supplier_id' => $supHssi->id,
-                'vendor_code' => $supHssi->code,
-                'supplier_name' => $supHssi->name,
-                'steel_spec' => 'SPCC-SD',
-                'double_thickness' => '1.2',
-                'currency_id' => $curr2027Q2->id,
-                'currency_code' => 'USD',
-                'coil_price' => 1.9800,
-                'coil_price_idr' => round(1.9800 * $rate2027Q2, 2),
-                'sheet_price' => 2.1000,
-                'sheet_price_idr' => round(2.1000 * $rate2027Q2, 2),
-                'gap_steel_usd' => 120.0000,
-                'gap_steel_kg_usd' => 0.1200,
-                'gap_steel_idr' => round(120.0000 * $rate2027Q2, 2),
-                'steel_price' => 1.9800,
-                'exchange_rate' => $rate2027Q2,
-                'steel_price_idr' => round(1.9800 * $rate2027Q2, 2),
-                'fluktuasi_jfe' => 0.1200,
-                'prev_month_1_label' => 'Maret 2027',
-                'prev_month_1_price' => 1.9800,
-                'prev_month_1_rate' => 19000.0000,
-                'prev_month_2_label' => 'Februari 2027',
-                'prev_month_2_price' => 1.9800,
-                'prev_month_2_rate' => 19000.0000,
-                'prev_month_3_label' => 'Januari 2027',
-                'prev_month_3_price' => 1.9800,
-                'prev_month_3_rate' => 19000.0000,
-                'avg_3_months_price' => 1.9800,
-                'avg_3_months_rate' => 19000.0000,
-                'avg_3_months_price_idr' => 37620.00,
-                'price_variance_percentage' => 0.00,
-                'status' => 'Active',
-                'notes' => 'Kontrak Baja Q2 2027 Supplier PT HSSI - Penyesuaian kenaikan MT (+$20/MT) dan Rate Kurs (Rp 19.500)',
-                'created_by' => $admin?->id,
-            ],
-            [
-                'year' => 2027,
-                'quarter' => 'Q2',
-                'supplier_id' => $supUsci->id,
-                'vendor_code' => $supUsci->code,
-                'supplier_name' => $supUsci->name,
-                'steel_spec' => 'SPH270-OD',
-                'double_thickness' => '2.0',
-                'currency_id' => $curr2027Q2->id,
-                'currency_code' => 'USD',
-                'coil_price' => 1.9200,
-                'coil_price_idr' => round(1.9200 * $rate2027Q2, 2),
-                'sheet_price' => 2.0400,
-                'sheet_price_idr' => round(2.0400 * $rate2027Q2, 2),
-                'gap_steel_usd' => 120.0000,
-                'gap_steel_kg_usd' => 0.1200,
-                'gap_steel_idr' => round(120.0000 * $rate2027Q2, 2),
-                'steel_price' => 1.9200,
-                'exchange_rate' => $rate2027Q2,
-                'steel_price_idr' => round(1.9200 * $rate2027Q2, 2),
-                'fluktuasi_jfe' => 0.1200,
-                'prev_month_1_label' => 'Maret 2027',
-                'prev_month_1_price' => 1.9200,
-                'prev_month_1_rate' => 19000.0000,
-                'prev_month_2_label' => 'Februari 2027',
-                'prev_month_2_price' => 1.9200,
-                'prev_month_2_rate' => 19000.0000,
-                'prev_month_3_label' => 'Januari 2027',
-                'prev_month_3_price' => 1.9200,
-                'prev_month_3_rate' => 19000.0000,
-                'avg_3_months_price' => 1.9200,
-                'avg_3_months_rate' => 19000.0000,
-                'avg_3_months_price_idr' => 36480.00,
-                'price_variance_percentage' => 0.00,
-                'status' => 'Active',
-                'notes' => 'Kontrak Baja Q2 2027 Supplier PT USCI - Penyesuaian kenaikan MT (+$20/MT) dan Rate Kurs (Rp 19.500)',
-                'created_by' => $admin?->id,
-            ],
+            // SPH590-OD (Hot Rolled 590)
+            ['spec' => 'SPH590-OD', 'size' => '1.6 x 1219 x C', 'thickness' => '1.6', 'coil' => 1.0390, 'sheet' => 1.0490],
+            ['spec' => 'SPH590-OD', 'size' => '1.8 x 1219 x C', 'thickness' => '1.8', 'coil' => 1.0310, 'sheet' => 1.0410],
+            ['spec' => 'SPH590-OD', 'size' => '2.0 x 1219 x C', 'thickness' => '2.0', 'coil' => 1.0250, 'sheet' => 1.0350],
+            ['spec' => 'SPH590-OD', 'size' => '2.3 x 1219 x C', 'thickness' => '2.3', 'coil' => 1.0250, 'sheet' => 1.0350],
+            ['spec' => 'SPH590-OD', 'size' => '2.6 x 1219 x C', 'thickness' => '2.6', 'coil' => 1.0240, 'sheet' => 1.0340],
+            ['spec' => 'SPH590-OD', 'size' => '3.2 x 1219 x C', 'thickness' => '3.2', 'coil' => 1.0240, 'sheet' => 1.0340],
+            ['spec' => 'SPH590-OD', 'size' => '4.0 x 1219 x C', 'thickness' => '4.0', 'coil' => 1.0240, 'sheet' => 1.0340],
+
+            // SPC270C (Cold Rolled 270)
+            ['spec' => 'SPC270C', 'size' => '0.5 x 1251 x C', 'thickness' => '0.5', 'coil' => 1.0240, 'sheet' => 1.0340],
+            ['spec' => 'SPC270C', 'size' => '0.6 x 1251 x C', 'thickness' => '0.6', 'coil' => 1.0100, 'sheet' => 1.0200],
+            ['spec' => 'SPC270C', 'size' => '0.8 x 1251 x C', 'thickness' => '0.8', 'coil' => 0.9930, 'sheet' => 1.0030],
+            ['spec' => 'SPC270C', 'size' => '1.0 x 1251 x C', 'thickness' => '1.0', 'coil' => 0.9790, 'sheet' => 0.9890],
+            ['spec' => 'SPC270C', 'size' => '1.2 x 1251 x C', 'thickness' => '1.2', 'coil' => 0.9790, 'sheet' => 0.9890],
+            ['spec' => 'SPC270C', 'size' => '1.4 x 1251 x C', 'thickness' => '1.4', 'coil' => 0.9790, 'sheet' => 0.9890],
+
+            // SPC440 (Cold Rolled 440)
+            ['spec' => 'SPC440', 'size' => '0.6 x 1251 x C', 'thickness' => '0.6', 'coil' => 1.0550, 'sheet' => 1.0650],
+            ['spec' => 'SPC440', 'size' => '0.8 x 1251 x C', 'thickness' => '0.8', 'coil' => 1.0380, 'sheet' => 1.0480],
+            ['spec' => 'SPC440', 'size' => '1.0 x 1251 x C', 'thickness' => '1.0', 'coil' => 1.0240, 'sheet' => 1.0340],
+            ['spec' => 'SPC440', 'size' => '1.2 x 1251 x C', 'thickness' => '1.2', 'coil' => 1.0240, 'sheet' => 1.0340],
+            ['spec' => 'SPC440', 'size' => '1.4 x 1251 x C', 'thickness' => '1.4', 'coil' => 1.0240, 'sheet' => 1.0340],
+
+            // SPC590 (Cold Rolled 590)
+            ['spec' => 'SPC590', 'size' => '0.6 x 1251 x C', 'thickness' => '0.6', 'coil' => 1.0950, 'sheet' => 1.1050],
+            ['spec' => 'SPC590', 'size' => '0.8 x 1251 x C', 'thickness' => '0.8', 'coil' => 1.0780, 'sheet' => 1.0880],
+            ['spec' => 'SPC590', 'size' => '1.0 x 1251 x C', 'thickness' => '1.0', 'coil' => 1.0640, 'sheet' => 1.0740],
+            ['spec' => 'SPC590', 'size' => '1.2 x 1251 x C', 'thickness' => '1.2', 'coil' => 1.0640, 'sheet' => 1.0740],
+            ['spec' => 'SPC590', 'size' => '1.4 x 1251 x C', 'thickness' => '1.4', 'coil' => 1.0640, 'sheet' => 1.0740],
+            ['spec' => 'SPC590', 'size' => '1.6 x 1251 x C', 'thickness' => '1.6', 'coil' => 1.0640, 'sheet' => 1.0740],
+            ['spec' => 'SPC590', 'size' => '1.8 x 1251 x C', 'thickness' => '1.8', 'coil' => 1.0640, 'sheet' => 1.0740],
         ];
 
-        foreach ($records as $item) {
-            MaterialSteel::create($item);
+        // SEED Q4 2026 (Ada Kenaikan/Gap MT: -20 USD/MT, Kurs: 17796)
+        foreach ($steelItems as $item) {
+            $coilIdr = round($item['coil'] * $rate2026Q4, 2);
+            $sheetIdr = round($item['sheet'] * $rate2026Q4, 2);
+
+            MaterialSteel::create([
+                'year' => 2026,
+                'quarter' => 'Q4',
+                'supplier_id' => $supHssi->id,
+                'vendor_code' => $supHssi->code,
+                'supplier_name' => $supHssi->name,
+                'steel_spec' => $item['spec'],
+                'size' => $item['size'],
+                'double_thickness' => $item['thickness'],
+                'currency_id' => $curr2026Q4->id,
+                'currency_code' => 'USD',
+                'coil_price' => $item['coil'],
+                'coil_price_idr' => $coilIdr,
+                'sheet_price' => $item['sheet'],
+                'sheet_price_idr' => $sheetIdr,
+                'gap_steel_usd' => -20.0000,
+                'gap_steel_kg_usd' => -0.0200,
+                'gap_steel_idr' => round(-20.0000 * $rate2026Q4, 2),
+                'steel_price' => $item['coil'],
+                'exchange_rate' => $rate2026Q4,
+                'steel_price_idr' => $coilIdr,
+                'fluktuasi_jfe' => -0.0200,
+                'status' => 'Active',
+                'notes' => 'Q4-2026 A.R (HR -20$/MT CR -20$/MT) PT HSSI',
+                'created_by' => $admin?->id,
+            ]);
+        }
+
+        // SEED Q1 2026 (Data Awal / Baseline — Tanpa Gap MT / Gap = 0)
+        foreach ($steelItems as $item) {
+            $baseCoil = round($item['coil'] + 0.0200, 4); // Sebelum diskon -20$/MT di Q4
+            $baseSheet = round($item['sheet'] + 0.0200, 4);
+            $coilIdr = round($baseCoil * $rate2026Q1, 2);
+            $sheetIdr = round($baseSheet * $rate2026Q1, 2);
+
+            MaterialSteel::create([
+                'year' => 2026,
+                'quarter' => 'Q1',
+                'supplier_id' => $supHssi->id,
+                'vendor_code' => $supHssi->code,
+                'supplier_name' => $supHssi->name,
+                'steel_spec' => $item['spec'],
+                'size' => $item['size'],
+                'double_thickness' => $item['thickness'],
+                'currency_id' => $curr2026Q1->id,
+                'currency_code' => 'USD',
+                'coil_price' => $baseCoil,
+                'coil_price_idr' => $coilIdr,
+                'sheet_price' => $baseSheet,
+                'sheet_price_idr' => $sheetIdr,
+                'gap_steel_usd' => 0,
+                'gap_steel_kg_usd' => 0,
+                'gap_steel_idr' => 0,
+                'steel_price' => $baseCoil,
+                'exchange_rate' => $rate2026Q1,
+                'steel_price_idr' => $coilIdr,
+                'fluktuasi_jfe' => 0,
+                'status' => 'Active',
+                'notes' => 'Q1-2026 Baseline Patokan Awal PT HSSI',
+                'created_by' => $admin?->id,
+            ]);
         }
     }
 }

@@ -140,9 +140,12 @@ class MaterialSteel extends Model
                 $model->gap_steel_kg_usd = round((float) $model->gap_steel_usd / 1000, 4);
             } elseif ($model->gap_steel_kg_usd !== null && (float) $model->gap_steel_kg_usd != 0.0) {
                 $model->gap_steel_usd = round((float) $model->gap_steel_kg_usd * 1000, 4);
-            } elseif ($sheetPrice > 0 || $coilPrice > 0) {
+            } elseif ($model->quarter !== 'Q1' && ($sheetPrice > 0 || $coilPrice > 0)) {
                 $model->gap_steel_kg_usd = round($sheetPrice - $coilPrice, 4);
                 $model->gap_steel_usd = round(($sheetPrice - $coilPrice) * 1000, 4);
+            } else {
+                $model->gap_steel_usd = 0;
+                $model->gap_steel_kg_usd = 0;
             }
 
             $model->gap_steel_idr = round((float) $model->gap_steel_usd * $rate, 2);

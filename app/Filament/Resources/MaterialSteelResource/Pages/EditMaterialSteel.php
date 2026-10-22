@@ -62,8 +62,8 @@ class EditMaterialSteel extends EditRecord
         $coilPrice = (float) ($data['coil_price'] ?? 0);
         $sheetPrice = (float) ($data['sheet_price'] ?? 0);
 
-        if (! isset($data['gap_steel_usd']) || $data['gap_steel_usd'] === null || (float) $data['gap_steel_usd'] == 0.0) {
-            $data['gap_steel_usd'] = round(($sheetPrice - $coilPrice) * 1000, 4);
+        if (! isset($data['gap_steel_usd']) || $data['gap_steel_usd'] === null) {
+            $data['gap_steel_usd'] = 0;
         }
         $data['gap_steel_idr'] = round((float) $data['gap_steel_usd'] * $exchangeRate, 2);
 
