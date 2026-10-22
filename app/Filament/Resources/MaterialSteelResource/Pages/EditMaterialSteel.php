@@ -74,6 +74,16 @@ class EditMaterialSteel extends EditRecord
         $data['steel_price'] = $steelPrice;
         $data['steel_price_idr'] = round($steelPrice * $exchangeRate, 2);
 
+        unset(
+            $data['price_mode'],
+            $data['prev_quarter_label'],
+            $data['prev_record_found'],
+            $data['prev_coil_price'],
+            $data['prev_sheet_price'],
+            $data['prev_rate'],
+            $data['prev_quarter_info']
+        );
+
         return $data;
     }
 

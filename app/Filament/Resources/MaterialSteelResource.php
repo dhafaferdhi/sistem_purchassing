@@ -109,12 +109,29 @@ class MaterialSteelResource extends Resource
         }
 
         $cleanSpec = MaterialSteel::cleanSteelSpec($steelSpec);
+        $cleanThickness = ! empty($thickness) ? trim(preg_replace('/[a-zA-Z\s]+/', '', (string) $thickness)) : null;
 
-        $prev = MaterialSteel::where('supplier_id', $supplierId)
-            ->where('steel_spec', $cleanSpec)
+        $supplier = Supplier::find($supplierId);
+        $prev = MaterialSteel::where(function ($q) use ($supplierId, $supplier) {
+            $q->where('supplier_id', $supplierId);
+            if ($supplier) {
+                $q->orWhere('vendor_code', $supplier->code)
+                    ->orWhere('supplier_name', $supplier->name);
+            }
+        })
+            ->where(function ($q) use ($steelSpec, $cleanSpec) {
+                $q->where('steel_spec', $cleanSpec)
+                    ->orWhere('steel_spec', $steelSpec)
+                    ->orWhere('steel_spec', 'like', $cleanSpec.'%');
+            })
             ->where('quarter', $prevQuarter)
             ->where('year', $prevYear)
-            ->when(! empty($thickness), fn ($q) => $q->where('double_thickness', $thickness))
+            ->when(! empty($cleanThickness), function ($q) use ($cleanThickness) {
+                $q->where(function ($sub) use ($cleanThickness) {
+                    $sub->where('double_thickness', $cleanThickness)
+                        ->orWhere('double_thickness', 'like', $cleanThickness.'%');
+                });
+            })
             ->first();
 
         if ($prev) {
@@ -376,28 +393,17 @@ class MaterialSteelResource extends Resource
                                 Forms\Components\Hidden::make('material_id'),
                                 Forms\Components\Hidden::make('currency_id'),
                                 Forms\Components\Hidden::make('currency_code')->default('USD'),
-                                Forms\Components\Hidden::make('exchange_rate')
-                                    ->default(function (Get $get) {
-                                        $year = (int) ($get('year') ?? date('Y'));
-                                        $quarter = $get('quarter') ?? 'Q1';
-
-                                        return Currency::where('code', 'USD')->where('year', $year)->where('quarter', $quarter)->value('exchange_rate_to_idr')
-                                            ?? Currency::where('code', 'USD')->where('year', $year)->value('exchange_rate_to_idr')
-                                            ?? Currency::where('code', 'USD')->latest('year')->value('exchange_rate_to_idr')
-                                            ?? 19000;
-                                    })
-                                    ->dehydrated(),
                                 Forms\Components\Hidden::make('gap_steel_kg_usd')->default(0),
                                 Forms\Components\Hidden::make('steel_price'),
                                 Forms\Components\Hidden::make('steel_price_idr'),
                                 Forms\Components\Hidden::make('fluktuasi_jfe')->default(0),
 
                                 // Form state helpers untuk acuan kuartal sebelumnya (tidak disimpan ke DB)
-                                Forms\Components\Hidden::make('prev_quarter_label')->dehydrated(false),
-                                Forms\Components\Hidden::make('prev_record_found')->default(false)->dehydrated(false),
-                                Forms\Components\Hidden::make('prev_coil_price')->dehydrated(false),
-                                Forms\Components\Hidden::make('prev_sheet_price')->dehydrated(false),
-                                Forms\Components\Hidden::make('prev_rate')->dehydrated(false),
+                                Forms\Components\Hidden::make('prev_quarter_label'),
+                                Forms\Components\Hidden::make('prev_record_found')->default(false),
+                                Forms\Components\Hidden::make('prev_coil_price'),
+                                Forms\Components\Hidden::make('prev_sheet_price'),
+                                Forms\Components\Hidden::make('prev_rate'),
                             ])->columns(3),
 
                         // SECTION 2: Penetapan Harga Bahan Baku
@@ -422,7 +428,6 @@ class MaterialSteelResource extends Resource
                                             static::lookupPreviousQuarterRecord($get, $set);
                                         }
                                     })
-                                    ->dehydrated()
                                     ->columnSpanFull(),
 
                                 Forms\Components\Placeholder::make('prev_quarter_info')
@@ -452,7 +457,26 @@ class MaterialSteelResource extends Resource
                                     ->visible(fn (Get $get) => $get('price_mode') === 'adjustment')
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromGap($get, $set))
-                                    ->columnSpanFull(),
+                                    ->columnSpan(fn (Get $get) => $get('price_mode') === 'adjustment' ? 1 : 2),
+
+                                Forms\Components\TextInput::make('exchange_rate')
+                                    ->label('Perubahan Dolar Rupiah (Kurs IDR)')
+                                    ->numeric()
+                                    ->prefix('Rp')
+                                    ->placeholder('Contoh: 16000')
+                                    ->default(function (Get $get) {
+                                        $year = (int) ($get('year') ?? date('Y'));
+                                        $quarter = $get('quarter') ?? 'Q1';
+
+                                        return Currency::where('code', 'USD')->where('year', $year)->where('quarter', $quarter)->value('exchange_rate_to_idr')
+                                            ?? Currency::where('code', 'USD')->where('year', $year)->value('exchange_rate_to_idr')
+                                            ?? Currency::where('code', 'USD')->latest('year')->value('exchange_rate_to_idr')
+                                            ?? 16000;
+                                    })
+                                    ->live(onBlur: true)
+                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::recalculateFormPrices($get, $set))
+                                    ->required()
+                                    ->columnSpan(fn (Get $get) => $get('price_mode') === 'adjustment' ? 1 : 2),
 
                                 Forms\Components\TextInput::make('coil_price')
                                     ->label('Harga Coil ($/Kg)')
@@ -460,7 +484,7 @@ class MaterialSteelResource extends Resource
                                     ->step(0.0001)
                                     ->prefix('$')
                                     ->placeholder('Contoh: 1.1206')
-                                    ->required()
+                                    ->required(fn (Get $get) => empty($get('sheet_price')))
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromCoil($get, $set))
                                     ->columnSpan(1),
@@ -471,6 +495,7 @@ class MaterialSteelResource extends Resource
                                     ->step(0.0001)
                                     ->prefix('$')
                                     ->placeholder('Contoh: 1.1456')
+                                    ->required(fn (Get $get) => empty($get('coil_price')))
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromSheet($get, $set))
                                     ->columnSpan(1),

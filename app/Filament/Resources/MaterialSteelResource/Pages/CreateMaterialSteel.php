@@ -174,7 +174,15 @@ class CreateMaterialSteel extends CreateRecord
         $sheetPrice = (float) ($data['sheet_price'] ?? 0);
 
         $priceMode = $data['price_mode'] ?? null;
-        unset($data['price_mode']);
+        unset(
+            $data['price_mode'],
+            $data['prev_quarter_label'],
+            $data['prev_record_found'],
+            $data['prev_coil_price'],
+            $data['prev_sheet_price'],
+            $data['prev_rate'],
+            $data['prev_quarter_info']
+        );
         $quarter = $data['quarter'] ?? 'Q1';
 
         if ($priceMode === 'baseline' || ($quarter === 'Q1' && empty($data['gap_steel_usd']))) {
