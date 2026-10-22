@@ -136,7 +136,18 @@ class CreateStampingPart extends CreateRecord
     protected function getCancelFormAction(): Actions\Action
     {
         return parent::getCancelFormAction()
-            ->label('Keluar');
+            ->label('Kembali');
+    }
+
+    protected function getCreateFormAction(): Actions\Action
+    {
+        return parent::getCreateFormAction()
+            ->label('Simpan');
+    }
+
+    public static function canCreateAnother(): bool
+    {
+        return false;
     }
 
     protected function getCreatedNotification(): ?Notification

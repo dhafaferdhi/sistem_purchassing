@@ -30,6 +30,17 @@ class CreateMaterialSteel extends CreateRecord
             ->label('Kembali');
     }
 
+    protected function getCreateFormAction(): Actions\Action
+    {
+        return parent::getCreateFormAction()
+            ->label('Simpan');
+    }
+
+    public static function canCreateAnother(): bool
+    {
+        return false;
+    }
+
     protected function mutateFormDataBeforeCreate(array $data): array
     {
         // Pastikan vendor_code dan supplier_name terisi atau buat supplier otomatis jika diinput manual

@@ -128,7 +128,7 @@ class CreateFastener extends CreateRecord
                 }),
 
             Actions\Action::make('back')
-                ->label('Keluar / Kembali')
+                ->label('Kembali')
                 ->icon('heroicon-o-arrow-left')
                 ->color('gray')
                 ->url(static::getResource()::getUrl('index')),
@@ -138,7 +138,18 @@ class CreateFastener extends CreateRecord
     protected function getCancelFormAction(): Actions\Action
     {
         return parent::getCancelFormAction()
-            ->label('Keluar');
+            ->label('Kembali');
+    }
+
+    protected function getCreateFormAction(): Actions\Action
+    {
+        return parent::getCreateFormAction()
+            ->label('Simpan');
+    }
+
+    public static function canCreateAnother(): bool
+    {
+        return false;
     }
 
     protected function getCreatedNotification(): ?Notification
