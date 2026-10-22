@@ -20,10 +20,11 @@ class MaterialSteelSeeder extends Seeder
             ['name' => 'US Dollar', 'symbol' => '$', 'exchange_rate_to_idr' => 16000.0, 'month' => 1, 'last_updated_at' => now()]
         );
 
-        $curr2026Q2 = Currency::firstOrCreate(
+        $curr2026Q2 = Currency::updateOrCreate(
             ['code' => 'USD', 'year' => 2026, 'quarter' => 'Q2'],
-            ['name' => 'US Dollar', 'symbol' => '$', 'exchange_rate_to_idr' => 16500.0, 'month' => 4, 'last_updated_at' => now()]
+            ['name' => 'US Dollar', 'symbol' => '$', 'exchange_rate_to_idr' => 16000.0, 'month' => 4, 'last_updated_at' => now()]
         );
+        $curr2026Q2->update(['exchange_rate_to_idr' => 16000.0]);
 
         $curr2026Q4 = Currency::firstOrCreate(
             ['code' => 'USD', 'year' => 2026, 'quarter' => 'Q4'],
@@ -37,7 +38,7 @@ class MaterialSteelSeeder extends Seeder
         );
 
         $rate2026Q1 = 16000.0;
-        $rate2026Q2 = 16500.0;
+        $rate2026Q2 = 16000.0; // Perubahan Dolar Rupiah ikut ketarik sama dengan Q1
         $rate2026Q4 = 17796.0;
 
         $supHssi = Supplier::firstOrCreate(

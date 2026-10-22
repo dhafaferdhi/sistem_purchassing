@@ -174,6 +174,7 @@ class CreateMaterialSteel extends CreateRecord
         $sheetPrice = (float) ($data['sheet_price'] ?? 0);
         $prevCoil = $data['prev_coil_price'] ?? null;
         $prevSheet = $data['prev_sheet_price'] ?? null;
+        $prevRate = $data['prev_rate'] ?? null;
         $priceMode = $data['price_mode'] ?? null;
 
         unset(
@@ -248,6 +249,14 @@ class CreateMaterialSteel extends CreateRecord
                 if ($prev) {
                     $prevCoil = $prev->coil_price;
                     $prevSheet = $prev->sheet_price;
+                    $prevRate = $prev->exchange_rate;
+                }
+            }
+
+            if ($prevRate !== null && (float) $prevRate > 0) {
+                if (empty($data['exchange_rate']) || (float) $data['exchange_rate'] <= 0) {
+                    $exchangeRate = (float) $prevRate;
+                    $data['exchange_rate'] = $exchangeRate;
                 }
             }
 

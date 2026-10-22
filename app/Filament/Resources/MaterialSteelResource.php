@@ -140,9 +140,13 @@ class MaterialSteelResource extends Resource
             $set('prev_sheet_price', (float) $prev->sheet_price);
             $set('prev_rate', (float) $prev->exchange_rate);
 
-            // Jika dalam mode adjustment, otomatis terapkan harga baru dari HR / CR Dolar MT
+            // Jika dalam mode adjustment, otomatis terapkan harga baru dari HR / CR Dolar MT dan tarik kurs dari kuartal sebelumnya (Q1)
             $mode = $get('price_mode');
             if ($mode === 'adjustment') {
+                if ($prev->exchange_rate && (float) $prev->exchange_rate > 0) {
+                    $set('exchange_rate', (float) $prev->exchange_rate);
+                }
+
                 $spec = $get('steel_spec');
                 $steelType = MaterialSteel::determineSteelType($spec);
 
@@ -565,13 +569,17 @@ class MaterialSteelResource extends Resource
                                                 if ($prevRecord) {
                                                     $prevCoil = $prevRecord->coil_price;
                                                     $prevSheet = $prevRecord->sheet_price;
+                                                    $prevRate = $prevRecord->exchange_rate;
                                                     $found = true;
                                                 }
                                             }
                                         }
 
                                         if ($found && $prevCoil !== null) {
-                                            return "📌 Ditemukan data acuan {$prevLabel}: Harga Coil \${$prevCoil} | Sheet \${$prevSheet}. Masukkan penyesuaian HR Dolar/MT atau CR Dolar/MT di bawah untuk menghitung harga baru secara otomatis.";
+                                            $prevRate = $get('prev_rate') ?? ($prevRecord?->exchange_rate ?? null);
+                                            $rateFormatted = $prevRate ? ' | Kurs Rp '.number_format((float) $prevRate, 0, ',', '.') : '';
+
+                                            return "📌 Ditemukan data acuan {$prevLabel}: Harga Coil \${$prevCoil} | Sheet \${$prevSheet}{$rateFormatted}. Harga dan Perubahan Dolar Rupiah otomatis ditarik sama dengan {$prevLabel}.";
                                         }
 
                                         return 'ℹ️ Belum ada data di '.($prevLabel ?? 'Kuartal Sebelumnya').' untuk spesifikasi ini (Spesifikasi Baru). Silakan masukkan Harga Coil dan Sheet langsung di bawah.';
@@ -637,6 +645,11 @@ class MaterialSteelResource extends Resource
                                     ->prefix('Rp')
                                     ->placeholder('Contoh: 16000')
                                     ->default(function (Get $get) {
+                                        $prevRate = $get('prev_rate');
+                                        if ($prevRate !== null && (float) $prevRate > 0) {
+                                            return (float) $prevRate;
+                                        }
+
                                         $year = (int) ($get('year') ?? date('Y'));
                                         $quarter = $get('quarter') ?? 'Q1';
 

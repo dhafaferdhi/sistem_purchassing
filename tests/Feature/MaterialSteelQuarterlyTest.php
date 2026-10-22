@@ -927,7 +927,7 @@ class MaterialSteelQuarterlyTest extends TestCase
         $this->assertEquals(0, (float) $q1->cr_steel_usd);
         $this->assertEquals(0, (float) $q1->gap_steel_usd);
 
-        // 2. Create Q2 dengan penyesuaian -20 $/MT
+        // 2. Create Q2 dengan penyesuaian -20 $/MT (Perubahan Dolar Rupiah ikut ketarik dari Q1: 16000.0)
         Livewire::test(CreateMaterialSteel::class)
             ->fillForm([
                 'year' => 2026,
@@ -938,19 +938,20 @@ class MaterialSteelQuarterlyTest extends TestCase
                 'price_mode' => 'adjustment',
                 'hr_steel_usd' => -20.0,
                 'cr_steel_usd' => -20.0,
-                'exchange_rate' => 16500.0,
             ])
             ->call('create')
             ->assertHasNoFormErrors();
 
         // Di Q2: Coil turun 0.0200 ($1.0800), Sheet turun 0.0200 ($1.2800), HR Dolar/MT = -20
+        // Perubahan Dolar Rupiah ikut ketarik dari Q1 = 16000.0
         $q2 = MaterialSteel::where('year', 2026)->where('quarter', 'Q2')->where('steel_spec', 'SPH270C-OD')->first();
         $this->assertNotNull($q2);
         $this->assertEquals(1.0800, (float) $q2->coil_price);
         $this->assertEquals(1.2800, (float) $q2->sheet_price);
         $this->assertEquals(-20.0, (float) $q2->hr_steel_usd);
         $this->assertEquals(-0.0200, (float) $q2->gap_steel_kg_usd);
-        $this->assertEquals(17820.00, (float) $q2->coil_price_idr); // 1.0800 * 16500
-        $this->assertEquals(21120.00, (float) $q2->sheet_price_idr); // 1.2800 * 16500
+        $this->assertEquals(16000.0000, (float) $q2->exchange_rate);
+        $this->assertEquals(17280.00, (float) $q2->coil_price_idr); // 1.0800 * 16000
+        $this->assertEquals(20480.00, (float) $q2->sheet_price_idr); // 1.2800 * 16000
     }
 }
