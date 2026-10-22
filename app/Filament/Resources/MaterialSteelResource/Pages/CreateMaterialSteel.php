@@ -174,13 +174,18 @@ class CreateMaterialSteel extends CreateRecord
         $sheetPrice = (float) ($data['sheet_price'] ?? 0);
 
         $priceMode = $data['price_mode'] ?? null;
+        unset($data['price_mode']);
         $quarter = $data['quarter'] ?? 'Q1';
 
         if ($priceMode === 'baseline' || ($quarter === 'Q1' && empty($data['gap_steel_usd']))) {
             $data['gap_steel_usd'] = 0;
             $data['gap_steel_kg_usd'] = 0;
-        } elseif (! isset($data['gap_steel_usd']) || $data['gap_steel_usd'] === null || (float) $data['gap_steel_usd'] == 0.0) {
+        } elseif (! empty($data['gap_steel_usd']) && (float) $data['gap_steel_usd'] != 0.0) {
+            $data['gap_steel_usd'] = (float) $data['gap_steel_usd'];
+            $data['gap_steel_kg_usd'] = round($data['gap_steel_usd'] / 1000, 4);
+        } else {
             $data['gap_steel_usd'] = round(($sheetPrice - $coilPrice) * 1000, 4);
+            $data['gap_steel_kg_usd'] = round($data['gap_steel_usd'] / 1000, 4);
         }
         $data['gap_steel_idr'] = round((float) $data['gap_steel_usd'] * $exchangeRate, 2);
 

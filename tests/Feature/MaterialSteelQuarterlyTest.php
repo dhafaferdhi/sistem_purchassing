@@ -587,4 +587,99 @@ class MaterialSteelQuarterlyTest extends TestCase
         Livewire::test(ListMaterialSteels::class)
             ->assertActionExists('import_excel');
     }
+
+    public function test_create_q2_with_gap_mt_auto_calculates_from_q1_baseline(): void
+    {
+        $this->actingAs($this->admin);
+
+        // Record Q1 sebagai baseline
+        MaterialSteel::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'steel_spec' => 'SPH270C-OD',
+            'double_thickness' => '1.6',
+            'coil_price' => 1.1206,
+            'sheet_price' => 1.1456,
+            'exchange_rate' => 16000.0,
+            'currency_id' => $this->currency->id,
+        ]);
+
+        // Simulasikan Livewire form create di Q2 dengan Gap MT = 0.5
+        Livewire::test(CreateMaterialSteel::class)
+            ->fillForm([
+                'year' => 2026,
+                'quarter' => 'Q2',
+                'supplier_id' => $this->supplier->id,
+                'steel_spec' => 'SPH270C-OD',
+                'double_thickness' => '1.6',
+                'price_mode' => 'adjustment',
+                'gap_steel_usd' => 0.5,
+                'exchange_rate' => 17000.0,
+            ])
+            ->call('create')
+            ->assertHasNoFormErrors();
+
+        // Verifikasi harga baru terhitung: 1.1206 + 0.0005 = 1.1211 dan 1.1456 + 0.0005 = 1.1461
+        $this->assertDatabaseHas('material_steels', [
+            'year' => 2026,
+            'quarter' => 'Q2',
+            'steel_spec' => 'SPH270C-OD',
+            'double_thickness' => '1.6',
+            'coil_price' => 1.1211,
+            'sheet_price' => 1.1461,
+            'gap_steel_usd' => 0.5,
+        ]);
+    }
+
+    public function test_create_q2_without_gap_mt_change_preserves_zero_gap_and_updates_idr_by_rate(): void
+    {
+        $this->actingAs($this->admin);
+
+        // Record Q1 sebagai baseline
+        MaterialSteel::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'steel_spec' => 'SPH440-OD',
+            'double_thickness' => '2.0',
+            'coil_price' => 1.2000,
+            'sheet_price' => 1.2500,
+            'exchange_rate' => 16000.0,
+            'currency_id' => $this->currency->id,
+        ]);
+
+        // Simulasikan Livewire form create di Q2 dengan mode baseline (tanpa perbandingan / tanpa gap MT) dan kurs baru 17500
+        Livewire::test(CreateMaterialSteel::class)
+            ->fillForm([
+                'year' => 2026,
+                'quarter' => 'Q2',
+                'supplier_id' => $this->supplier->id,
+                'steel_spec' => 'SPH440-OD',
+                'double_thickness' => '2.0',
+                'price_mode' => 'baseline',
+                'coil_price' => 1.2000,
+                'sheet_price' => 1.2500,
+                'exchange_rate' => 17500.0,
+            ])
+            ->call('create')
+            ->assertHasNoFormErrors();
+
+        // Gap MT harus tetap 0 (TIDAK boleh berubah menjadi selisih sheet - coil = 50)
+        $this->assertDatabaseHas('material_steels', [
+            'year' => 2026,
+            'quarter' => 'Q2',
+            'steel_spec' => 'SPH440-OD',
+            'double_thickness' => '2.0',
+            'coil_price' => 1.2000,
+            'sheet_price' => 1.2500,
+            'gap_steel_usd' => 0.0,
+            'coil_price_idr' => 21000.00, // 1.2 * 17500
+            'sheet_price_idr' => 21875.00, // 1.25 * 17500
+        ]);
+    }
 }

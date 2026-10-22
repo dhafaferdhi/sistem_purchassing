@@ -59,8 +59,6 @@ class MaterialSteel extends Model
         'coil_price_idr' => 0,
         'sheet_price' => 0,
         'sheet_price_idr' => 0,
-        'gap_steel_usd' => 0,
-        'gap_steel_kg_usd' => 0,
         'gap_steel_idr' => 0,
         'fluktuasi_jfe' => 0,
         'status' => 'Active',
@@ -136,9 +134,9 @@ class MaterialSteel extends Model
 
             // Perhitungan Rumus Gap Steel:
             // Gap / MT (USD) dan Gap / Kg (USD) [Rumus Excel: Gap / Kg = Gap / MT / 1000]
-            if ($model->gap_steel_usd !== null && (float) $model->gap_steel_usd != 0.0) {
+            if ($model->gap_steel_usd !== null) {
                 $model->gap_steel_kg_usd = round((float) $model->gap_steel_usd / 1000, 4);
-            } elseif ($model->gap_steel_kg_usd !== null && (float) $model->gap_steel_kg_usd != 0.0) {
+            } elseif ($model->gap_steel_kg_usd !== null) {
                 $model->gap_steel_usd = round((float) $model->gap_steel_kg_usd * 1000, 4);
             } elseif ($model->quarter !== 'Q1' && ($sheetPrice > 0 || $coilPrice > 0)) {
                 $model->gap_steel_kg_usd = round($sheetPrice - $coilPrice, 4);
