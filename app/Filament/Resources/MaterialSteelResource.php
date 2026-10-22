@@ -42,17 +42,11 @@ class MaterialSteelResource extends Resource
         $steelSpec = $get('steel_spec');
 
         // Jika ada record historis dari kuartal sebelumnya untuk supplier & spec ini, ambil otomatis
-        if ($supplierId) {
+        if ($supplierId && ! empty($info['prev_quarter']) && ! empty($info['prev_year'])) {
             $prevRecord = MaterialSteel::where('supplier_id', $supplierId)
                 ->when($steelSpec, fn ($q) => $q->where('steel_spec', $steelSpec))
-                ->where(function ($q) use ($info) {
-                    $q->where('quarter', $info['prev_quarter'])
-                        ->where('year', $info['prev_year']);
-                })
-                ->orWhere(function ($q) use ($supplierId) {
-                    $q->where('supplier_id', $supplierId)
-                        ->orderBy('id', 'desc');
-                })
+                ->where('quarter', $info['prev_quarter'])
+                ->where('year', $info['prev_year'])
                 ->first();
 
             if ($prevRecord) {
@@ -324,6 +318,25 @@ class MaterialSteelResource extends Resource
                         Forms\Components\Section::make('2. Harga Bahan Baku & Kurs')
                             ->icon('heroicon-o-currency-dollar')
                             ->schema([
+                                Forms\Components\Radio::make('price_mode')
+                                    ->label('Mode Penetapan Harga')
+                                    ->options([
+                                        'baseline' => 'Data Awal / Baseline (Tanpa Perbandingan — Langsung Isi Harga Coil & Sheet)',
+                                        'adjustment' => 'Pembaruan Kuartalan (Ada Kenaikan / Gap MT)',
+                                    ])
+                                    ->default(fn (Get $get) => ($get('quarter') ?? 'Q1') === 'Q1' ? 'baseline' : 'adjustment')
+                                    ->live()
+                                    ->afterStateUpdated(function ($state, Set $set, Get $get) {
+                                        if ($state === 'baseline') {
+                                            $set('gap_steel_usd', 0);
+                                            $set('gap_steel_kg_usd', 0);
+                                            $set('fluktuasi_jfe', 0);
+                                            static::recalculateFormPrices($get, $set);
+                                        }
+                                    })
+                                    ->dehydrated(false)
+                                    ->columnSpanFull(),
+
                                 Forms\Components\TextInput::make('exchange_rate')
                                     ->label('Kurs USD (Rp)')
                                     ->numeric()
@@ -341,7 +354,7 @@ class MaterialSteelResource extends Resource
                                     })
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::recalculateFormPrices($get, $set))
-                                    ->columnSpan(1),
+                                    ->columnSpan(fn (Get $get) => $get('price_mode') === 'baseline' ? 6 : 2),
 
                                 Forms\Components\TextInput::make('coil_price')
                                     ->label('Harga Coil ($/Kg)')
@@ -352,7 +365,7 @@ class MaterialSteelResource extends Resource
                                     ->required()
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromCoil($get, $set))
-                                    ->columnSpan(1),
+                                    ->columnSpan(fn (Get $get) => $get('price_mode') === 'baseline' ? 3 : 2),
 
                                 Forms\Components\TextInput::make('gap_steel_usd')
                                     ->label('Kenaikan / Gap MT ($/MT)')
@@ -361,9 +374,10 @@ class MaterialSteelResource extends Resource
                                     ->prefix('$')
                                     ->placeholder('0.00 atau 120')
                                     ->default(0)
+                                    ->visible(fn (Get $get) => $get('price_mode') === 'adjustment')
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromGap($get, $set))
-                                    ->columnSpan(1),
+                                    ->columnSpan(2),
 
                                 Forms\Components\TextInput::make('sheet_price')
                                     ->label('Harga Sheet ($/Kg)')
@@ -374,22 +388,22 @@ class MaterialSteelResource extends Resource
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromSheet($get, $set))
                                     ->dehydrated()
-                                    ->columnSpan(1),
+                                    ->columnSpan(fn (Get $get) => $get('price_mode') === 'baseline' ? 3 : 2),
 
                                 Forms\Components\TextInput::make('coil_price_idr')
                                     ->label('Total Coil (IDR/Kg)')
                                     ->prefix('Rp')
                                     ->readOnly()
                                     ->dehydrated()
-                                    ->columnSpan(1),
+                                    ->columnSpan(fn (Get $get) => $get('price_mode') === 'baseline' ? 3 : 2),
 
                                 Forms\Components\TextInput::make('sheet_price_idr')
                                     ->label('Total Sheet (IDR/Kg)')
                                     ->prefix('Rp')
                                     ->readOnly()
                                     ->dehydrated()
-                                    ->columnSpan(1),
-                            ])->columns(3),
+                                    ->columnSpan(fn (Get $get) => $get('price_mode') === 'baseline' ? 3 : 2),
+                            ])->columns(6),
 
                         // SECTION 3: Catatan & Status (Collapsible)
                         Forms\Components\Section::make('3. Catatan & Status (Opsional)')

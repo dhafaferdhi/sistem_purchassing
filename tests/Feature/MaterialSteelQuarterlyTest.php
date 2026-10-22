@@ -490,4 +490,38 @@ class MaterialSteelQuarterlyTest extends TestCase
             ->set('selectedYear', '2027')
             ->assertCanSeeTableRecords([$q1Record1, $q1Record2]);
     }
+
+    public function test_can_create_initial_baseline_material_steel_without_comparison(): void
+    {
+        $this->actingAs($this->admin);
+
+        Livewire::test(CreateMaterialSteel::class)
+            ->assertFormFieldExists('price_mode')
+            ->assertFormSet(['price_mode' => 'baseline'])
+            ->fillForm([
+                'year' => 2026,
+                'quarter' => 'Q1',
+                'supplier_id' => $this->supplier->id,
+                'steel_spec' => 'SPCC-SD-BASELINE',
+                'double_thickness' => '1.2',
+                'exchange_rate' => 16000.0,
+                'coil_price' => 1.8500,
+                'sheet_price' => 1.9500,
+            ])
+            ->call('create')
+            ->assertHasNoFormErrors();
+
+        $this->assertDatabaseHas('material_steels', [
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'steel_spec' => 'SPCC-SD-BASELINE',
+            'double_thickness' => '1.2',
+            'coil_price' => 1.8500,
+            'coil_price_idr' => 29600.00,
+            'sheet_price' => 1.9500,
+            'sheet_price_idr' => 31200.00,
+            'exchange_rate' => 16000.0,
+        ]);
+    }
 }
