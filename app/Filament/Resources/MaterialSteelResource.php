@@ -573,14 +573,6 @@ class MaterialSteelResource extends Resource
                     ->alignRight()
                     ->sortable(),
 
-                Tables\Columns\TextColumn::make('exchange_rate')
-                    ->label('Ex Rate (IDR)')
-                    ->wrapHeader()
-                    ->description(fn (MaterialSteel $record) => $record->currency ? "Kurs {$record->currency->code} (Thn {$record->currency->year})" : null)
-                    ->formatStateUsing(fn ($state) => 'Rp '.number_format((float) $state, 0, ',', '.'))
-                    ->alignRight()
-                    ->sortable(),
-
                 Tables\Columns\TextColumn::make('coil_price')
                     ->label('Coil (USD)')
                     ->wrapHeader()

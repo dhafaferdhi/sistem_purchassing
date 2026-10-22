@@ -355,7 +355,7 @@ class MaterialSteelQuarterlyTest extends TestCase
             ->assertTableColumnExists('double_thickness')
             ->assertTableColumnExists('gap_steel_usd')
             ->assertTableColumnDoesNotExist('gap_steel_kg_usd')
-            ->assertTableColumnExists('exchange_rate')
+            ->assertTableColumnDoesNotExist('exchange_rate')
             ->assertTableColumnExists('coil_price')
             ->assertTableColumnExists('coil_price_idr')
             ->assertTableColumnExists('sheet_price')
