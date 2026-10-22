@@ -28,6 +28,44 @@ class MaterialSteelResource extends Resource
 
     protected static ?int $navigationSort = 2;
 
+    /**
+     * Format angka mata uang USD tanpa trailing zero yang tidak perlu (contoh: 1.1 alih-alih 1.1000, -20 alih-alih -20.00).
+     */
+    public static function formatUsd(mixed $value, ?string $currency = 'USD'): string
+    {
+        if ($value === null || $value === '') {
+            return '-';
+        }
+
+        $f = (float) $value;
+        if ($f == 0.0) {
+            return '-';
+        }
+
+        $formatted = rtrim(rtrim(number_format($f, 4, '.', ''), '0'), '.');
+
+        return $currency ? "{$currency} {$formatted}" : $formatted;
+    }
+
+    /**
+     * Format angka mata uang IDR bulat tanpa pecahan desimal sen (contoh: Rp 16.000).
+     */
+    public static function formatIdr(mixed $value, bool $withPrefix = true): string
+    {
+        if ($value === null || $value === '') {
+            return '-';
+        }
+
+        $f = (float) $value;
+        if ($f == 0.0) {
+            return '-';
+        }
+
+        $formatted = number_format(round($f), 0, ',', '.');
+
+        return $withPrefix ? "Rp {$formatted}" : $formatted;
+    }
+
     public static function updateHistoricalLookback(Get $get, Set $set): void
     {
         $quarter = $get('quarter') ?? 'Q1';
@@ -199,15 +237,15 @@ class MaterialSteelResource extends Resource
         $sheet = (float) ($get('sheet_price') ?? 0);
         $rate = (float) ($get('exchange_rate') ?? 1);
 
-        $coilIdr = round($coil * $rate, 2);
-        $sheetIdr = round($sheet * $rate, 2);
+        $coilIdr = round($coil * $rate);
+        $sheetIdr = round($sheet * $rate);
 
         $set('coil_price_idr', $coilIdr);
         $set('sheet_price_idr', $sheetIdr);
 
         $steelPrice = $coil > 0 ? $coil : $sheet;
         $set('steel_price', $steelPrice);
-        $set('steel_price_idr', round($steelPrice * $rate, 2));
+        $set('steel_price_idr', round($steelPrice * $rate));
     }
 
     public static function updatePricesFromCoil(Get $get, Set $set): void
@@ -215,11 +253,11 @@ class MaterialSteelResource extends Resource
         $coil = (float) ($get('coil_price') ?? 0);
         $rate = (float) ($get('exchange_rate') ?? 1);
 
-        $set('coil_price_idr', round($coil * $rate, 2));
+        $set('coil_price_idr', round($coil * $rate));
 
         $steelPrice = $coil > 0 ? $coil : ($get('sheet_price') ?? 0);
         $set('steel_price', $steelPrice);
-        $set('steel_price_idr', round($steelPrice * $rate, 2));
+        $set('steel_price_idr', round($steelPrice * $rate));
     }
 
     public static function updatePricesFromSheet(Get $get, Set $set): void
@@ -228,11 +266,11 @@ class MaterialSteelResource extends Resource
         $coil = (float) ($get('coil_price') ?? 0);
         $rate = (float) ($get('exchange_rate') ?? 1);
 
-        $set('sheet_price_idr', round($sheet * $rate, 2));
+        $set('sheet_price_idr', round($sheet * $rate));
 
         $steelPrice = $coil > 0 ? $coil : $sheet;
         $set('steel_price', $steelPrice);
-        $set('steel_price_idr', round($steelPrice * $rate, 2));
+        $set('steel_price_idr', round($steelPrice * $rate));
     }
 
     public static function updatePricesFromHrCr(Get $get, Set $set, ?string $source = null): void
@@ -577,9 +615,11 @@ class MaterialSteelResource extends Resource
 
                                         if ($found && $prevCoil !== null) {
                                             $prevRate = $get('prev_rate') ?? ($prevRecord?->exchange_rate ?? null);
-                                            $rateFormatted = $prevRate ? ' | Kurs Rp '.number_format((float) $prevRate, 0, ',', '.') : '';
+                                            $coilStr = static::formatUsd($prevCoil, '');
+                                            $sheetStr = static::formatUsd($prevSheet, '');
+                                            $rateFormatted = $prevRate ? ' | Kurs '.static::formatIdr($prevRate, true) : '';
 
-                                            return "📌 Ditemukan data acuan {$prevLabel}: Harga Coil \${$prevCoil} | Sheet \${$prevSheet}{$rateFormatted}. Harga dan Perubahan Dolar Rupiah otomatis ditarik sama dengan {$prevLabel}.";
+                                            return "📌 Ditemukan data acuan {$prevLabel}: Harga Coil \${$coilStr} | Sheet \${$sheetStr}{$rateFormatted}. Harga dan Perubahan Dolar Rupiah otomatis ditarik sama dengan {$prevLabel}.";
                                         }
 
                                         return 'ℹ️ Belum ada data di '.($prevLabel ?? 'Kuartal Sebelumnya').' untuk spesifikasi ini (Spesifikasi Baru). Silakan masukkan Harga Coil dan Sheet langsung di bawah.';
@@ -602,6 +642,7 @@ class MaterialSteelResource extends Resource
                                     ->prefix('$')
                                     ->placeholder('Contoh: -20 atau 50 (Hot Rolled: SPH, SAPH)')
                                     ->default(0)
+                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) $state : null)
                                     ->visible(function (Get $get, ?MaterialSteel $record) {
                                         $mode = $get('price_mode');
                                         if ($mode !== null) {
@@ -623,6 +664,7 @@ class MaterialSteelResource extends Resource
                                     ->prefix('$')
                                     ->placeholder('Contoh: -20 atau 100 (Cold Rolled: SPC, NSC)')
                                     ->default(0)
+                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) $state : null)
                                     ->visible(function (Get $get, ?MaterialSteel $record) {
                                         $mode = $get('price_mode');
                                         if ($mode !== null) {
@@ -647,17 +689,20 @@ class MaterialSteelResource extends Resource
                                     ->default(function (Get $get) {
                                         $prevRate = $get('prev_rate');
                                         if ($prevRate !== null && (float) $prevRate > 0) {
-                                            return (float) $prevRate;
+                                            return (int) round((float) $prevRate);
                                         }
 
                                         $year = (int) ($get('year') ?? date('Y'));
                                         $quarter = $get('quarter') ?? 'Q1';
 
-                                        return Currency::where('code', 'USD')->where('year', $year)->where('quarter', $quarter)->value('exchange_rate_to_idr')
+                                        $rate = Currency::where('code', 'USD')->where('year', $year)->where('quarter', $quarter)->value('exchange_rate_to_idr')
                                             ?? Currency::where('code', 'USD')->where('year', $year)->value('exchange_rate_to_idr')
                                             ?? Currency::where('code', 'USD')->latest('year')->value('exchange_rate_to_idr')
                                             ?? 16000;
+
+                                        return (int) round((float) $rate);
                                     })
+                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (int) round((float) $state) : null)
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::recalculateFormPrices($get, $set))
                                     ->required()
@@ -670,6 +715,7 @@ class MaterialSteelResource extends Resource
                                     ->prefix('$')
                                     ->placeholder('Contoh: 1.1206')
                                     ->required(fn (Get $get) => empty($get('sheet_price')))
+                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) $state : null)
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromCoil($get, $set))
                                     ->columnSpan(1),
@@ -681,6 +727,7 @@ class MaterialSteelResource extends Resource
                                     ->prefix('$')
                                     ->placeholder('Contoh: 1.1456')
                                     ->required(fn (Get $get) => empty($get('coil_price')))
+                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) $state : null)
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromSheet($get, $set))
                                     ->columnSpan(1),
@@ -690,6 +737,7 @@ class MaterialSteelResource extends Resource
                                     ->prefix('Rp')
                                     ->readOnly()
                                     ->dehydrated()
+                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (int) round((float) $state) : null)
                                     ->columnSpan(1),
 
                                 Forms\Components\TextInput::make('sheet_price_idr')
@@ -697,6 +745,7 @@ class MaterialSteelResource extends Resource
                                     ->prefix('Rp')
                                     ->readOnly()
                                     ->dehydrated()
+                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (int) round((float) $state) : null)
                                     ->columnSpan(1),
                             ])->columns(2),
 
@@ -771,7 +820,7 @@ class MaterialSteelResource extends Resource
                 Tables\Columns\TextColumn::make('hr_steel_usd')
                     ->label('HR Dolar/MT')
                     ->wrapHeader()
-                    ->formatStateUsing(fn ($state, MaterialSteel $record) => $state !== null && (float) $state != 0 ? "{$record->currency_code} ".number_format((float) $state, 2) : '-')
+                    ->formatStateUsing(fn ($state, MaterialSteel $record) => static::formatUsd($state, $record->currency_code))
                     ->weight('bold')
                     ->alignRight()
                     ->sortable(),
@@ -779,7 +828,7 @@ class MaterialSteelResource extends Resource
                 Tables\Columns\TextColumn::make('cr_steel_usd')
                     ->label('CR Dolar/MT')
                     ->wrapHeader()
-                    ->formatStateUsing(fn ($state, MaterialSteel $record) => $state !== null && (float) $state != 0 ? "{$record->currency_code} ".number_format((float) $state, 2) : '-')
+                    ->formatStateUsing(fn ($state, MaterialSteel $record) => static::formatUsd($state, $record->currency_code))
                     ->weight('bold')
                     ->alignRight()
                     ->sortable(),
@@ -787,35 +836,35 @@ class MaterialSteelResource extends Resource
                 Tables\Columns\TextColumn::make('exchange_rate')
                     ->label('Perubahan Dolar Rupiah')
                     ->wrapHeader()
-                    ->formatStateUsing(fn ($state) => $state && (float) $state > 0 ? 'Rp '.number_format((float) $state, 0, ',', '.') : '-')
+                    ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
                     ->alignRight()
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('coil_price')
                     ->label('Coil (USD)')
                     ->wrapHeader()
-                    ->formatStateUsing(fn ($state, MaterialSteel $record) => $state && (float) $state > 0 ? "{$record->currency_code} ".number_format((float) $state, 4) : '-')
+                    ->formatStateUsing(fn ($state, MaterialSteel $record) => static::formatUsd($state, $record->currency_code))
                     ->alignRight()
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('coil_price_idr')
                     ->label('Coil (IDR)')
                     ->wrapHeader()
-                    ->formatStateUsing(fn ($state) => $state && (float) $state > 0 ? 'Rp '.number_format((float) $state, 0, ',', '.') : '-')
+                    ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
                     ->alignRight()
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('sheet_price')
                     ->label('Sheet (USD)')
                     ->wrapHeader()
-                    ->formatStateUsing(fn ($state, MaterialSteel $record) => $state && (float) $state > 0 ? "{$record->currency_code} ".number_format((float) $state, 4) : '-')
+                    ->formatStateUsing(fn ($state, MaterialSteel $record) => static::formatUsd($state, $record->currency_code))
                     ->alignRight()
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('sheet_price_idr')
                     ->label('Sheet (IDR)')
                     ->wrapHeader()
-                    ->formatStateUsing(fn ($state) => $state && (float) $state > 0 ? 'Rp '.number_format((float) $state, 0, ',', '.') : '-')
+                    ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
                     ->alignRight()
                     ->sortable(),
 

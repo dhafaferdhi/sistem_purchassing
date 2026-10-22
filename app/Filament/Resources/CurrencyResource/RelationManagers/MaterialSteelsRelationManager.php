@@ -85,23 +85,23 @@ class MaterialSteelsRelationManager extends RelationManager
 
                 Tables\Columns\TextColumn::make('gap_steel_usd')
                     ->label('Gap/MT ($)')
-                    ->formatStateUsing(fn ($record) => $record->gap_steel_usd && (float) $record->gap_steel_usd != 0 ? ($record->currency_code ?? 'USD').' '.number_format((float) $record->gap_steel_usd, 4, ',', '.') : '-')
+                    ->formatStateUsing(fn ($record) => MaterialSteelResource::formatUsd($record->gap_steel_usd, $record->currency_code ?? 'USD'))
                     ->weight('bold')
                     ->alignRight(),
 
                 Tables\Columns\TextColumn::make('exchange_rate')
                     ->label('Kurs')
-                    ->formatStateUsing(fn ($state) => 'Rp '.number_format((float) $state, 0, ',', '.'))
+                    ->formatStateUsing(fn ($state) => MaterialSteelResource::formatIdr($state, true))
                     ->alignRight(),
 
                 Tables\Columns\TextColumn::make('coil_price')
                     ->label('Coil ($)')
-                    ->formatStateUsing(fn ($record) => $record->coil_price && (float) $record->coil_price > 0 ? ($record->currency_code ?? 'USD').' '.number_format((float) $record->coil_price, 4, ',', '.') : '-')
+                    ->formatStateUsing(fn ($record) => MaterialSteelResource::formatUsd($record->coil_price, $record->currency_code ?? 'USD'))
                     ->alignRight(),
 
                 Tables\Columns\TextColumn::make('sheet_price')
                     ->label('Sheet ($)')
-                    ->formatStateUsing(fn ($record) => $record->sheet_price && (float) $record->sheet_price > 0 ? ($record->currency_code ?? 'USD').' '.number_format((float) $record->sheet_price, 4, ',', '.') : '-')
+                    ->formatStateUsing(fn ($record) => MaterialSteelResource::formatUsd($record->sheet_price, $record->currency_code ?? 'USD'))
                     ->alignRight(),
 
                 Tables\Columns\TextColumn::make('status')
