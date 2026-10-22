@@ -26,6 +26,8 @@ class MaterialSteel extends Model
         'coil_price_idr',
         'sheet_price',
         'sheet_price_idr',
+        'hr_steel_usd',
+        'cr_steel_usd',
         'gap_steel_usd',
         'gap_steel_kg_usd',
         'gap_steel_idr',
@@ -75,6 +77,8 @@ class MaterialSteel extends Model
             'coil_price_idr' => 'decimal:2',
             'sheet_price' => 'decimal:4',
             'sheet_price_idr' => 'decimal:2',
+            'hr_steel_usd' => 'decimal:4',
+            'cr_steel_usd' => 'decimal:4',
             'gap_steel_usd' => 'decimal:4',
             'gap_steel_kg_usd' => 'decimal:4',
             'gap_steel_idr' => 'decimal:2',
@@ -131,6 +135,22 @@ class MaterialSteel extends Model
             $sheetPrice = (float) ($model->sheet_price ?? 0);
             $coilPrice = (float) ($model->coil_price ?? 0);
             $rate = (float) ($model->exchange_rate ?? 1);
+
+            // Sinkronisasi nilai HR Dolar/MT & CR Dolar/MT
+            $steelType = static::determineSteelType($model->steel_spec);
+            if ($steelType === 'HR') {
+                if ($model->hr_steel_usd !== null && (float) $model->hr_steel_usd != 0.0) {
+                    $model->gap_steel_usd = $model->hr_steel_usd;
+                } elseif ($model->gap_steel_usd !== null && (float) $model->gap_steel_usd != 0.0) {
+                    $model->hr_steel_usd = $model->gap_steel_usd;
+                }
+            } else {
+                if ($model->cr_steel_usd !== null && (float) $model->cr_steel_usd != 0.0) {
+                    $model->gap_steel_usd = $model->cr_steel_usd;
+                } elseif ($model->gap_steel_usd !== null && (float) $model->gap_steel_usd != 0.0) {
+                    $model->cr_steel_usd = $model->gap_steel_usd;
+                }
+            }
 
             // Perhitungan Rumus Gap Steel:
             // Gap / MT (USD) dan Gap / Kg (USD) [Rumus Excel: Gap / Kg = Gap / MT / 1000]
@@ -288,5 +308,31 @@ class MaterialSteel extends Model
         $spec = preg_replace('/\s+mm\s*$/i', '', $spec);
 
         return trim($spec);
+    }
+
+    /**
+     * Tentukan klasifikasi kategori baja: Hot Rolled (HR) atau Cold Rolled (CR).
+     */
+    public static function determineSteelType(?string $spec): string
+    {
+        $clean = strtoupper(trim((string) $spec));
+
+        // Hot Rolled: seri SPH (SPHC, SPHD, SPHE, SPH270, SPH440, SPH590), SAPH
+        if (str_starts_with($clean, 'SPH') || str_starts_with($clean, 'SAPH')) {
+            return 'HR';
+        }
+
+        // Cold Rolled: seri SPC (SPCC, SPCD, SPCE, SPC270, SPC440, SPC590, SPC980), NSC, dsb.
+        return 'CR';
+    }
+
+    public function isHotRolled(): bool
+    {
+        return static::determineSteelType($this->steel_spec) === 'HR';
+    }
+
+    public function isColdRolled(): bool
+    {
+        return static::determineSteelType($this->steel_spec) === 'CR';
     }
 }

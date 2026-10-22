@@ -16,6 +16,7 @@ class Material extends Model
         'supplier_id',
         'currency_id',
         'basic_rate',
+        'price_idr',
         'unit',
         'is_active',
     ];
@@ -24,6 +25,7 @@ class Material extends Model
     {
         return [
             'basic_rate' => 'decimal:4',
+            'price_idr' => 'decimal:2',
             'is_active' => 'boolean',
         ];
     }

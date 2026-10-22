@@ -172,8 +172,10 @@ class CreateMaterialSteel extends CreateRecord
         $exchangeRate = (float) ($data['exchange_rate'] ?? 1);
         $coilPrice = (float) ($data['coil_price'] ?? 0);
         $sheetPrice = (float) ($data['sheet_price'] ?? 0);
-
+        $prevCoil = $data['prev_coil_price'] ?? null;
+        $prevSheet = $data['prev_sheet_price'] ?? null;
         $priceMode = $data['price_mode'] ?? null;
+
         unset(
             $data['price_mode'],
             $data['prev_quarter_label'],
@@ -183,17 +185,80 @@ class CreateMaterialSteel extends CreateRecord
             $data['prev_rate'],
             $data['prev_quarter_info']
         );
-        $quarter = $data['quarter'] ?? 'Q1';
 
-        if ($priceMode === 'baseline' || ($quarter === 'Q1' && empty($data['gap_steel_usd']))) {
-            $data['gap_steel_usd'] = 0;
-            $data['gap_steel_kg_usd'] = 0;
+        $spec = $data['steel_spec'] ?? '';
+        $steelType = MaterialSteel::determineSteelType($spec);
+
+        $hrVal = isset($data['hr_steel_usd']) && $data['hr_steel_usd'] !== '' ? (float) $data['hr_steel_usd'] : null;
+        $crVal = isset($data['cr_steel_usd']) && $data['cr_steel_usd'] !== '' ? (float) $data['cr_steel_usd'] : null;
+        $gapVal = isset($data['gap_steel_usd']) && $data['gap_steel_usd'] !== '' ? (float) $data['gap_steel_usd'] : null;
+
+        if ($steelType === 'HR') {
+            if ($hrVal !== null && $hrVal != 0.0) {
+                $data['gap_steel_usd'] = $hrVal;
+            } elseif ($gapVal !== null && $gapVal != 0.0) {
+                $data['hr_steel_usd'] = $gapVal;
+                $data['gap_steel_usd'] = $gapVal;
+            }
+        } else {
+            if ($crVal !== null && $crVal != 0.0) {
+                $data['gap_steel_usd'] = $crVal;
+            } elseif ($gapVal !== null && $gapVal != 0.0) {
+                $data['cr_steel_usd'] = $gapVal;
+                $data['gap_steel_usd'] = $gapVal;
+            }
+        }
+
+        if ($priceMode === 'baseline') {
+            if ($quarter !== 'Q1' && ($data['coil_price'] ?? 0) > 0) {
+                $data['gap_steel_usd'] = 0;
+                $data['gap_steel_kg_usd'] = 0;
+                $data['hr_steel_usd'] = 0;
+                $data['cr_steel_usd'] = 0;
+            } else {
+                $data['gap_steel_usd'] = round(($sheetPrice - $coilPrice) * 1000, 4);
+                $data['gap_steel_kg_usd'] = round($data['gap_steel_usd'] / 1000, 4);
+            }
         } elseif (! empty($data['gap_steel_usd']) && (float) $data['gap_steel_usd'] != 0.0) {
             $data['gap_steel_usd'] = (float) $data['gap_steel_usd'];
             $data['gap_steel_kg_usd'] = round($data['gap_steel_usd'] / 1000, 4);
         } else {
             $data['gap_steel_usd'] = round(($sheetPrice - $coilPrice) * 1000, 4);
             $data['gap_steel_kg_usd'] = round($data['gap_steel_usd'] / 1000, 4);
+        }
+
+        // Jika mode adjustment, terapkan penyesuaian terhadap harga acuan kuartal sebelumnya
+        if ($priceMode === 'adjustment') {
+            if ($prevCoil === null && $prevSheet === null && ! empty($data['supplier_id']) && ! empty($spec)) {
+                $prevQ = match ($quarter) {
+                    'Q1' => 'Q4',
+                    'Q2' => 'Q1',
+                    'Q3' => 'Q2',
+                    'Q4' => 'Q3',
+                    default => 'Q1',
+                };
+                $prevY = ($quarter === 'Q1') ? ($year - 1) : $year;
+                $cleanSpec = MaterialSteel::cleanSteelSpec($spec);
+                $prev = MaterialSteel::where('supplier_id', $data['supplier_id'])
+                    ->where(function ($q) use ($spec, $cleanSpec) {
+                        $q->where('steel_spec', $cleanSpec)
+                            ->orWhere('steel_spec', $spec);
+                    })
+                    ->where('quarter', $prevQ)
+                    ->where('year', $prevY)
+                    ->first();
+                if ($prev) {
+                    $prevCoil = $prev->coil_price;
+                    $prevSheet = $prev->sheet_price;
+                }
+            }
+
+            if ($prevCoil !== null && (float) $prevCoil > 0 && ! empty($data['gap_steel_kg_usd'])) {
+                $coilPrice = round((float) $prevCoil + (float) $data['gap_steel_kg_usd'], 4);
+                $sheetPrice = round((float) $prevSheet + (float) $data['gap_steel_kg_usd'], 4);
+                $data['coil_price'] = $coilPrice;
+                $data['sheet_price'] = $sheetPrice;
+            }
         }
         $data['gap_steel_idr'] = round((float) $data['gap_steel_usd'] * $exchangeRate, 2);
 

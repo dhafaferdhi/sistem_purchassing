@@ -354,7 +354,8 @@ class MaterialSteelQuarterlyTest extends TestCase
         Livewire::test(ListMaterialSteels::class)
             ->assertTableColumnExists('steel_spec')
             ->assertTableColumnExists('double_thickness')
-            ->assertTableColumnExists('gap_steel_usd')
+            ->assertTableColumnExists('hr_steel_usd')
+            ->assertTableColumnExists('cr_steel_usd')
             ->assertTableColumnDoesNotExist('gap_steel_kg_usd')
             ->assertTableColumnExists('exchange_rate')
             ->assertTableColumnExists('coil_price')
@@ -492,8 +493,8 @@ class MaterialSteelQuarterlyTest extends TestCase
         $test = Livewire::test(CreateMaterialSteel::class)
             ->assertFormFieldExists('supplier_id')
             ->assertFormFieldExists('double_thickness')
-            ->assertFormFieldExists('gap_steel_usd')
-            ->assertFormFieldExists('gap_steel_kg_usd')
+            ->assertFormFieldExists('hr_steel_usd')
+            ->assertFormFieldExists('cr_steel_usd')
             ->assertFormFieldExists('exchange_rate');
 
         // Pastikan field gap_steel_idr sudah dihapus dari form
@@ -769,5 +770,133 @@ class MaterialSteelQuarterlyTest extends TestCase
             'sheet_price' => 1.9500,
             'gap_steel_usd' => 10.0,
         ]);
+    }
+
+    public function test_create_q2_with_hr_dolar_mt_calculates_hot_rolled_prices_accurately(): void
+    {
+        $this->actingAs($this->admin);
+
+        // Baseline Q1 untuk Hot Rolled (SPH270C-OD)
+        MaterialSteel::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'steel_spec' => 'SPH270C-OD',
+            'double_thickness' => '1.6',
+            'coil_price' => 0.9940,
+            'sheet_price' => 1.0040,
+            'exchange_rate' => 17796.0,
+            'currency_id' => $this->currency->id,
+        ]);
+
+        // Simulasikan Livewire form create Q2 dengan HR Dolar/MT = -20$/MT (-0.020 $/kg)
+        Livewire::test(CreateMaterialSteel::class)
+            ->fillForm([
+                'year' => 2026,
+                'quarter' => 'Q2',
+                'supplier_id' => $this->supplier->id,
+                'steel_spec' => 'SPH270C-OD',
+                'double_thickness' => '1.6',
+                'price_mode' => 'adjustment',
+                'hr_steel_usd' => -20.0,
+                'exchange_rate' => 17796.0,
+            ])
+            ->call('create')
+            ->assertHasNoFormErrors();
+
+        // Ekspektasi Coil: 0.9940 + (-0.02) = 0.9740, IDR = 0.9740 * 17796 = 17333.30
+        // Ekspektasi Sheet: 1.0040 + (-0.02) = 0.9840, IDR = 0.9840 * 17796 = 17511.26
+        $this->assertDatabaseHas('material_steels', [
+            'year' => 2026,
+            'quarter' => 'Q2',
+            'steel_spec' => 'SPH270C-OD',
+            'double_thickness' => '1.6',
+            'coil_price' => 0.9740,
+            'sheet_price' => 0.9840,
+            'hr_steel_usd' => -20.0,
+            'coil_price_idr' => 17333.30,
+            'sheet_price_idr' => 17511.26,
+        ]);
+    }
+
+    public function test_create_q2_with_cr_dolar_mt_calculates_cold_rolled_prices_accurately(): void
+    {
+        $this->actingAs($this->admin);
+
+        // Baseline Q1 untuk Cold Rolled (SPC270C)
+        MaterialSteel::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'steel_spec' => 'SPC270C',
+            'double_thickness' => '0.5',
+            'coil_price' => 0.9240,
+            'sheet_price' => 0.9340,
+            'exchange_rate' => 17796.0,
+            'currency_id' => $this->currency->id,
+        ]);
+
+        // Simulasikan Livewire form create Q2 dengan CR Dolar/MT = +100$/MT (+0.100 $/kg)
+        Livewire::test(CreateMaterialSteel::class)
+            ->fillForm([
+                'year' => 2026,
+                'quarter' => 'Q2',
+                'supplier_id' => $this->supplier->id,
+                'steel_spec' => 'SPC270C',
+                'double_thickness' => '0.5',
+                'price_mode' => 'adjustment',
+                'cr_steel_usd' => 100.0,
+                'exchange_rate' => 17796.0,
+            ])
+            ->call('create')
+            ->assertHasNoFormErrors();
+
+        // Ekspektasi Coil: 0.9240 + 0.100 = 1.0240, IDR = 1.0240 * 17796 = 18223.10
+        // Ekspektasi Sheet: 0.9340 + 0.100 = 1.0340, IDR = 1.0340 * 17796 = 18401.06
+        $this->assertDatabaseHas('material_steels', [
+            'year' => 2026,
+            'quarter' => 'Q2',
+            'steel_spec' => 'SPC270C',
+            'double_thickness' => '0.5',
+            'coil_price' => 1.0240,
+            'sheet_price' => 1.0340,
+            'cr_steel_usd' => 100.0,
+            'coil_price_idr' => 18223.10,
+            'sheet_price_idr' => 18401.06,
+        ]);
+    }
+
+    public function test_excel_matrix_layout_extracts_hr_and_cr_dolar_mt(): void
+    {
+        $grid = [
+            1 => [0 => '', 1 => '', 2 => '17500', 6 => '17796'],
+            2 => [0 => '', 1 => '', 2 => 'Q3-2026 A.R (HR +0$/MT  CR +0$/MT)', 6 => 'Q4-2026 A.R (HR -20$/MT  CR -20$/MT)'],
+            3 => [0 => 'CAT', 1 => 'SPEC', 2 => 'AR - COIL ($)', 3 => 'AR - COIL (IDR)', 4 => 'AR SHEET ($)', 5 => 'AR - SHEET (IDR)', 6 => 'AR - COIL ($)', 7 => 'AR - COIL (IDR)', 8 => 'AR SHEET ($)', 9 => 'AR - SHEET (IDR)'],
+            4 => [0 => 'HOT', 1 => 'SPH270C-OD T1.6', 2 => '0.9940', 3 => '17395.00', 4 => '1.0040', 5 => '17570.00', 6 => '0.9740', 7 => '17333.30', 8 => '0.9840', 9 => '17511.26'],
+            5 => [0 => 'COLD', 1 => 'SPC270C T0.5', 2 => '1.0440', 3 => '18270.00', 4 => '1.0540', 5 => '18445.00', 6 => '1.0240', 7 => '18223.10', 8 => '1.0340', 9 => '18401.06'],
+        ];
+
+        $parsed = ExcelImportService::detectQuarterlyMatrixLayout($grid, [
+            'year' => 2026,
+            'quarter' => 'Q4',
+            'supplier_name' => 'PT HSSI',
+        ]);
+
+        $this->assertNotNull($parsed);
+        $this->assertCount(2, $parsed['data_rows']);
+
+        // Row 1 (SPH270C-OD: Hot Rolled)
+        $this->assertEquals(-20.0, $parsed['data_rows'][0]['hr_steel_usd']);
+        $this->assertEquals('SPH270C-OD', $parsed['data_rows'][0]['steel_spec']);
+        $this->assertEquals(0.9740, $parsed['data_rows'][0]['coil_price']);
+
+        // Row 2 (SPC270C: Cold Rolled)
+        $this->assertEquals(-20.0, $parsed['data_rows'][1]['cr_steel_usd']);
+        $this->assertEquals('SPC270C', $parsed['data_rows'][1]['steel_spec']);
+        $this->assertEquals(1.0240, $parsed['data_rows'][1]['coil_price']);
     }
 }

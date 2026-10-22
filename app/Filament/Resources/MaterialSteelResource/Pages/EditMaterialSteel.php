@@ -34,9 +34,24 @@ class EditMaterialSteel extends EditRecord
     protected function mutateFormDataBeforeFill(array $data): array
     {
         $quarter = $data['quarter'] ?? 'Q1';
+        $spec = $data['steel_spec'] ?? '';
+        $steelType = MaterialSteel::determineSteelType($spec);
+
+        $hasHr = isset($data['hr_steel_usd']) && $data['hr_steel_usd'] !== null && (float) $data['hr_steel_usd'] != 0.0;
+        $hasCr = isset($data['cr_steel_usd']) && $data['cr_steel_usd'] !== null && (float) $data['cr_steel_usd'] != 0.0;
         $hasGap = isset($data['gap_steel_usd']) && (float) $data['gap_steel_usd'] != 0.0;
 
-        $data['price_mode'] = ($quarter === 'Q1' && ! $hasGap) ? 'baseline' : 'adjustment';
+        if (! $hasHr && ! $hasCr && $hasGap) {
+            if ($steelType === 'HR') {
+                $data['hr_steel_usd'] = $data['gap_steel_usd'];
+                $hasHr = true;
+            } else {
+                $data['cr_steel_usd'] = $data['gap_steel_usd'];
+                $hasCr = true;
+            }
+        }
+
+        $data['price_mode'] = ($quarter === 'Q1' && ! $hasHr && ! $hasCr && ! $hasGap) ? 'baseline' : 'adjustment';
 
         return $data;
     }
@@ -72,6 +87,35 @@ class EditMaterialSteel extends EditRecord
         $exchangeRate = (float) ($data['exchange_rate'] ?? 1);
         $coilPrice = (float) ($data['coil_price'] ?? 0);
         $sheetPrice = (float) ($data['sheet_price'] ?? 0);
+
+        $spec = $data['steel_spec'] ?? '';
+        $steelType = MaterialSteel::determineSteelType($spec);
+
+        $hrVal = isset($data['hr_steel_usd']) && $data['hr_steel_usd'] !== '' ? (float) $data['hr_steel_usd'] : null;
+        $crVal = isset($data['cr_steel_usd']) && $data['cr_steel_usd'] !== '' ? (float) $data['cr_steel_usd'] : null;
+        $gapVal = isset($data['gap_steel_usd']) && $data['gap_steel_usd'] !== '' ? (float) $data['gap_steel_usd'] : null;
+
+        $currentRecordGap = (float) ($this->record->gap_steel_usd ?? 0);
+
+        if ($steelType === 'HR') {
+            if ($gapVal !== null && $gapVal != $currentRecordGap) {
+                $data['hr_steel_usd'] = $gapVal;
+                $data['gap_steel_usd'] = $gapVal;
+            } elseif ($hrVal !== null && $hrVal != 0.0) {
+                $data['gap_steel_usd'] = $hrVal;
+            } elseif ($gapVal !== null) {
+                $data['hr_steel_usd'] = $gapVal;
+            }
+        } else {
+            if ($gapVal !== null && $gapVal != $currentRecordGap) {
+                $data['cr_steel_usd'] = $gapVal;
+                $data['gap_steel_usd'] = $gapVal;
+            } elseif ($crVal !== null && $crVal != 0.0) {
+                $data['gap_steel_usd'] = $crVal;
+            } elseif ($gapVal !== null) {
+                $data['cr_steel_usd'] = $gapVal;
+            }
+        }
 
         if (! isset($data['gap_steel_usd']) || $data['gap_steel_usd'] === null) {
             $data['gap_steel_usd'] = 0;

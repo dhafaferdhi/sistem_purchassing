@@ -218,6 +218,8 @@ class ExcelImportService
             'double_thickness' => ['double_thickness', 'thickness', 'thickness(mm)', 'thickness_mm', 'ketebalan', 'tebal', 'thick', 'tikhnes', 't', 'thickness_mm', 'ketebalan_mm'],
             'size' => ['size', 'ukuran', 'dimensi', 'dimension', 'ukuran_size', 'size_material'],
             'berat' => ['berat', 'weight', 'berat_kg', 'weight_kg', 'berat(kg)', 'weight(kg)', 'berat_part'],
+            'hr_steel_usd' => ['hr_steel_usd', 'hr dolar/mt', 'hr_dolar_mt', 'hr dolar / mt', 'hr_dolar/mt', 'hr_mt', 'hr ($/mt)', 'hr $/mt', 'hr_usd_mt', 'hr dolar/ mt'],
+            'cr_steel_usd' => ['cr_steel_usd', 'cr dolar/mt', 'cr_dolar_mt', 'cr dolar / mt', 'cr_dolar/mt', 'cr_mt', 'cr ($/mt)', 'cr $/mt', 'cr_usd_mt', 'cr dolar/ mt'],
             'gap_steel_usd' => ['gap_steel_usd', 'gap/mt', 'gap/mt(usd)', 'gap_mt', 'gap_mt_usd', 'gap_usd', 'gap/mt_usd', 'gap_steel_mt', 'gap_mt_usd'],
             'gap_steel_kg_usd' => ['gap_steel_kg_usd', 'gap/kg', 'gap/kg(usd)', 'gap_kg', 'gap_kg_usd', 'gap/kg_usd', 'gap_steel_kg'],
             'exchange_rate' => ['exchange_rate', 'ex_rate', 'ex_rate(idr)', 'kurs', 'kurs_idr', 'rate', 'ex_rate_idr', 'kurs_usd', 'ex_rate_kurs', 'kurs_usd_idr'],
@@ -259,9 +261,21 @@ class ExcelImportService
                         }
                     }
 
-                    // Cari Gap MT dari teks header, misal "HR -20$/MT"
+                    // Cari penyesuaian HR dan CR dari teks header, misal "Q4-2026 A.R (HR -20$/MT  CR -20$/MT)"
+                    $hrMt = null;
+                    $crMt = null;
+
+                    if (preg_match('/HR\s*([+-]?\d+(?:[.,]\d+)?)\s*\$\s*\/\s*MT/i', (string) $val, $hm)) {
+                        $hrMt = (float) str_replace(',', '.', $hm[1]);
+                    }
+                    if (preg_match('/CR\s*([+-]?\d+(?:[.,]\d+)?)\s*\$\s*\/\s*MT/i', (string) $val, $cm)) {
+                        $crMt = (float) str_replace(',', '.', $cm[1]);
+                    }
+
                     $gapMt = 0.0;
-                    if (preg_match('/([+-]?\d+(?:[.,]\d+)?)\s*\$\s*\/\s*MT/i', (string) $val, $gm)) {
+                    if ($hrMt !== null) {
+                        $gapMt = $hrMt;
+                    } elseif (preg_match('/([+-]?\d+(?:[.,]\d+)?)\s*\$\s*\/\s*MT/i', (string) $val, $gm)) {
                         $gapMt = (float) str_replace(',', '.', $gm[1]);
                     }
 
@@ -271,6 +285,8 @@ class ExcelImportService
                         'col_start' => $colIdx,
                         'header_row' => $rIdx,
                         'rate' => $rate,
+                        'hr_mt' => $hrMt,
+                        'cr_mt' => $crMt,
                         'gap_mt' => $gapMt,
                         'raw_title' => $val,
                     ];
@@ -385,9 +401,18 @@ class ExcelImportService
             }
 
             $code = trim((string) ($grid[$r][2] ?? ''));
-            $gapMt = $selectedPeriod['gap_mt'];
-            if ($gapMt == 0.0 && $coilUsd > 0 && $sheetUsd > 0) {
-                $gapMt = round(($sheetUsd - $coilUsd) * 1000, 4);
+            $steelType = MaterialSteel::determineSteelType($spec);
+            $periodHr = $selectedPeriod['hr_mt'] ?? null;
+            $periodCr = $selectedPeriod['cr_mt'] ?? null;
+
+            if ($steelType === 'HR') {
+                $appliedGap = $periodHr !== null ? $periodHr : $selectedPeriod['gap_mt'];
+            } else {
+                $appliedGap = $periodCr !== null ? $periodCr : ($periodHr !== null ? $periodHr : $selectedPeriod['gap_mt']);
+            }
+
+            if ($appliedGap == 0.0 && $coilUsd > 0 && $sheetUsd > 0) {
+                $appliedGap = round(($sheetUsd - $coilUsd) * 1000, 4);
             }
 
             $size = ! empty($thickness) ? "{$thickness} x 1219 x C" : '';
@@ -406,9 +431,11 @@ class ExcelImportService
                 'coil_price_idr' => $coilIdr > 0 ? $coilIdr : round($coilUsd * $rate, 2),
                 'sheet_price' => $sheetUsd,
                 'sheet_price_idr' => $sheetIdr > 0 ? $sheetIdr : round($sheetUsd * $rate, 2),
-                'gap_steel_usd' => $gapMt,
-                'gap_steel_kg_usd' => round($gapMt / 1000, 4),
-                'fluktuasi_jfe' => round($gapMt / 1000, 4),
+                'hr_steel_usd' => ($steelType === 'HR') ? $appliedGap : $periodHr,
+                'cr_steel_usd' => ($steelType === 'CR') ? $appliedGap : $periodCr,
+                'gap_steel_usd' => $appliedGap,
+                'gap_steel_kg_usd' => round($appliedGap / 1000, 4),
+                'fluktuasi_jfe' => round($appliedGap / 1000, 4),
                 'status' => 'Active',
                 'notes' => "Diimpor dari Excel: {$selectedPeriod['quarter']}-{$selectedPeriod['year']} ({$selectedPeriod['raw_title']})",
             ];
@@ -706,9 +733,31 @@ class ExcelImportService
             $coilPrice = $sheetPrice;
         }
 
-        // Gap USD per MT & per KG (bisa bernilai negatif, misal -20$/MT)
+        // Penyesuaian HR Dolar/MT & CR Dolar/MT serta fallback Gap USD per MT
+        $steelType = MaterialSteel::determineSteelType($spec);
+
+        $hasExplicitHr = isset($row['hr_steel_usd']) && $row['hr_steel_usd'] !== '' && $row['hr_steel_usd'] !== null;
+        $hrUsd = $hasExplicitHr ? static::cleanNumeric($row['hr_steel_usd']) : null;
+
+        $hasExplicitCr = isset($row['cr_steel_usd']) && $row['cr_steel_usd'] !== '' && $row['cr_steel_usd'] !== null;
+        $crUsd = $hasExplicitCr ? static::cleanNumeric($row['cr_steel_usd']) : null;
+
         $hasExplicitGap = isset($row['gap_steel_usd']) && $row['gap_steel_usd'] !== '' && $row['gap_steel_usd'] !== null;
         $gapUsd = $hasExplicitGap ? static::cleanNumeric($row['gap_steel_usd']) : null;
+
+        if ($gapUsd === null) {
+            if ($steelType === 'HR' && $hrUsd !== null) {
+                $gapUsd = $hrUsd;
+            } elseif ($steelType === 'CR' && $crUsd !== null) {
+                $gapUsd = $crUsd;
+            }
+        }
+        if ($hrUsd === null && $steelType === 'HR' && $gapUsd !== null) {
+            $hrUsd = $gapUsd;
+        }
+        if ($crUsd === null && $steelType === 'CR' && $gapUsd !== null) {
+            $crUsd = $gapUsd;
+        }
 
         $hasExplicitGapKg = isset($row['gap_steel_kg_usd']) && $row['gap_steel_kg_usd'] !== '' && $row['gap_steel_kg_usd'] !== null;
         $gapKgUsd = $hasExplicitGapKg ? static::cleanNumeric($row['gap_steel_kg_usd']) : null;
@@ -756,6 +805,8 @@ class ExcelImportService
             'coil_price_idr' => $coilPriceIdr,
             'sheet_price' => $sheetPrice,
             'sheet_price_idr' => $sheetPriceIdr,
+            'hr_steel_usd' => $hrUsd,
+            'cr_steel_usd' => $crUsd,
             'gap_steel_usd' => $gapUsd,
             'gap_steel_kg_usd' => $gapKgUsd,
             'fluktuasi_jfe' => static::cleanNumeric($row['fluktuasi_jfe'] ?? $gapKgUsd),
@@ -1091,8 +1142,8 @@ class ExcelImportService
             'Supplier Name',
             'Spec',
             'Thickness(mm)',
-            'Gap/MT (USD)',
-            'Gap/Kg (USD)',
+            'HR Dolar/MT',
+            'CR Dolar/MT',
             'Ex Rate (IDR)',
             'Coil (USD)',
             'Sheet (USD)',
@@ -1107,9 +1158,9 @@ class ExcelImportService
                 'PT HSSI',
                 'SPCC-SD 1.2mm',
                 '1.2',
-                '100',
-                '0.1',
-                '16000',
+                '0',
+                '-20',
+                '17796',
                 '1.95',
                 '2.05',
                 'Active',
@@ -1121,9 +1172,9 @@ class ExcelImportService
                 'PT USCI',
                 'SPHC 2.0mm',
                 '2.0',
-                '100',
-                '0.1',
-                '16000',
+                '-20',
+                '0',
+                '17796',
                 '2.00',
                 '2.10',
                 'Active',

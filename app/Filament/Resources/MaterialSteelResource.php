@@ -140,14 +140,41 @@ class MaterialSteelResource extends Resource
             $set('prev_sheet_price', (float) $prev->sheet_price);
             $set('prev_rate', (float) $prev->exchange_rate);
 
-            // Jika dalam mode adjustment, otomatis terapkan harga baru dari gap_steel_usd
+            // Jika dalam mode adjustment, otomatis terapkan harga baru dari HR / CR Dolar MT
             $mode = $get('price_mode');
             if ($mode === 'adjustment') {
-                $gapMt = (float) ($get('gap_steel_usd') ?? 0);
-                $gapKg = round($gapMt / 1000, 4);
+                $spec = $get('steel_spec');
+                $steelType = MaterialSteel::determineSteelType($spec);
 
-                $newCoil = round((float) $prev->coil_price + $gapKg, 4);
-                $newSheet = round((float) $prev->sheet_price + $gapKg, 4);
+                $hrMt = $get('hr_steel_usd');
+                $crMt = $get('cr_steel_usd');
+                $gapMt = $get('gap_steel_usd');
+
+                if ($steelType === 'HR') {
+                    if ($hrMt !== null && $hrMt !== '' && (float) $hrMt != 0.0) {
+                        $appliedMt = (float) $hrMt;
+                    } elseif ($gapMt !== null && $gapMt !== '' && (float) $gapMt != 0.0) {
+                        $appliedMt = (float) $gapMt;
+                        $set('hr_steel_usd', $appliedMt);
+                    } else {
+                        $appliedMt = (float) ($hrMt ?? $gapMt ?? 0);
+                    }
+                } else {
+                    if ($crMt !== null && $crMt !== '' && (float) $crMt != 0.0) {
+                        $appliedMt = (float) $crMt;
+                    } elseif ($gapMt !== null && $gapMt !== '' && (float) $gapMt != 0.0) {
+                        $appliedMt = (float) $gapMt;
+                        $set('cr_steel_usd', $appliedMt);
+                    } else {
+                        $appliedMt = (float) ($crMt ?? $gapMt ?? 0);
+                    }
+                }
+
+                $set('gap_steel_usd', $appliedMt);
+                $appliedKg = round($appliedMt / 1000, 4);
+
+                $newCoil = round((float) $prev->coil_price + $appliedKg, 4);
+                $newSheet = round((float) $prev->sheet_price + $appliedKg, 4);
 
                 $set('coil_price', $newCoil);
                 $set('sheet_price', $newSheet);
@@ -204,12 +231,40 @@ class MaterialSteelResource extends Resource
         $set('steel_price_idr', round($steelPrice * $rate, 2));
     }
 
-    public static function updatePricesFromGap(Get $get, Set $set): void
+    public static function updatePricesFromHrCr(Get $get, Set $set, ?string $source = null): void
     {
-        $gapMt = (float) ($get('gap_steel_usd') ?? 0);
-        $gapKg = round($gapMt / 1000, 4);
-        $set('gap_steel_kg_usd', $gapKg);
-        $set('fluktuasi_jfe', $gapKg);
+        $spec = $get('steel_spec');
+        $steelType = MaterialSteel::determineSteelType($spec);
+
+        $hrMt = $get('hr_steel_usd');
+        $crMt = $get('cr_steel_usd');
+        $gapMt = $get('gap_steel_usd');
+
+        // Tentukan penyesuaian yang berlaku berdasarkan kategori material baja
+        if ($steelType === 'HR') {
+            if ($hrMt !== null && $hrMt !== '' && (float) $hrMt != 0.0) {
+                $appliedMt = (float) $hrMt;
+            } elseif ($gapMt !== null && $gapMt !== '' && (float) $gapMt != 0.0) {
+                $appliedMt = (float) $gapMt;
+                $set('hr_steel_usd', $appliedMt);
+            } else {
+                $appliedMt = (float) ($hrMt ?? $gapMt ?? 0);
+            }
+        } else {
+            if ($crMt !== null && $crMt !== '' && (float) $crMt != 0.0) {
+                $appliedMt = (float) $crMt;
+            } elseif ($gapMt !== null && $gapMt !== '' && (float) $gapMt != 0.0) {
+                $appliedMt = (float) $gapMt;
+                $set('cr_steel_usd', $appliedMt);
+            } else {
+                $appliedMt = (float) ($crMt ?? $gapMt ?? 0);
+            }
+        }
+
+        $set('gap_steel_usd', $appliedMt);
+        $appliedKg = round($appliedMt / 1000, 4);
+        $set('gap_steel_kg_usd', $appliedKg);
+        $set('fluktuasi_jfe', $appliedKg);
 
         $prevCoil = $get('prev_coil_price');
         $prevSheet = $get('prev_sheet_price');
@@ -221,16 +276,21 @@ class MaterialSteelResource extends Resource
         }
 
         if ($prevCoil !== null && (float) $prevCoil > 0) {
-            $newCoil = round((float) $prevCoil + $gapKg, 4);
+            $newCoil = round((float) $prevCoil + $appliedKg, 4);
             $set('coil_price', $newCoil);
         }
 
         if ($prevSheet !== null && (float) $prevSheet > 0) {
-            $newSheet = round((float) $prevSheet + $gapKg, 4);
+            $newSheet = round((float) $prevSheet + $appliedKg, 4);
             $set('sheet_price', $newSheet);
         }
 
         static::recalculateFormPrices($get, $set);
+    }
+
+    public static function updatePricesFromGap(Get $get, Set $set): void
+    {
+        static::updatePricesFromHrCr($get, $set);
     }
 
     public static function form(Form $form): Form
@@ -282,6 +342,8 @@ class MaterialSteelResource extends Resource
                                     ->afterStateUpdated(function (Get $get, Set $set, ?string $state) {
                                         if ($state === 'Q1') {
                                             $set('price_mode', 'baseline');
+                                            $set('hr_steel_usd', 0);
+                                            $set('cr_steel_usd', 0);
                                             $set('gap_steel_usd', 0);
                                             $set('gap_steel_kg_usd', 0);
                                         } else {
@@ -420,7 +482,7 @@ class MaterialSteelResource extends Resource
                                     ->label('Mode Penetapan Harga')
                                     ->options([
                                         'baseline' => 'Data Awal / Baseline (Tanpa Perbandingan — Langsung Isi Harga Coil & Sheet)',
-                                        'adjustment' => 'Pembaruan Kuartalan (Ada Kenaikan / Penurunan Gap MT)',
+                                        'adjustment' => 'Pembaruan Kuartalan (Kenaikan / Penurunan HR / CR Dolar MT)',
                                     ])
                                     ->default(fn (Get $get) => ($get('quarter') ?? 'Q1') === 'Q1' ? 'baseline' : 'adjustment')
                                     ->formatStateUsing(function ($state, Get $get, ?MaterialSteel $record) {
@@ -428,9 +490,11 @@ class MaterialSteelResource extends Resource
                                             return $state;
                                         }
                                         if ($record) {
+                                            $hasHr = $record->hr_steel_usd !== null && (float) $record->hr_steel_usd != 0.0;
+                                            $hasCr = $record->cr_steel_usd !== null && (float) $record->cr_steel_usd != 0.0;
                                             $hasGap = $record->gap_steel_usd !== null && (float) $record->gap_steel_usd != 0.0;
 
-                                            return ($record->quarter === 'Q1' && ! $hasGap) ? 'baseline' : 'adjustment';
+                                            return ($record->quarter === 'Q1' && ! $hasHr && ! $hasCr && ! $hasGap) ? 'baseline' : 'adjustment';
                                         }
 
                                         return ($get('quarter') ?? 'Q1') === 'Q1' ? 'baseline' : 'adjustment';
@@ -438,6 +502,8 @@ class MaterialSteelResource extends Resource
                                     ->live()
                                     ->afterStateUpdated(function ($state, Set $set, Get $get) {
                                         if ($state === 'baseline') {
+                                            $set('hr_steel_usd', 0);
+                                            $set('cr_steel_usd', 0);
                                             $set('gap_steel_usd', 0);
                                             $set('gap_steel_kg_usd', 0);
                                             $set('fluktuasi_jfe', 0);
@@ -509,7 +575,7 @@ class MaterialSteelResource extends Resource
                                         }
 
                                         if ($found && $prevCoil !== null) {
-                                            return "📌 Ditemukan data acuan {$prevLabel}: Harga Coil \${$prevCoil} | Sheet \${$prevSheet}. Masukkan Kenaikan/Penurunan Gap MT di bawah untuk menghitung harga baru secara otomatis.";
+                                            return "📌 Ditemukan data acuan {$prevLabel}: Harga Coil \${$prevCoil} | Sheet \${$prevSheet}. Masukkan penyesuaian HR Dolar/MT atau CR Dolar/MT di bawah untuk menghitung harga baru secara otomatis.";
                                         }
 
                                         return 'ℹ️ Belum ada data di '.($prevLabel ?? 'Kuartal Sebelumnya').' untuk spesifikasi ini (Spesifikasi Baru). Silakan masukkan Harga Coil dan Sheet langsung di bawah.';
@@ -525,12 +591,12 @@ class MaterialSteelResource extends Resource
                                     })
                                     ->columnSpanFull(),
 
-                                Forms\Components\TextInput::make('gap_steel_usd')
-                                    ->label('Kenaikan / Penurunan Gap MT ($/MT)')
+                                Forms\Components\TextInput::make('hr_steel_usd')
+                                    ->label('HR Dolar / MT ($/MT)')
                                     ->numeric()
                                     ->step(0.0001)
                                     ->prefix('$')
-                                    ->placeholder('Contoh: 0.5 atau -20 (0 jika tidak ada perubahan)')
+                                    ->placeholder('Contoh: -20 atau 50 (Hot Rolled: SPH, SAPH)')
                                     ->default(0)
                                     ->visible(function (Get $get, ?MaterialSteel $record) {
                                         $mode = $get('price_mode');
@@ -538,18 +604,36 @@ class MaterialSteelResource extends Resource
                                             return $mode === 'adjustment';
                                         }
                                         $quarter = $get('quarter') ?? $record?->quarter ?? 'Q1';
-                                        $hasGap = $record && $record->gap_steel_usd !== null && (float) $record->gap_steel_usd != 0.0;
+                                        $hasAdj = $record && (($record->hr_steel_usd !== null && (float) $record->hr_steel_usd != 0.0) || ($record->gap_steel_usd !== null && (float) $record->gap_steel_usd != 0.0));
 
-                                        return $quarter !== 'Q1' || $hasGap;
+                                        return $quarter !== 'Q1' || $hasAdj;
                                     })
                                     ->live(onBlur: true)
-                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromGap($get, $set))
-                                    ->columnSpan(function (Get $get, ?MaterialSteel $record) {
-                                        $mode = $get('price_mode');
-                                        $isAdj = $mode !== null ? ($mode === 'adjustment') : (($get('quarter') ?? $record?->quarter ?? 'Q1') !== 'Q1');
+                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromHrCr($get, $set, 'HR'))
+                                    ->columnSpan(1),
 
-                                        return $isAdj ? 1 : 2;
-                                    }),
+                                Forms\Components\TextInput::make('cr_steel_usd')
+                                    ->label('CR Dolar / MT ($/MT)')
+                                    ->numeric()
+                                    ->step(0.0001)
+                                    ->prefix('$')
+                                    ->placeholder('Contoh: -20 atau 100 (Cold Rolled: SPC, NSC)')
+                                    ->default(0)
+                                    ->visible(function (Get $get, ?MaterialSteel $record) {
+                                        $mode = $get('price_mode');
+                                        if ($mode !== null) {
+                                            return $mode === 'adjustment';
+                                        }
+                                        $quarter = $get('quarter') ?? $record?->quarter ?? 'Q1';
+                                        $hasAdj = $record && (($record->cr_steel_usd !== null && (float) $record->cr_steel_usd != 0.0) || ($record->gap_steel_usd !== null && (float) $record->gap_steel_usd != 0.0));
+
+                                        return $quarter !== 'Q1' || $hasAdj;
+                                    })
+                                    ->live(onBlur: true)
+                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromHrCr($get, $set, 'CR'))
+                                    ->columnSpan(1),
+
+                                Forms\Components\Hidden::make('gap_steel_usd')->default(0),
 
                                 Forms\Components\TextInput::make('exchange_rate')
                                     ->label('Perubahan Dolar Rupiah (Kurs IDR)')
@@ -568,7 +652,7 @@ class MaterialSteelResource extends Resource
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::recalculateFormPrices($get, $set))
                                     ->required()
-                                    ->columnSpan(fn (Get $get) => $get('price_mode') === 'adjustment' ? 1 : 2),
+                                    ->columnSpan(2),
 
                                 Forms\Components\TextInput::make('coil_price')
                                     ->label('Harga Coil ($/Kg)')
@@ -682,8 +766,16 @@ class MaterialSteelResource extends Resource
                     ->searchable()
                     ->sortable(),
 
-                Tables\Columns\TextColumn::make('gap_steel_usd')
-                    ->label('Gap/MT (USD)')
+                Tables\Columns\TextColumn::make('hr_steel_usd')
+                    ->label('HR Dolar/MT')
+                    ->wrapHeader()
+                    ->formatStateUsing(fn ($state, MaterialSteel $record) => $state !== null && (float) $state != 0 ? "{$record->currency_code} ".number_format((float) $state, 2) : '-')
+                    ->weight('bold')
+                    ->alignRight()
+                    ->sortable(),
+
+                Tables\Columns\TextColumn::make('cr_steel_usd')
+                    ->label('CR Dolar/MT')
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state, MaterialSteel $record) => $state !== null && (float) $state != 0 ? "{$record->currency_code} ".number_format((float) $state, 2) : '-')
                     ->weight('bold')
