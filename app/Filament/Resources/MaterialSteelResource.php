@@ -622,22 +622,48 @@ class MaterialSteelResource extends Resource
             ->filters([
                 Tables\Filters\SelectFilter::make('quarter')
                     ->label('Filter Kuartal')
-                    ->options([
-                        'Q1' => 'Q1 (Januari - Maret)',
-                        'Q2' => 'Q2 (April - Juni)',
-                        'Q3' => 'Q3 (Juli - September)',
-                        'Q4' => 'Q4 (Oktober - Desember)',
-                    ])
+                    ->options(function () {
+                        $counts = MaterialSteel::query()
+                            ->selectRaw('quarter, count(*) as total')
+                            ->groupBy('quarter')
+                            ->pluck('total', 'quarter');
+
+                        return [
+                            'Q1' => 'Q1 (Januari - Maret) ('.($counts['Q1'] ?? 0).' data)',
+                            'Q2' => 'Q2 (April - Juni) ('.($counts['Q2'] ?? 0).' data)',
+                            'Q3' => 'Q3 (Juli - September) ('.($counts['Q3'] ?? 0).' data)',
+                            'Q4' => 'Q4 (Oktober - Desember) ('.($counts['Q4'] ?? 0).' data)',
+                        ];
+                    })
                     ->multiple(),
 
                 Tables\Filters\SelectFilter::make('vendor_code')
                     ->label('Filter Vendor Code')
                     ->options(function () {
-                        return Supplier::query()
+                        $counts = MaterialSteel::query()
+                            ->whereNotNull('vendor_code')
+                            ->selectRaw('vendor_code, count(*) as total')
+                            ->groupBy('vendor_code')
+                            ->pluck('total', 'vendor_code');
+
+                        $supplierMap = Supplier::query()
                             ->orderBy('code')
-                            ->get()
-                            ->mapWithKeys(fn ($s) => [$s->code => "{$s->code} — {$s->name}"])
+                            ->pluck('name', 'code')
                             ->toArray();
+
+                        $options = [];
+                        foreach ($counts as $code => $total) {
+                            $name = $supplierMap[$code] ?? $code;
+                            $options[$code] = "{$code} — {$name} ({$total} data)";
+                        }
+
+                        foreach ($supplierMap as $code => $name) {
+                            if (! isset($options[$code])) {
+                                $options[$code] = "{$code} — {$name} (0 data)";
+                            }
+                        }
+
+                        return $options;
                     })
                     ->searchable()
                     ->multiple(),
@@ -645,21 +671,66 @@ class MaterialSteelResource extends Resource
                 Tables\Filters\SelectFilter::make('year')
                     ->label('Filter Tahun')
                     ->options(function () {
+                        $counts = MaterialSteel::query()
+                            ->selectRaw('year, count(*) as total')
+                            ->groupBy('year')
+                            ->pluck('total', 'year');
+
                         $current = (int) date('Y');
-                        $years = [];
-                        for ($y = $current - 2; $y <= $current + 2; $y++) {
-                            $years[$y] = (string) $y;
+                        $dbYears = MaterialSteel::distinct()->pluck('year')->filter()->toArray();
+                        $rangeYears = range($current + 2, $current - 2);
+                        $allYears = array_unique(array_merge($dbYears, $rangeYears));
+                        rsort($allYears);
+
+                        $options = [];
+                        foreach ($allYears as $y) {
+                            $total = $counts[$y] ?? 0;
+                            $options[$y] = "Tahun {$y} ({$total} data)";
                         }
 
-                        return $years;
+                        return $options;
                     }),
 
                 Tables\Filters\SelectFilter::make('supplier_id')
                     ->label('Filter Supplier Name')
-                    ->relationship('supplier', 'name')
-                    ->searchable()
-                    ->preload(),
+                    ->options(function () {
+                        $counts = MaterialSteel::query()
+                            ->whereNotNull('supplier_id')
+                            ->selectRaw('supplier_id, count(*) as total')
+                            ->groupBy('supplier_id')
+                            ->pluck('total', 'supplier_id');
+
+                        return Supplier::query()
+                            ->orderBy('name')
+                            ->get()
+                            ->mapWithKeys(function ($s) use ($counts) {
+                                $total = $counts[$s->id] ?? 0;
+
+                                return [$s->id => "{$s->name} ({$total} data)"];
+                            })
+                            ->toArray();
+                    })
+                    ->searchable(),
+
+                Tables\Filters\SelectFilter::make('status')
+                    ->label('Filter Status')
+                    ->options(function () {
+                        $counts = MaterialSteel::query()
+                            ->selectRaw('status, count(*) as total')
+                            ->groupBy('status')
+                            ->pluck('total', 'status');
+
+                        return [
+                            'Active' => 'Active ('.($counts['Active'] ?? 0).' data)',
+                            'Draft' => 'Draft ('.($counts['Draft'] ?? 0).' data)',
+                        ];
+                    }),
             ])
+            ->filtersTriggerAction(
+                fn (Tables\Actions\Action $action) => $action
+                    ->button()
+                    ->label(fn () => 'Filter Data ('.MaterialSteel::count().' Data)')
+            )
             ->filtersFormColumns(2)
             ->actions([
                 Tables\Actions\EditAction::make(),

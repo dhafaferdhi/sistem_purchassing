@@ -238,6 +238,56 @@ class MaterialSteelQuarterlyTest extends TestCase
             ->assertCanNotSeeTableRecords([$steelQ1]);
     }
 
+    public function test_material_steel_filters_display_record_counts(): void
+    {
+        $this->actingAs($this->admin);
+
+        MaterialSteel::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'steel_spec' => 'COUNT-SPEC-1',
+            'currency_id' => $this->currency->id,
+            'steel_price' => 1.8500,
+            'exchange_rate' => 16000.0,
+            'status' => 'Active',
+        ]);
+
+        MaterialSteel::create([
+            'year' => 2026,
+            'quarter' => 'Q2',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'steel_spec' => 'COUNT-SPEC-2',
+            'currency_id' => $this->currency->id,
+            'steel_price' => 1.9500,
+            'exchange_rate' => 16000.0,
+            'status' => 'Active',
+        ]);
+
+        $component = Livewire::test(ListMaterialSteels::class);
+        $component->assertSuccessful();
+
+        $table = $component->instance()->getTable();
+        $quarterFilter = $table->getFilter('quarter');
+        $quarterOptions = $quarterFilter->getOptions();
+        $this->assertStringContainsString('data', $quarterOptions['Q1']);
+        $this->assertStringContainsString('1 data', $quarterOptions['Q1']);
+        $this->assertStringContainsString('1 data', $quarterOptions['Q2']);
+        $this->assertStringContainsString('0 data', $quarterOptions['Q3']);
+
+        $yearFilter = $table->getFilter('year');
+        $yearOptions = $yearFilter->getOptions();
+        $this->assertStringContainsString('2 data', $yearOptions[2026]);
+
+        $statusFilter = $table->getFilter('status');
+        $statusOptions = $statusFilter->getOptions();
+        $this->assertStringContainsString('2 data', $statusOptions['Active']);
+    }
+
     public function test_can_switch_year_and_filter_by_year_and_quarter_tabs(): void
     {
         $this->actingAs($this->admin);
