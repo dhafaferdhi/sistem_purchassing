@@ -308,14 +308,25 @@ class MaterialSteelResource extends Resource
                                 Forms\Components\Hidden::make('material_id'),
                                 Forms\Components\Hidden::make('currency_id'),
                                 Forms\Components\Hidden::make('currency_code')->default('USD'),
+                                Forms\Components\Hidden::make('exchange_rate')
+                                    ->default(function (Get $get) {
+                                        $year = (int) ($get('year') ?? date('Y'));
+                                        $quarter = $get('quarter') ?? 'Q1';
+
+                                        return Currency::where('code', 'USD')->where('year', $year)->where('quarter', $quarter)->value('exchange_rate_to_idr')
+                                            ?? Currency::where('code', 'USD')->where('year', $year)->value('exchange_rate_to_idr')
+                                            ?? Currency::where('code', 'USD')->latest('year')->value('exchange_rate_to_idr')
+                                            ?? 19000;
+                                    })
+                                    ->dehydrated(),
                                 Forms\Components\Hidden::make('gap_steel_kg_usd')->default(0),
                                 Forms\Components\Hidden::make('steel_price'),
                                 Forms\Components\Hidden::make('steel_price_idr'),
                                 Forms\Components\Hidden::make('fluktuasi_jfe')->default(0),
                             ])->columns(3),
 
-                        // SECTION 2: Penetapan Harga & Kurs
-                        Forms\Components\Section::make('2. Harga Bahan Baku & Kurs')
+                        // SECTION 2: Penetapan Harga Bahan Baku
+                        Forms\Components\Section::make('2. Harga Bahan Baku')
                             ->icon('heroicon-o-currency-dollar')
                             ->schema([
                                 Forms\Components\Radio::make('price_mode')
@@ -337,25 +348,6 @@ class MaterialSteelResource extends Resource
                                     ->dehydrated(false)
                                     ->columnSpanFull(),
 
-                                Forms\Components\TextInput::make('exchange_rate')
-                                    ->label('Kurs USD (Rp)')
-                                    ->numeric()
-                                    ->step(0.0001)
-                                    ->required()
-                                    ->prefix('Rp')
-                                    ->default(function (Get $get) {
-                                        $year = (int) ($get('year') ?? date('Y'));
-                                        $quarter = $get('quarter') ?? 'Q1';
-
-                                        return Currency::where('code', 'USD')->where('year', $year)->where('quarter', $quarter)->value('exchange_rate_to_idr')
-                                            ?? Currency::where('code', 'USD')->where('year', $year)->value('exchange_rate_to_idr')
-                                            ?? Currency::where('code', 'USD')->latest('year')->value('exchange_rate_to_idr')
-                                            ?? 19000;
-                                    })
-                                    ->live(onBlur: true)
-                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::recalculateFormPrices($get, $set))
-                                    ->columnSpan(fn (Get $get) => $get('price_mode') === 'baseline' ? 6 : 2),
-
                                 Forms\Components\TextInput::make('coil_price')
                                     ->label('Harga Coil ($/Kg)')
                                     ->numeric()
@@ -365,7 +357,7 @@ class MaterialSteelResource extends Resource
                                     ->required()
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromCoil($get, $set))
-                                    ->columnSpan(fn (Get $get) => $get('price_mode') === 'baseline' ? 3 : 2),
+                                    ->columnSpan(1),
 
                                 Forms\Components\TextInput::make('gap_steel_usd')
                                     ->label('Kenaikan / Gap MT ($/MT)')
@@ -377,7 +369,7 @@ class MaterialSteelResource extends Resource
                                     ->visible(fn (Get $get) => $get('price_mode') === 'adjustment')
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromGap($get, $set))
-                                    ->columnSpan(2),
+                                    ->columnSpan(1),
 
                                 Forms\Components\TextInput::make('sheet_price')
                                     ->label('Harga Sheet ($/Kg)')
@@ -388,22 +380,22 @@ class MaterialSteelResource extends Resource
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromSheet($get, $set))
                                     ->dehydrated()
-                                    ->columnSpan(fn (Get $get) => $get('price_mode') === 'baseline' ? 3 : 2),
+                                    ->columnSpan(fn (Get $get) => $get('price_mode') === 'baseline' ? 1 : 2),
 
                                 Forms\Components\TextInput::make('coil_price_idr')
                                     ->label('Total Coil (IDR/Kg)')
                                     ->prefix('Rp')
                                     ->readOnly()
                                     ->dehydrated()
-                                    ->columnSpan(fn (Get $get) => $get('price_mode') === 'baseline' ? 3 : 2),
+                                    ->columnSpan(1),
 
                                 Forms\Components\TextInput::make('sheet_price_idr')
                                     ->label('Total Sheet (IDR/Kg)')
                                     ->prefix('Rp')
                                     ->readOnly()
                                     ->dehydrated()
-                                    ->columnSpan(fn (Get $get) => $get('price_mode') === 'baseline' ? 3 : 2),
-                            ])->columns(6),
+                                    ->columnSpan(1),
+                            ])->columns(2),
 
                         // SECTION 3: Catatan & Status (Collapsible)
                         Forms\Components\Section::make('3. Catatan & Status (Opsional)')
