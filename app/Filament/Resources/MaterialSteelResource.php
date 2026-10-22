@@ -573,6 +573,13 @@ class MaterialSteelResource extends Resource
                     ->alignRight()
                     ->sortable(),
 
+                Tables\Columns\TextColumn::make('exchange_rate')
+                    ->label('Perubahan Dolar Rupiah')
+                    ->wrapHeader()
+                    ->formatStateUsing(fn ($state) => $state && (float) $state > 0 ? 'Rp '.number_format((float) $state, 0, ',', '.') : '-')
+                    ->alignRight()
+                    ->sortable(),
+
                 Tables\Columns\TextColumn::make('coil_price')
                     ->label('Coil (USD)')
                     ->wrapHeader()
