@@ -222,6 +222,7 @@ class DatabaseSeeder extends Seeder
             StampingPartSeeder::class,
             FastenerSeeder::class,
             PudRequestSeeder::class,
+            ComparativeQuotationSeeder::class,
         ]);
     }
 }
