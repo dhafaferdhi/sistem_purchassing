@@ -629,16 +629,20 @@ class MaterialSteelQuarterlyTest extends TestCase
         ]);
     }
 
-    public function test_create_and_list_pages_have_import_and_download_template_actions(): void
+    public function test_create_and_list_pages_have_actions(): void
     {
         $this->actingAs($this->admin);
 
         Livewire::test(CreateMaterialSteel::class)
-            ->assertActionExists('download_template')
-            ->assertActionExists('import_excel');
+            ->assertActionExists('create_top')
+            ->assertActionExists('pull_previous')
+            ->assertActionExists('back')
+            ->assertActionDoesNotExist('download_template')
+            ->assertActionDoesNotExist('import_excel');
 
         Livewire::test(ListMaterialSteels::class)
-            ->assertActionExists('import_excel');
+            ->assertActionExists('import_excel')
+            ->assertActionExists('download_template');
     }
 
     public function test_create_q2_with_gap_mt_auto_calculates_from_q1_baseline(): void
@@ -975,5 +979,42 @@ class MaterialSteelQuarterlyTest extends TestCase
         $this->assertEquals('16.000', MaterialSteelResource::formatIdr(16000, false));
         $this->assertEquals('-', MaterialSteelResource::formatIdr(0));
         $this->assertEquals('-', MaterialSteelResource::formatIdr(null));
+    }
+
+    public function test_material_steel_create_has_harmonized_pull_previous_and_top_actions(): void
+    {
+        $this->actingAs($this->admin);
+
+        MaterialSteel::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'supplier_name' => $this->supplier->name,
+            'vendor_code' => $this->supplier->code,
+            'steel_spec' => 'SPH440-PULL-TEST',
+            'double_thickness' => '2.6',
+            'size' => '2.6 x 1219 x C',
+            'coil_price' => 1.2500,
+            'sheet_price' => 1.2800,
+            'exchange_rate' => 16500.0,
+        ]);
+
+        Livewire::test(CreateMaterialSteel::class)
+            ->assertActionExists('create_top')
+            ->assertActionExists('pull_previous')
+            ->assertActionExists('back')
+            ->fillForm([
+                'year' => 2026,
+                'quarter' => 'Q2',
+                'supplier_id' => $this->supplier->id,
+                'steel_spec' => 'SPH440-PULL-TEST',
+                'double_thickness' => '2.6',
+            ])
+            ->callAction('pull_previous')
+            ->assertFormSet([
+                'size' => '2.6 x 1219 x C',
+                'coil_price' => '1.25',
+                'sheet_price' => '1.28',
+            ]);
     }
 }

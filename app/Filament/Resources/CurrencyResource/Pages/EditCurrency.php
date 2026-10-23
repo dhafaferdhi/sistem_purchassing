@@ -61,6 +61,6 @@ class EditCurrency extends EditRecord
         return Notification::make()
             ->success()
             ->title("Kurs {$record->code} ({$record->quarter} {$record->year}) Berhasil Disimpan!")
-            ->body('Nilai kurs Rp '.number_format((float) $record->exchange_rate_to_idr, 0, ',', '.')." telah aktif. Sebanyak {$steelCount} data Material Steel, {$stampingCount} data Stamping Part, dan {$fastenerCount} data Pasterner otomatis dihitung ulang ke IDR.");
+            ->body('Nilai kurs Rp '.number_format((float) $record->exchange_rate_to_idr, 0, ',', '.')." telah aktif. Sebanyak {$steelCount} data Material Steel, {$stampingCount} data Stamping Part, dan {$fastenerCount} data Fasteners otomatis dihitung ulang ke IDR.");
     }
 }

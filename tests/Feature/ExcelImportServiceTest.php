@@ -156,7 +156,7 @@ class ExcelImportServiceTest extends TestCase
     {
         Livewire::test(ListMaterialSteels::class)
             ->assertActionExists('import_excel')
-            ->assertActionDoesNotExist('download_template');
+            ->assertActionExists('download_template');
     }
 
     public function test_list_stamping_parts_has_import_action(): void

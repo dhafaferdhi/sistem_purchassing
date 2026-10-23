@@ -6,12 +6,12 @@ use App\Filament\Resources\MaterialSteelResource;
 use App\Models\Material;
 use App\Models\MaterialSteel;
 use App\Models\Supplier;
-use App\Services\ExcelImportService;
 use Filament\Actions;
 use Filament\Forms;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
-use Illuminate\Support\Facades\Storage;
+use Filament\Support\Enums\MaxWidth;
+use Illuminate\Support\HtmlString;
 
 class CreateMaterialSteel extends CreateRecord
 {
@@ -20,94 +20,195 @@ class CreateMaterialSteel extends CreateRecord
     protected function getHeaderActions(): array
     {
         return [
-            Actions\Action::make('download_template')
-                ->label('Download Template Excel')
-                ->icon('heroicon-o-arrow-down-tray')
-                ->color('gray')
-                ->action(function () {
-                    return response()->streamDownload(function () {
-                        echo ExcelImportService::generateMaterialSteelTemplateCsv();
-                    }, 'template_import_material_steel.csv', [
-                        'Content-Type' => 'text/csv; charset=UTF-8',
-                    ]);
-                }),
-
-            Actions\Action::make('import_excel')
-                ->label('Import File Excel')
-                ->icon('heroicon-o-arrow-up-tray')
+            Actions\Action::make('create_top')
+                ->label('Simpan Data')
+                ->icon('heroicon-o-check')
                 ->color('success')
-                ->modalHeading('Import File Excel ke Material Steel')
-                ->modalDescription('Unggah file spreadsheet (.xlsx / .csv) sesuai template atau format kenaikan harga purchasing. Data akan otomatis masuk ke tabel Material Steel.')
+                ->action('create'),
+
+            Actions\Action::make('pull_previous')
+                ->label('Tarik Data Kuartal')
+                ->icon('heroicon-o-arrow-path')
+                ->color('primary')
+                ->tooltip('Pilih dan tarik data acuan dari kuartal sebelumnya')
+                ->modalHeading('Tarik Data Acuan Material Steel')
+                ->modalDescription('Pilih kuartal dan spesifikasi baja yang ingin Anda jadikan acuan harga.')
+                ->modalSubmitActionLabel('Terapkan Data Terpilih')
+                ->modalWidth(MaxWidth::TwoExtraLarge)
                 ->form([
-                    Forms\Components\FileUpload::make('file')
-                        ->label('Pilih File Excel / Spreadsheet')
-                        ->helperText('Mendukung format .xlsx dan .csv. Kolom, spesifikasi, dan harga dideteksi otomatis.')
-                        ->disk('public')
-                        ->directory('temp-excel-imports')
-                        ->required(),
-
-                    Forms\Components\Grid::make(3)
+                    Forms\Components\Grid::make(2)
                         ->schema([
-                            Forms\Components\Select::make('default_year')
-                                ->label('Tahun Acuan (Fallback)')
-                                ->options(fn () => array_combine(range((int) date('Y') + 1, 2020), range((int) date('Y') + 1, 2020)))
-                                ->default((int) date('Y'))
-                                ->helperText('Digunakan jika file tidak memuat tahun'),
+                            Forms\Components\Select::make('source_year')
+                                ->label('Tahun Acuan')
+                                ->options(function () {
+                                    $current = (int) date('Y');
+                                    $years = range($current + 2, 2020);
 
-                            Forms\Components\Select::make('default_quarter')
-                                ->label('Kuartal Acuan (Fallback)')
+                                    return array_combine($years, $years);
+                                })
+                                ->default(function () {
+                                    $q = $this->data['quarter'] ?? 'Q1';
+                                    $y = (int) ($this->data['year'] ?? date('Y'));
+
+                                    return $q === 'Q1' ? $y - 1 : $y;
+                                })
+                                ->required()
+                                ->live(),
+
+                            Forms\Components\Select::make('source_quarter')
+                                ->label('Kuartal Acuan')
                                 ->options([
                                     'Q1' => 'Q1 (Januari - Maret)',
                                     'Q2' => 'Q2 (April - Juni)',
                                     'Q3' => 'Q3 (Juli - September)',
                                     'Q4' => 'Q4 (Oktober - Desember)',
                                 ])
-                                ->default('Q1')
-                                ->helperText('Digunakan jika file tidak memuat kuartal'),
+                                ->default(function () {
+                                    $q = $this->data['quarter'] ?? 'Q1';
 
-                            Forms\Components\Toggle::make('update_existing')
-                                ->label('Perbarui Data yang Ada')
-                                ->default(true)
-                                ->helperText('Update harga jika spesifikasi dan ketebalan sudah terdaftar'),
+                                    return match ($q) {
+                                        'Q1' => 'Q4',
+                                        'Q2' => 'Q1',
+                                        'Q3' => 'Q2',
+                                        'Q4' => 'Q3',
+                                        default => 'Q4',
+                                    };
+                                })
+                                ->required()
+                                ->live(),
                         ]),
+
+                    Forms\Components\Select::make('source_record_id')
+                        ->label('Pilih Spesifikasi Baja & Supplier')
+                        ->placeholder('-- Pilih Spesifikasi Baja Acuan --')
+                        ->searchable()
+                        ->live()
+                        ->options(function (Forms\Get $get) {
+                            $y = (int) ($get('source_year') ?: date('Y'));
+                            $q = $get('source_quarter') ?: 'Q1';
+
+                            return MaterialSteel::where('year', $y)
+                                ->where('quarter', $q)
+                                ->get()
+                                ->mapWithKeys(function ($item) {
+                                    $coil = number_format((float) $item->coil_price, 4);
+                                    $sheet = number_format((float) $item->sheet_price, 4);
+                                    $thick = $item->double_thickness ? " ({$item->double_thickness}mm)" : '';
+                                    $supp = $item->supplier_name ?: ($item->vendor_code ?: 'Vendor');
+                                    $label = "{$item->steel_spec}{$thick} — {$supp} [Coil: \${$coil} | Sheet: \${$sheet}]";
+
+                                    return [$item->id => $label];
+                                })
+                                ->toArray();
+                        })
+                        ->helperText('Pilih salah satu spesifikasi baja dari daftar kuartal tersebut'),
+
+                    Forms\Components\Placeholder::make('preview')
+                        ->label('Pratinjau Data Terpilih')
+                        ->content(function (Forms\Get $get) {
+                            $id = $get('source_record_id');
+                            if (! $id) {
+                                return new HtmlString('<div class="p-3 text-sm text-gray-500 bg-gray-50 dark:bg-gray-800 rounded-lg border border-dashed border-gray-300 dark:border-gray-700">Pilih salah satu data spesifikasi baja di atas untuk melihat rincian harga coil, sheet, kurs, dan spesifikasinya.</div>');
+                            }
+                            $rec = MaterialSteel::find($id);
+                            if (! $rec) {
+                                return '';
+                            }
+                            $rateStr = number_format((float) $rec->exchange_rate, 0, ',', '.');
+                            $coilIdr = number_format(round((float) $rec->coil_price * (float) $rec->exchange_rate), 0, ',', '.');
+                            $sheetIdr = number_format(round((float) $rec->sheet_price * (float) $rec->exchange_rate), 0, ',', '.');
+
+                            return new HtmlString("
+                                <div class='p-4 bg-primary-50 dark:bg-primary-950/40 border border-primary-200 dark:border-primary-800 rounded-lg text-sm space-y-2'>
+                                    <div class='font-semibold text-primary-900 dark:text-primary-100 flex items-center justify-between'>
+                                        <span class='text-base font-bold'>{$rec->steel_spec}</span>
+                                        <span class='text-xs px-2 py-0.5 rounded bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 font-mono'>{$rec->quarter} {$rec->year}</span>
+                                    </div>
+                                    <div class='text-gray-700 dark:text-gray-300'><strong>Supplier:</strong> {$rec->supplier_name} <span class='text-xs text-gray-500'>({$rec->vendor_code})</span></div>
+                                    <div class='grid grid-cols-2 gap-2 pt-2 border-t border-primary-200 dark:border-primary-800/50 text-xs text-gray-700 dark:text-gray-300'>
+                                        <div><strong>Ketebalan:</strong> ".($rec->double_thickness ? "{$rec->double_thickness} mm" : '-').'</div>
+                                        <div><strong>Dimensi / Size:</strong> '.($rec->size ?: '-')."</div>
+                                        <div><strong>Coil Price:</strong> USD {$rec->coil_price} <span class='text-gray-500'>(Rp {$coilIdr})</span></div>
+                                        <div><strong>Sheet Price:</strong> USD {$rec->sheet_price} <span class='text-gray-500'>(Rp {$sheetIdr})</span></div>
+                                        <div><strong>Kurs Acuan:</strong> Rp {$rateStr}</div>
+                                    </div>
+                                </div>
+                            ");
+                        }),
                 ])
                 ->action(function (array $data) {
-                    $rawPath = $data['file'];
-                    $filePath = Storage::disk('public')->path($rawPath);
-                    if (! file_exists($filePath)) {
-                        $filePath = Storage::path($rawPath);
+                    $selectedId = $data['source_record_id'] ?? null;
+                    $raw = $this->data ?? [];
+                    $quarter = $raw['quarter'] ?? 'Q1';
+                    $year = (int) ($raw['year'] ?? date('Y'));
+
+                    $record = null;
+                    if ($selectedId) {
+                        $record = MaterialSteel::find($selectedId);
                     }
 
-                    $result = ExcelImportService::importMaterialSteel(
-                        $filePath,
-                        [
-                            'year' => (int) ($data['default_year'] ?? date('Y')),
-                            'quarter' => $data['default_quarter'] ?? 'Q1',
-                        ],
-                        (bool) ($data['update_existing'] ?? true)
-                    );
+                    // Fallback jika dipanggil tanpa ID spesifik (misal dari headless test)
+                    if (! $record) {
+                        $sourceYear = (int) ($data['source_year'] ?? 0);
+                        $sourceQuarter = $data['source_quarter'] ?? null;
+                        if ($sourceYear && $sourceQuarter) {
+                            $record = MaterialSteel::where('year', $sourceYear)->where('quarter', $sourceQuarter)->latest('id')->first();
+                        }
+                    }
 
-                    @unlink($filePath);
+                    if (! $record) {
+                        $supplierId = $raw['supplier_id'] ?? null;
+                        $spec = $raw['steel_spec'] ?? null;
+                        $thickness = $raw['double_thickness'] ?? null;
+                        $prevData = MaterialSteel::findPreviousQuarterData($quarter, $year, $supplierId ? (int) $supplierId : null, $spec, $thickness);
+                        if ($prevData) {
+                            $record = MaterialSteel::where('year', $prevData['prev_year'])
+                                ->where('quarter', $prevData['prev_quarter'])
+                                ->when($prevData['steel_spec'] ?? null, fn ($q, $s) => $q->where('steel_spec', $s))
+                                ->latest('id')
+                                ->first();
+                        }
+                    }
 
-                    if ($result['total'] > 0) {
+                    if ($record) {
+                        $raw['steel_spec'] = $record->steel_spec;
+                        $raw['double_thickness'] = $record->double_thickness;
+                        $raw['size'] = $record->size;
+                        $raw['coil_price'] = (float) $record->coil_price;
+                        $raw['sheet_price'] = (float) $record->sheet_price;
+                        $raw['ap_coil_price'] = $record->ap_coil_price ? (float) $record->ap_coil_price : null;
+                        $raw['ap_sheet_price'] = $record->ap_sheet_price ? (float) $record->ap_sheet_price : null;
+
+                        if (! empty($record->supplier_id)) {
+                            $raw['supplier_id'] = $record->supplier_id;
+                            $raw['vendor_code'] = $record->vendor_code;
+                            $raw['supplier_name'] = $record->supplier_name;
+                        }
+
+                        $rate = (float) ($record->exchange_rate ?: ($raw['exchange_rate'] ?? 16000));
+                        $raw['exchange_rate'] = $rate;
+                        $raw['coil_price_idr'] = round((float) $record->coil_price * $rate, 2);
+                        $raw['sheet_price_idr'] = round((float) $record->sheet_price * $rate, 2);
+
+                        $this->form->fill($raw);
+
                         Notification::make()
-                            ->title('Impor Excel Berhasil!')
-                            ->body("Berhasil mengimpor {$result['imported']} data baru dan memperbarui {$result['updated']} data Material Steel.")
+                            ->title('Data Acuan Berhasil Diterapkan!')
+                            ->body("Spesifikasi {$record->steel_spec} ({$record->supplier_name}) dari periode {$record->quarter} {$record->year} berhasil disalin ke formulir.")
                             ->success()
                             ->send();
-
-                        $this->redirect(MaterialSteelResource::getUrl('index'));
                     } else {
+                        $info = MaterialSteel::getPreviousQuarterInfo($quarter, $year);
                         Notification::make()
-                            ->title('Impor Gagal atau Data Kosong')
-                            ->body(implode(' ', $result['errors'] ?? ['Tidak ada baris data yang terdeteksi dalam file.']))
+                            ->title('Belum Ada Data Acuan')
+                            ->body('Tidak ditemukan data Material Steel pada periode yang dipilih.')
                             ->warning()
                             ->send();
                     }
                 }),
 
             Actions\Action::make('back')
-                ->label('Kembali')
+                ->label('Keluar / Kembali')
                 ->icon('heroicon-o-arrow-left')
                 ->color('gray')
                 ->url(static::getResource()::getUrl('index')),

@@ -41,7 +41,7 @@ class CurrencyResource extends Resource
         return $form
             ->schema([
                 Forms\Components\Section::make('Kurs Mata Uang')
-                    ->description('Masukkan patokan kurs kuartalan untuk USD dan JPY. Sistem akan otomatis memperbarui harga pada Material Steel, Stamping Part, dan Pasterner.')
+                    ->description('Masukkan patokan kurs kuartalan untuk USD dan JPY. Sistem akan otomatis memperbarui harga pada Material Steel, Stamping Part, dan Fasteners.')
                     ->schema([
                         Forms\Components\Select::make('year')
                             ->label('Tahun')
@@ -201,10 +201,10 @@ class CurrencyResource extends Resource
                     ->sortable(),
                 Tables\Columns\TextColumn::make('fasteners_count')
                     ->counts('fasteners')
-                    ->label('Linked Pasterner')
+                    ->label('Linked Fasteners')
                     ->badge()
                     ->color(fn (int $state): string => $state > 0 ? 'warning' : 'gray')
-                    ->suffix(' pasterner')
+                    ->suffix(' fasteners')
                     ->sortable(),
                 Tables\Columns\TextColumn::make('last_updated_at')
                     ->label('Terakhir Dihitung Ulang')
@@ -216,7 +216,7 @@ class CurrencyResource extends Resource
                 Tables\Filters\TernaryFilter::make('has_linked_data')
                     ->label('Status Kaitan Data')
                     ->placeholder('Semua Kurs')
-                    ->trueLabel('Hanya yang memiliki data (Baja / Part / Pasterner)')
+                    ->trueLabel('Hanya yang memiliki data (Baja / Part / Fasteners)')
                     ->falseLabel('Kurs tanpa kaitan data')
                     ->queries(
                         true: fn (Builder $query) => $query->where(function (Builder $q) {
@@ -262,7 +262,7 @@ class CurrencyResource extends Resource
                     ->icon('heroicon-o-currency-dollar')
                     ->color('success')
                     ->modalHeading(fn (Currency $record) => "Ubah Nilai Kurs {$record->code} ({$record->period})")
-                    ->modalDescription('Saat nilai kurs disimpan, seluruh data di Material Steel, Stamping Part, dan Pasterner akan otomatis dihitung ulang ke Rupiah (IDR).')
+                    ->modalDescription('Saat nilai kurs disimpan, seluruh data di Material Steel, Stamping Part, dan Fasteners akan otomatis dihitung ulang ke Rupiah (IDR).')
                     ->form([
                         Forms\Components\TextInput::make('exchange_rate_to_idr')
                             ->label('Nilai Kurs Baru ke IDR')
@@ -278,7 +278,7 @@ class CurrencyResource extends Resource
 
                         Notification::make()
                             ->title("Kurs {$record->code} Berhasil Diperbarui!")
-                            ->body('Kurs baru Rp '.number_format((float) $record->exchange_rate_to_idr, 0, ',', '.')." telah aktif. Otomatis menghitung ulang: {$stats['material_steels']} Material Steel, {$stats['stamping_parts']} Stamping Part, dan {$stats['fasteners']} Pasterner.")
+                            ->body('Kurs baru Rp '.number_format((float) $record->exchange_rate_to_idr, 0, ',', '.')." telah aktif. Otomatis menghitung ulang: {$stats['material_steels']} Material Steel, {$stats['stamping_parts']} Stamping Part, dan {$stats['fasteners']} Fasteners.")
                             ->success()
                             ->send();
                     }),

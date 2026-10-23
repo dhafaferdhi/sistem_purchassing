@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\ComparativeQuotation;
 use App\Models\Part;
 use App\Models\PartBom;
+use App\Models\SubAssemblyPart;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Services\ComparativeQuotationService;
@@ -316,6 +317,88 @@ class ComparativeQuotationSeeder extends Seeder
                 'total_cost' => $partCost,
                 'created_by' => $admin?->id,
             ]);
+
+            SubAssemblyPart::updateOrCreate(
+                [
+                    'year' => $p['year'],
+                    'quarter' => $p['quarter'],
+                    'part_number' => '73012-BZ010',
+                ],
+                [
+                    'part_id' => $partSubAssy->id,
+                    'part_name' => 'BRACKET SUB-ASSY, BEALT INNER ANCHOR, LH',
+                    'model_name' => 'D26A',
+                    'monthly_volume' => 16500,
+                    'supplier_id' => $supTcf->id,
+                    'vendor_code' => $supTcf->code,
+                    'supplier_name' => $supTcf->name,
+                    'buyer_name' => 'PT. FUJI SEAT INDONESIA',
+                    'drawing_reference' => 'Mass Prod. Drwg (Exchange rate change)',
+                    'eci_number' => 'F1225',
+                    'exchange_rate' => $p['rate'],
+                    'material_breakdown' => [
+                        [
+                            'part_number' => '72388-X7V00-A',
+                            'part_name' => 'BRKT, SEAT BELT ANCHOR LH',
+                            'quantity' => 1,
+                            'unit_price' => $p['unit_price'],
+                            'price' => $p['unit_price'],
+                            'valuation' => ($idx < 2 ? 'Posmi' : 'TCF'),
+                        ],
+                        [
+                            'part_number' => '89911-X7095',
+                            'part_name' => 'BOLT WELD 89911-X7095',
+                            'quantity' => 1,
+                            'unit_price' => $bolt1Price,
+                            'price' => $bolt1Price,
+                            'valuation' => $bolt1Val,
+                        ],
+                        [
+                            'part_number' => '89911-X1F05',
+                            'part_name' => 'BOLT PWR SEAT WELD 89911-X1F05',
+                            'quantity' => 1,
+                            'unit_price' => $bolt2Price,
+                            'price' => $bolt2Price,
+                            'valuation' => $bolt2Val,
+                        ],
+                    ],
+                    'material_total' => $matTotal,
+                    'process_breakdown' => [
+                        [
+                            'process_name' => '1. WELD CO BOLT WELD 89911-X7095',
+                            'man_hour' => 20,
+                            'charge' => 27,
+                            'price' => 540.0,
+                        ],
+                        [
+                            'process_name' => '2. WELD C0 BOLT WELD 89911-X1F05',
+                            'man_hour' => 34,
+                            'charge' => 27,
+                            'price' => 918.0,
+                        ],
+                        [
+                            'process_name' => '3. PAINTING CED',
+                            'man_hour' => 0,
+                            'charge' => 0,
+                            'price' => 2800.0,
+                        ],
+                    ],
+                    'process_total' => $procTotal,
+                    'subtotal' => $subtotal,
+                    'overhead_supplied_percent' => 11,
+                    'overhead_supplied_cost' => $ohSupplied,
+                    'profit_percent' => ($hasPaidBolts ? 3 : 0),
+                    'profit_cost' => $profit,
+                    'packing_cost' => $packing,
+                    'tooling_depreciation' => 0,
+                    'tooling_details' => [
+                        ['name' => '1. JIG WELDING 1 & 2', 'total_krp' => 25250, 'monthly_vol' => 16500],
+                    ],
+                    'part_cost' => $partCost,
+                    'status' => 'Active',
+                    'created_by' => $admin?->id,
+                ]
+            );
         }
 
         // 6. Data 3: NITTO ALAM - Fastener Part 90041-19960

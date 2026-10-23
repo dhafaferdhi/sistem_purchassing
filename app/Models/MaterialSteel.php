@@ -26,6 +26,10 @@ class MaterialSteel extends Model
         'coil_price_idr',
         'sheet_price',
         'sheet_price_idr',
+        'ap_coil_price',
+        'ap_coil_price_idr',
+        'ap_sheet_price',
+        'ap_sheet_price_idr',
         'hr_steel_usd',
         'cr_steel_usd',
         'gap_steel_usd',
@@ -77,6 +81,10 @@ class MaterialSteel extends Model
             'coil_price_idr' => 'decimal:2',
             'sheet_price' => 'decimal:4',
             'sheet_price_idr' => 'decimal:2',
+            'ap_coil_price' => 'decimal:4',
+            'ap_coil_price_idr' => 'decimal:2',
+            'ap_sheet_price' => 'decimal:4',
+            'ap_sheet_price_idr' => 'decimal:2',
             'hr_steel_usd' => 'decimal:4',
             'cr_steel_usd' => 'decimal:4',
             'gap_steel_usd' => 'decimal:4',
@@ -181,6 +189,13 @@ class MaterialSteel extends Model
             // Kalkulasi harga Coil & Sheet IDR
             $model->coil_price_idr = round($coilPrice * $rate, 2);
             $model->sheet_price_idr = round($sheetPrice * $rate, 2);
+
+            if ($model->ap_coil_price !== null && (float) $model->ap_coil_price > 0) {
+                $model->ap_coil_price_idr = round((float) $model->ap_coil_price * $rate, 2);
+            }
+            if ($model->ap_sheet_price !== null && (float) $model->ap_sheet_price > 0) {
+                $model->ap_sheet_price_idr = round((float) $model->ap_sheet_price * $rate, 2);
+            }
 
             // Fallback steel_price agar kompatibilitas modul lain tetap sinkron
             if (empty($model->steel_price) || (float) $model->steel_price === 0.0) {
@@ -339,5 +354,113 @@ class MaterialSteel extends Model
     public function isColdRolled(): bool
     {
         return static::determineSteelType($this->steel_spec) === 'CR';
+    }
+
+    public static function getPreviousQuarterInfo(string $quarter, int $year): array
+    {
+        $q = strtoupper(trim($quarter));
+
+        return match ($q) {
+            'Q1' => [
+                'prev_quarter' => 'Q4',
+                'prev_year' => $year - 1,
+                'label' => 'Q4 '.($year - 1),
+            ],
+            'Q2' => [
+                'prev_quarter' => 'Q1',
+                'prev_year' => $year,
+                'label' => 'Q1 '.$year,
+            ],
+            'Q3' => [
+                'prev_quarter' => 'Q2',
+                'prev_year' => $year,
+                'label' => 'Q2 '.$year,
+            ],
+            'Q4' => [
+                'prev_quarter' => 'Q3',
+                'prev_year' => $year,
+                'label' => 'Q3 '.$year,
+            ],
+            default => [
+                'prev_quarter' => 'Q4',
+                'prev_year' => $year - 1,
+                'label' => 'Q4 '.($year - 1),
+            ],
+        };
+    }
+
+    public static function findPreviousQuarterData(string $quarter, int $year, ?int $supplierId = null, ?string $spec = null, ?string $thickness = null): ?array
+    {
+        $info = static::getPreviousQuarterInfo($quarter, $year);
+        $prevQuarter = $info['prev_quarter'];
+        $prevYear = $info['prev_year'];
+
+        $cleanSpec = $spec ? static::cleanSteelSpec($spec) : null;
+        $cleanThickness = ! empty($thickness) ? trim(preg_replace('/[a-zA-Z\s]+/', '', (string) $thickness)) : null;
+
+        $query = static::where('year', $prevYear)->where('quarter', $prevQuarter);
+        if ($supplierId) {
+            $query->where('supplier_id', $supplierId);
+        }
+        if ($cleanSpec) {
+            $query->where(function ($q) use ($spec, $cleanSpec) {
+                $q->where('steel_spec', $cleanSpec)
+                    ->orWhere('steel_spec', $spec)
+                    ->orWhere('steel_spec', 'like', $cleanSpec.'%');
+            });
+        }
+        if ($cleanThickness) {
+            $query->where(function ($q) use ($cleanThickness) {
+                $q->where('double_thickness', $cleanThickness)
+                    ->orWhere('double_thickness', 'like', $cleanThickness.'%');
+            });
+        }
+
+        $record = $query->latest('id')->first();
+
+        if (! $record && $supplierId) {
+            $record = static::where('year', $prevYear)
+                ->where('quarter', $prevQuarter)
+                ->where('supplier_id', $supplierId)
+                ->latest('id')
+                ->first();
+        }
+
+        if (! $record) {
+            $record = static::where('year', $prevYear)
+                ->where('quarter', $prevQuarter)
+                ->latest('id')
+                ->first();
+        }
+
+        if (! $record) {
+            return null;
+        }
+
+        return [
+            'source' => 'MaterialSteel',
+            'prev_year' => $prevYear,
+            'prev_quarter' => $prevQuarter,
+            'label' => $info['label'],
+            'supplier_id' => $record->supplier_id,
+            'vendor_code' => $record->vendor_code,
+            'supplier_name' => $record->supplier_name,
+            'steel_spec' => $record->steel_spec,
+            'double_thickness' => $record->double_thickness,
+            'size' => $record->size,
+            'exchange_rate' => (float) $record->exchange_rate,
+            'coil_price' => (float) $record->coil_price,
+            'sheet_price' => (float) $record->sheet_price,
+            'coil_price_idr' => (float) $record->coil_price_idr,
+            'sheet_price_idr' => (float) $record->sheet_price_idr,
+            'ap_coil_price' => (float) $record->ap_coil_price,
+            'ap_sheet_price' => (float) $record->ap_sheet_price,
+            'ap_coil_price_idr' => (float) $record->ap_coil_price_idr,
+            'ap_sheet_price_idr' => (float) $record->ap_sheet_price_idr,
+            'gap_steel_usd' => (float) $record->gap_steel_usd,
+            'gap_steel_kg_usd' => (float) $record->gap_steel_kg_usd,
+            'hr_steel_usd' => (float) $record->hr_steel_usd,
+            'cr_steel_usd' => (float) $record->cr_steel_usd,
+        ];
     }
 }

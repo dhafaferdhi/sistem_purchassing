@@ -28,6 +28,18 @@ class ListMaterialSteels extends ListRecords
             Actions\CreateAction::make()
                 ->label('+ Penetapan Material Steel Baru'),
 
+            Actions\Action::make('download_template')
+                ->label('Download Template Excel')
+                ->icon('heroicon-o-arrow-down-tray')
+                ->color('gray')
+                ->action(function () {
+                    return response()->streamDownload(function () {
+                        echo ExcelImportService::generateMaterialSteelTemplateCsv();
+                    }, 'template_import_material_steel.csv', [
+                        'Content-Type' => 'text/csv; charset=UTF-8',
+                    ]);
+                }),
+
             Actions\Action::make('import_excel')
                 ->label('Import File Excel')
                 ->icon('heroicon-o-arrow-up-tray')

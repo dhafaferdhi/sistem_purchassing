@@ -17,7 +17,7 @@ class FastenersRelationManager extends RelationManager
 {
     protected static string $relationship = 'fasteners';
 
-    protected static ?string $title = 'Pasterner Terkait';
+    protected static ?string $title = 'Fasteners Terkait';
 
     protected static ?string $icon = 'heroicon-o-cog-6-tooth';
 
@@ -120,16 +120,16 @@ class FastenersRelationManager extends RelationManager
             ])
             ->headerActions([
                 Tables\Actions\Action::make('sync_fasteners')
-                    ->label('Terapkan Kurs ke Semua Pasterner')
+                    ->label('Terapkan Kurs ke Semua Fasteners')
                     ->icon('heroicon-o-arrow-path')
                     ->color('info')
                     ->requiresConfirmation()
-                    ->modalHeading('Kalkulasi Ulang Harga Seluruh Pasterner')
+                    ->modalHeading('Kalkulasi Ulang Harga Seluruh Fasteners')
                     ->modalDescription(function () {
                         /** @var Currency $owner */
                         $owner = $this->getOwnerRecord();
 
-                        return "Seluruh harga Pasterner yang terhubung dengan mata uang {$owner->code} ({$owner->period}) akan dihitung ulang ke IDR menggunakan kurs Rp ".number_format((float) $owner->exchange_rate_to_idr, 0, ',', '.').'.';
+                        return "Seluruh harga Fasteners yang terhubung dengan mata uang {$owner->code} ({$owner->period}) akan dihitung ulang ke IDR menggunakan kurs Rp ".number_format((float) $owner->exchange_rate_to_idr, 0, ',', '.').'.';
                     })
                     ->action(function () {
                         /** @var Currency $owner */
@@ -137,7 +137,7 @@ class FastenersRelationManager extends RelationManager
                         $updated = CurrencyRecalculationService::recalculateFastenersForCurrency($owner);
 
                         Notification::make()
-                            ->title("Sukses: {$updated} data Pasterner berhasil disinkronkan ke kurs Rp ".number_format((float) $owner->exchange_rate_to_idr, 0, ',', '.').'.')
+                            ->title("Sukses: {$updated} data Fasteners berhasil disinkronkan ke kurs Rp ".number_format((float) $owner->exchange_rate_to_idr, 0, ',', '.').'.')
                             ->success()
                             ->send();
                     }),

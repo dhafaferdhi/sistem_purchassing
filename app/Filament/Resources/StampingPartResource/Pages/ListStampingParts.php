@@ -2,16 +2,11 @@
 
 namespace App\Filament\Resources\StampingPartResource\Pages;
 
-use App\Filament\Pages\MonthlyRollover;
 use App\Filament\Resources\StampingPartResource;
-use App\Models\Currency;
-use App\Models\StampingPart;
 use App\Services\ExcelImportService;
-use App\Services\MonthlyDataRolloverService;
 use Filament\Actions;
 use Filament\Forms;
 use Filament\Notifications\Notification;
-use Filament\Resources\Components\Tab;
 use Filament\Resources\Pages\ListRecords;
 use Filament\Support\Enums\MaxWidth;
 use Illuminate\Database\Eloquent\Builder;
@@ -30,6 +25,12 @@ class ListStampingParts extends ListRecords
     public function getMaxContentWidth(): MaxWidth|string|null
     {
         return MaxWidth::Full;
+    }
+
+    protected function getTableQuery(): ?Builder
+    {
+        return parent::getTableQuery()
+            ->when($this->selectedYear, fn (Builder $query) => $query->where('year', (int) $this->selectedYear));
     }
 
     protected function getHeaderActions(): array
@@ -56,7 +57,12 @@ class ListStampingParts extends ListRecords
                         ->schema([
                             Forms\Components\Select::make('default_year')
                                 ->label('Tahun Acuan (Fallback)')
-                                ->options(fn () => array_combine($this->getAvailableYears(), $this->getAvailableYears()))
+                                ->options(function () {
+                                    $current = (int) date('Y');
+                                    $years = range($current + 2, 2020);
+
+                                    return array_combine($years, $years);
+                                })
                                 ->default((int) ($this->selectedYear ?: date('Y')))
                                 ->helperText('Digunakan jika baris tidak memuat tahun'),
 
@@ -109,150 +115,6 @@ class ListStampingParts extends ListRecords
                             ->send();
                     }
                 }),
-
-            Actions\Action::make('copy_period_data')
-                ->label('Salin Data dari Periode Lalu')
-                ->icon('heroicon-o-document-duplicate')
-                ->color('info')
-                ->modalHeading('Salin Data Stamping Part Antar Periode')
-                ->modalDescription('Duplikasi seluruh harga stamping part dari kuartal/tahun acuan ke kuartal/tahun target dengan kalkulasi rumus otomatis.')
-                ->form([
-                    Forms\Components\Grid::make(2)
-                        ->schema([
-                            Forms\Components\Select::make('source_year')
-                                ->label('Tahun Sumber')
-                                ->options(fn () => array_combine($this->getAvailableYears(), $this->getAvailableYears()))
-                                ->default((int) date('Y'))
-                                ->required(),
-
-                            Forms\Components\Select::make('source_quarter')
-                                ->label('Kuartal Sumber')
-                                ->options([
-                                    'Q1' => 'Q1',
-                                    'Q2' => 'Q2',
-                                    'Q3' => 'Q3',
-                                    'Q4' => 'Q4',
-                                ])
-                                ->default('Q4')
-                                ->required(),
-
-                            Forms\Components\Select::make('target_year')
-                                ->label('Tahun Target')
-                                ->options(fn () => array_combine($this->getAvailableYears(), $this->getAvailableYears()))
-                                ->default((int) date('Y') + 1)
-                                ->required(),
-
-                            Forms\Components\Select::make('target_quarter')
-                                ->label('Kuartal Target')
-                                ->options([
-                                    'Q1' => 'Q1',
-                                    'Q2' => 'Q2',
-                                    'Q3' => 'Q3',
-                                    'Q4' => 'Q4',
-                                ])
-                                ->default('Q1')
-                                ->required(),
-                        ]),
-
-                    Forms\Components\TextInput::make('exchange_rate')
-                        ->label('Kurs Dolar Baru (Rp)')
-                        ->prefix('Rp')
-                        ->numeric()
-                        ->default(fn () => Currency::where('code', 'USD')->latest('year')->value('exchange_rate_to_idr'))
-                        ->helperText('Kurs IDR yang diterapkan ke data hasil salinan'),
-
-                    Forms\Components\Checkbox::make('sync_from_steel')
-                        ->label('Sinkronkan harga acuan Coil & Sheet dari Material Steel periode target jika ada')
-                        ->default(true),
-
-                    Forms\Components\Select::make('duplicate_handling')
-                        ->label('Jika Data di Target Sudah Ada')
-                        ->options([
-                            'overwrite' => 'Timpa / Perbarui Data Lama',
-                            'skip' => 'Lewati (Jangan duplikasi)',
-                            'duplicate' => 'Tetap Tambah sebagai Rekaman Baru',
-                        ])
-                        ->default('overwrite'),
-                ])
-                ->action(function (array $data) {
-                    $result = MonthlyDataRolloverService::rolloverStampingParts(
-                        (int) $data['source_year'],
-                        (string) $data['source_quarter'],
-                        (int) $data['target_year'],
-                        (string) $data['target_quarter'],
-                        ! empty($data['exchange_rate']) ? (float) $data['exchange_rate'] : null,
-                        null,
-                        'Active',
-                        (string) ($data['duplicate_handling'] ?? 'overwrite'),
-                        null,
-                        (bool) ($data['sync_from_steel'] ?? true)
-                    );
-
-                    Notification::make()
-                        ->title('Salin Data Stamping Part Berhasil!')
-                        ->body("{$result['copied']} data baru disalin dan {$result['updated']} diperbarui dari {$data['source_year']} {$data['source_quarter']} ke {$data['target_year']} {$data['target_quarter']}.")
-                        ->success()
-                        ->send();
-
-                    $this->selectedYear = (string) $data['target_year'];
-                    $this->resetPage();
-                }),
-
-            Actions\Action::make('all_rollover_page')
-                ->label('Menu Rollover Bulanan')
-                ->icon('heroicon-o-bolt')
-                ->color('gray')
-                ->url(MonthlyRollover::getUrl()),
-        ];
-    }
-
-    public function updatedSelectedYear(): void
-    {
-        unset($this->cachedTabs);
-        $this->resetPage();
-    }
-
-    public function getAvailableYears(): array
-    {
-        $dbYears = StampingPart::distinct()->pluck('year')->filter()->toArray();
-        $current = (int) date('Y');
-        $standardYears = [$current - 1, $current, $current + 1, $current + 2];
-        $merged = array_unique(array_merge($dbYears, $standardYears));
-        sort($merged);
-
-        return $merged;
-    }
-
-    public function getTabs(): array
-    {
-        $year = $this->selectedYear ? (int) $this->selectedYear : null;
-        $yearSuffix = $year ? " ({$year})" : '';
-
-        return [
-            'all' => Tab::make('Semua Kuartal'.$yearSuffix)
-                ->badge(fn () => StampingPart::when($year, fn ($q) => $q->where('year', $year))->count())
-                ->badgeColor('gray')
-                ->modifyQueryUsing(fn (Builder $query) => $query->when($year, fn ($q) => $q->where('year', $year))),
-
-            'Q1' => Tab::make('Kuartal 1 (Q1)')
-                ->badge(fn () => StampingPart::where('quarter', 'Q1')->when($year, fn ($q) => $q->where('year', $year))->count())
-                ->badgeColor('info')
-                ->modifyQueryUsing(fn (Builder $query) => $query->where('quarter', 'Q1')->when($year, fn ($q) => $q->where('year', $year))),
-
-            'Q2' => Tab::make('Kuartal 2 (Q2)')
-                ->badge(fn () => StampingPart::where('quarter', 'Q2')->when($year, fn ($q) => $q->where('year', $year))->count())
-                ->badgeColor('success')
-                ->modifyQueryUsing(fn (Builder $query) => $query->where('quarter', 'Q2')->when($year, fn ($q) => $q->where('year', $year))),
-
-            'Q3' => Tab::make('Kuartal 3 (Q3)')
-                ->badge(fn () => StampingPart::where('quarter', 'Q3')->when($year, fn ($q) => $q->where('year', $year))->count())
-                ->badgeColor('warning')
-                ->modifyQueryUsing(fn (Builder $query) => $query->where('quarter', 'Q3')->when($year, fn ($q) => $q->where('year', $year))),
-
-            'Q4' => Tab::make('Kuartal 4 (Q4)')
-                ->badge(fn () => StampingPart::where('quarter', 'Q4')->when($year, fn ($q) => $q->where('year', $year))->count())
-                ->badgeColor('primary')
-                ->modifyQueryUsing(fn (Builder $query) => $query->where('quarter', 'Q4')->when($year, fn ($q) => $q->where('year', $year))),
         ];
     }
 }

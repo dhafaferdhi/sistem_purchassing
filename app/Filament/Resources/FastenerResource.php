@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\FastenerResource\Pages;
 use App\Models\Currency;
 use App\Models\Fastener;
+use App\Models\MaterialSteel;
 use App\Models\Supplier;
 use App\Services\ExcelImportService;
 use Filament\Forms;
@@ -27,13 +28,410 @@ class FastenerResource extends Resource
 
     protected static ?string $navigationGroup = 'Master Data';
 
-    protected static ?string $navigationLabel = 'Pasterner';
+    protected static ?string $navigationLabel = 'Fasteners';
 
     protected static ?int $navigationSort = 4;
 
     /**
+     * Format angka mata uang USD tanpa trailing zero yang tidak perlu (contoh: 1.1 alih-alih 1.1000, -20 alih-alih -20.00).
+     */
+    public static function formatUsd(mixed $value, ?string $currency = 'USD'): string
+    {
+        if ($value === null || $value === '') {
+            return '-';
+        }
+
+        $f = (float) $value;
+        if ($f == 0.0) {
+            return '-';
+        }
+
+        $formatted = rtrim(rtrim(number_format($f, 4, '.', ''), '0'), '.');
+
+        return $currency ? "{$currency} {$formatted}" : $formatted;
+    }
+
+    /**
+     * Format angka mata uang IDR bulat tanpa pecahan desimal sen (contoh: Rp 16.000).
+     */
+    public static function formatIdr(mixed $value, bool $withPrefix = true): string
+    {
+        if ($value === null || $value === '') {
+            return '-';
+        }
+
+        $f = (float) $value;
+        if ($f == 0.0) {
+            return '-';
+        }
+
+        $formatted = number_format(round($f), 0, ',', '.');
+
+        return $withPrefix ? "Rp {$formatted}" : $formatted;
+    }
+
+    public static function syncCurrencyAndPrices(Get $get, Set $set): void
+    {
+        $year = (int) ($get('year') ?? date('Y'));
+        $quarter = $get('quarter') ?? 'Q1';
+
+        $curr = Currency::where('code', 'USD')->where('year', $year)->where('quarter', $quarter)->first()
+            ?? Currency::where('code', 'USD')->where('year', $year)->first()
+            ?? Currency::where('code', 'USD')->latest('year')->first();
+
+        if ($curr) {
+            $set('currency_id', $curr->id);
+            $set('currency_code', $curr->code);
+            $set('exchange_rate', (float) $curr->exchange_rate_to_idr);
+        }
+
+        static::recalculateFormPrices($get, $set);
+    }
+
+    public static function lookupCurrentQuarterSteel(Get $get, Set $set, bool $notify = false): bool
+    {
+        $year = (int) ($get('year') ?? date('Y'));
+        $quarter = $get('quarter') ?? 'Q1';
+        $spec = $get('steel_spec');
+        $supplierId = $get('supplier_id');
+
+        if (! $spec && ! $supplierId) {
+            return false;
+        }
+
+        $cleanSpec = $spec ? Fastener::cleanSteelSpec($spec) : null;
+        $query = MaterialSteel::where('year', $year)->where('quarter', $quarter);
+        if ($cleanSpec) {
+            $query->where(function ($q) use ($spec, $cleanSpec) {
+                $q->where('steel_spec', $cleanSpec)
+                    ->orWhere('steel_spec', $spec)
+                    ->orWhere('steel_spec', 'like', $cleanSpec.'%');
+            });
+        }
+        if ($supplierId) {
+            $query->where('supplier_id', $supplierId);
+        }
+
+        $steel = $query->latest('id')->first();
+
+        if (! $steel && $cleanSpec && $supplierId) {
+            $steel = MaterialSteel::where('year', $year)
+                ->where('quarter', $quarter)
+                ->where(function ($q) use ($spec, $cleanSpec) {
+                    $q->where('steel_spec', $cleanSpec)
+                        ->orWhere('steel_spec', $spec)
+                        ->orWhere('steel_spec', 'like', $cleanSpec.'%');
+                })
+                ->latest('id')
+                ->first();
+        }
+
+        if ($steel) {
+            $set('coil_price', (float) $steel->coil_price);
+            $set('sheet_price', (float) $steel->sheet_price);
+
+            if ($steel->exchange_rate && (float) $steel->exchange_rate > 0) {
+                $set('exchange_rate', (float) $steel->exchange_rate);
+            }
+
+            if (empty($get('double_thickness')) && ! empty($steel->double_thickness)) {
+                $set('double_thickness', $steel->double_thickness);
+                $set('diameter', $steel->double_thickness);
+            }
+
+            if (empty($get('supplier_id')) && ! empty($steel->supplier_id)) {
+                $set('supplier_id', $steel->supplier_id);
+                $set('vendor_code', $steel->vendor_code);
+                $set('supplier_name', $steel->supplier_name);
+            }
+
+            static::recalculateFormPrices($get, $set);
+
+            if ($notify) {
+                Notification::make()
+                    ->title("Data Material Steel {$quarter} {$year} Ditemukan!")
+                    ->body("Harga Coil USD {$steel->coil_price}, Sheet USD {$steel->sheet_price}, Kurs Rp ".number_format($steel->exchange_rate, 0, ',', '.').' berhasil diisi otomatis.')
+                    ->success()
+                    ->send();
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    public static function lookupPreviousQuarterRecord(Get $get, Set $set): void
+    {
+        $quarter = $get('quarter') ?? 'Q1';
+        $year = (int) ($get('year') ?? date('Y'));
+        $supplierId = $get('supplier_id');
+        $steelSpec = $get('steel_spec');
+
+        $prevQuarter = match ($quarter) {
+            'Q1' => 'Q4',
+            'Q2' => 'Q1',
+            'Q3' => 'Q2',
+            'Q4' => 'Q3',
+            default => 'Q1',
+        };
+        $prevYear = ($quarter === 'Q1') ? ($year - 1) : $year;
+
+        $set('prev_quarter_label', "{$prevQuarter} {$prevYear}");
+
+        if (! $supplierId && ! $steelSpec) {
+            return;
+        }
+
+        $prev = Fastener::findPreviousQuarterData($quarter, $year, $supplierId ? (int) $supplierId : null, $steelSpec);
+
+        if ($prev) {
+            $set('prev_record_found', true);
+            $set('prev_coil_price', (float) ($prev['coil_price'] ?? 0));
+            $set('prev_sheet_price', (float) ($prev['sheet_price'] ?? 0));
+            $set('prev_rate', (float) ($prev['exchange_rate'] ?? 16000));
+
+            // Isi nilai default jika masih kosong pada form
+            if (! empty($prev['part_number']) && empty($get('part_number'))) {
+                $set('part_number', $prev['part_number']);
+            }
+            if (! empty($prev['part_name']) && empty($get('part_name'))) {
+                $set('part_name', $prev['part_name']);
+            }
+            if (! empty($prev['double_thickness']) && empty($get('double_thickness'))) {
+                $set('double_thickness', $prev['double_thickness']);
+                $set('diameter', $prev['double_thickness']);
+            }
+            if (! empty($prev['wire_spec']) && empty($get('wire_spec'))) {
+                $set('wire_spec', $prev['wire_spec']);
+            }
+            if (isset($prev['wire_price_usd_kg']) && (float) $prev['wire_price_usd_kg'] > 0 && empty($get('wire_price_usd_kg'))) {
+                $set('wire_price_usd_kg', $prev['wire_price_usd_kg']);
+            }
+            if (isset($prev['gross_weight_gr']) && empty($get('gross_weight_gr'))) {
+                $set('gross_weight_gr', $prev['gross_weight_gr']);
+            }
+            if (isset($prev['nett_weight_gr']) && empty($get('nett_weight_gr'))) {
+                $set('nett_weight_gr', $prev['nett_weight_gr']);
+            }
+            if (isset($prev['material_control_percent']) && empty($get('material_control_percent'))) {
+                $set('material_control_percent', $prev['material_control_percent']);
+            }
+            if (isset($prev['washer_price']) && empty($get('washer_price'))) {
+                $set('washer_price', $prev['washer_price']);
+            }
+            if (isset($prev['washer_weight_gr']) && empty($get('washer_weight_gr'))) {
+                $set('washer_weight_gr', $prev['washer_weight_gr']);
+            }
+            if (isset($prev['heading_cost']) && empty($get('heading_cost'))) {
+                $set('heading_cost', $prev['heading_cost']);
+            }
+            if (isset($prev['rolling_cost']) && empty($get('rolling_cost'))) {
+                $set('rolling_cost', $prev['rolling_cost']);
+            }
+            if (isset($prev['washing_cost_kg']) && empty($get('washing_cost_kg'))) {
+                $set('washing_cost_kg', $prev['washing_cost_kg']);
+            }
+            if (isset($prev['plating_cost_kg']) && empty($get('plating_cost_kg'))) {
+                $set('plating_cost_kg', $prev['plating_cost_kg']);
+            }
+            if (isset($prev['inspection_cost']) && empty($get('inspection_cost'))) {
+                $set('inspection_cost', $prev['inspection_cost']);
+            }
+            if (isset($prev['packing_cost']) && empty($get('packing_cost'))) {
+                $set('packing_cost', $prev['packing_cost']);
+            }
+            if (isset($prev['overhead_self_percent']) && empty($get('overhead_self_percent'))) {
+                $set('overhead_self_percent', $prev['overhead_self_percent']);
+            }
+
+            $mode = $get('price_mode');
+            if ($mode === 'adjustment') {
+                if (! empty($prev['exchange_rate']) && (float) $prev['exchange_rate'] > 0) {
+                    $set('exchange_rate', (float) $prev['exchange_rate']);
+                }
+
+                $spec = $get('steel_spec') ?: ($prev['steel_spec'] ?? null);
+                $steelType = Fastener::determineSteelType($spec);
+
+                $hrMt = $get('hr_steel_usd');
+                $crMt = $get('cr_steel_usd');
+                $gapMt = $get('gap_steel_usd');
+
+                if ($steelType === 'HR') {
+                    if ($hrMt !== null && $hrMt !== '' && (float) $hrMt != 0.0) {
+                        $appliedMt = (float) $hrMt;
+                    } elseif ($gapMt !== null && $gapMt !== '' && (float) $gapMt != 0.0) {
+                        $appliedMt = (float) $gapMt;
+                        $set('hr_steel_usd', $appliedMt);
+                    } else {
+                        $appliedMt = (float) ($hrMt ?? $gapMt ?? 0);
+                    }
+                } else {
+                    if ($crMt !== null && $crMt !== '' && (float) $crMt != 0.0) {
+                        $appliedMt = (float) $crMt;
+                    } elseif ($gapMt !== null && $gapMt !== '' && (float) $gapMt != 0.0) {
+                        $appliedMt = (float) $gapMt;
+                        $set('cr_steel_usd', $appliedMt);
+                    } else {
+                        $appliedMt = (float) ($crMt ?? $gapMt ?? 0);
+                    }
+                }
+
+                $set('gap_steel_usd', $appliedMt);
+                $appliedKg = round($appliedMt / 1000, 4);
+
+                $prevCoil = (float) ($prev['coil_price'] ?? 0);
+                $prevSheet = (float) ($prev['sheet_price'] ?? 0);
+
+                if ($prevCoil > 0) {
+                    $set('coil_price', round($prevCoil + $appliedKg, 4));
+                }
+                if ($prevSheet > 0) {
+                    $set('sheet_price', round($prevSheet + $appliedKg, 4));
+                }
+
+                $prevWire = (float) ($prev['wire_price_usd_kg'] ?? 0);
+                if ($prevWire > 0) {
+                    $set('wire_price_usd_kg', round($prevWire + $appliedKg, 4));
+                } elseif ($prevCoil > 0) {
+                    $set('wire_price_usd_kg', round($prevCoil + $appliedKg, 4));
+                }
+
+                static::recalculateFormPrices($get, $set);
+            }
+        } else {
+            $set('prev_record_found', false);
+            $set('prev_coil_price', null);
+            $set('prev_sheet_price', null);
+            $set('prev_rate', null);
+        }
+    }
+
+    public static function recalculateFormPrices(Get $get, Set $set): void
+    {
+        $coil = (float) ($get('coil_price') ?? 0);
+        $sheet = (float) ($get('sheet_price') ?? 0);
+        $rate = (float) ($get('exchange_rate') ?? 1);
+
+        $coilIdr = round($coil * $rate);
+        $sheetIdr = round($sheet * $rate);
+
+        $set('coil_price_idr', $coilIdr);
+        $set('sheet_price_idr', $sheetIdr);
+    }
+
+    public static function updatePricesFromWire(Get $get, Set $set): void
+    {
+        $wire = (float) ($get('wire_price_usd_kg') ?? 0);
+        $rate = (float) ($get('exchange_rate') ?? 1);
+        $coil = (float) ($get('coil_price') ?? 0);
+
+        if ($coil == 0.0 && $wire > 0) {
+            $set('coil_price', $wire);
+            $set('coil_price_idr', round($wire * $rate));
+        }
+
+        static::recalculateFormPrices($get, $set);
+    }
+
+    public static function updatePricesFromCoil(Get $get, Set $set): void
+    {
+        $coil = (float) ($get('coil_price') ?? 0);
+        $rate = (float) ($get('exchange_rate') ?? 1);
+        $sheet = (float) ($get('sheet_price') ?? 0);
+
+        $set('coil_price_idr', round($coil * $rate));
+
+        if (empty($get('wire_price_usd_kg')) && $coil > 0) {
+            $set('wire_price_usd_kg', $coil);
+        }
+
+        if ($sheet > 0 && $coil > 0) {
+            $gapKg = round($sheet - $coil, 4);
+            $gapUsd = round(($sheet - $coil) * 1000, 4);
+            $set('gap_steel_usd', $gapUsd);
+            $set('gap_steel_kg_usd', $gapKg);
+        }
+    }
+
+    public static function updatePricesFromSheet(Get $get, Set $set): void
+    {
+        $sheet = (float) ($get('sheet_price') ?? 0);
+        $coil = (float) ($get('coil_price') ?? 0);
+        $rate = (float) ($get('exchange_rate') ?? 1);
+
+        $set('sheet_price_idr', round($sheet * $rate));
+
+        if ($sheet > 0 && $coil > 0) {
+            $gapKg = round($sheet - $coil, 4);
+            $gapUsd = round(($sheet - $coil) * 1000, 4);
+            $set('gap_steel_usd', $gapUsd);
+            $set('gap_steel_kg_usd', $gapKg);
+        }
+    }
+
+    public static function updatePricesFromHrCr(Get $get, Set $set, ?string $source = null): void
+    {
+        $spec = $get('steel_spec');
+        $steelType = Fastener::determineSteelType($spec);
+
+        $hrMt = $get('hr_steel_usd');
+        $crMt = $get('cr_steel_usd');
+        $gapMt = $get('gap_steel_usd');
+
+        if ($steelType === 'HR') {
+            if ($hrMt !== null && $hrMt !== '' && (float) $hrMt != 0.0) {
+                $appliedMt = (float) $hrMt;
+            } elseif ($gapMt !== null && $gapMt !== '' && (float) $gapMt != 0.0) {
+                $appliedMt = (float) $gapMt;
+                $set('hr_steel_usd', $appliedMt);
+            } else {
+                $appliedMt = (float) ($hrMt ?? $gapMt ?? 0);
+            }
+        } else {
+            if ($crMt !== null && $crMt !== '' && (float) $crMt != 0.0) {
+                $appliedMt = (float) $crMt;
+            } elseif ($gapMt !== null && $gapMt !== '' && (float) $gapMt != 0.0) {
+                $appliedMt = (float) $gapMt;
+                $set('cr_steel_usd', $appliedMt);
+            } else {
+                $appliedMt = (float) ($crMt ?? $gapMt ?? 0);
+            }
+        }
+
+        $set('gap_steel_usd', $appliedMt);
+        $appliedKg = round($appliedMt / 1000, 4);
+        $set('gap_steel_kg_usd', $appliedKg);
+        $set('fluktuasi_jfe', $appliedKg);
+
+        $prevCoil = $get('prev_coil_price');
+        $prevSheet = $get('prev_sheet_price');
+
+        if ($prevCoil === null && $prevSheet === null) {
+            static::lookupPreviousQuarterRecord($get, $set);
+            $prevCoil = $get('prev_coil_price');
+            $prevSheet = $get('prev_sheet_price');
+        }
+
+        if ($prevCoil !== null && (float) $prevCoil > 0) {
+            $set('coil_price', round((float) $prevCoil + $appliedKg, 4));
+        }
+
+        if ($prevSheet !== null && (float) $prevSheet > 0) {
+            $set('sheet_price', round((float) $prevSheet + $appliedKg, 4));
+        }
+
+        $prevWire = (float) ($get('wire_price_usd_kg') ?? $prevCoil ?? 0);
+        if ($prevWire > 0) {
+            $set('wire_price_usd_kg', round($prevWire + $appliedKg, 4));
+        }
+
+        static::recalculateFormPrices($get, $set);
+    }
+
+    /**
      * Logika otomatis menarik data dari kuartal sebelumnya
-     * Contoh: Q1 2027 mengambil data dari Q4 2026
      */
     public static function pullPreviousQuarterData(Get $get, Set $set, bool $notify = true): void
     {
@@ -72,11 +470,71 @@ class FastenerResource extends Resource
                 $set('supplier_name', $prevData['supplier_name']);
             }
 
-            // Hitung konversi ke IDR dengan kurs tahun terpilih
+            if (! empty($prevData['part_number'])) {
+                $set('part_number', $prevData['part_number']);
+            }
+            if (! empty($prevData['part_name'])) {
+                $set('part_name', $prevData['part_name']);
+            }
+            if (! empty($prevData['model_name'])) {
+                $set('model_name', $prevData['model_name']);
+            }
+            if (! empty($prevData['monthly_volume'])) {
+                $set('monthly_volume', $prevData['monthly_volume']);
+            }
+            if (! empty($prevData['wire_spec'])) {
+                $set('wire_spec', $prevData['wire_spec']);
+            }
+            if (isset($prevData['nett_weight_gr'])) {
+                $set('nett_weight_gr', $prevData['nett_weight_gr']);
+            }
+            if (isset($prevData['gross_weight_gr'])) {
+                $set('gross_weight_gr', $prevData['gross_weight_gr']);
+            }
+            if (isset($prevData['wire_price_usd_kg'])) {
+                $set('wire_price_usd_kg', $prevData['wire_price_usd_kg']);
+            }
+            if (isset($prevData['material_control_percent'])) {
+                $set('material_control_percent', $prevData['material_control_percent']);
+            }
+            if (isset($prevData['washer_price'])) {
+                $set('washer_price', $prevData['washer_price']);
+            }
+            if (isset($prevData['washer_weight_gr'])) {
+                $set('washer_weight_gr', $prevData['washer_weight_gr']);
+            }
+            if (isset($prevData['heading_cost'])) {
+                $set('heading_cost', $prevData['heading_cost']);
+            }
+            if (isset($prevData['rolling_cost'])) {
+                $set('rolling_cost', $prevData['rolling_cost']);
+            }
+            if (isset($prevData['washing_cost_kg'])) {
+                $set('washing_cost_kg', $prevData['washing_cost_kg']);
+            }
+            if (isset($prevData['plating_cost_kg'])) {
+                $set('plating_cost_kg', $prevData['plating_cost_kg']);
+            }
+            if (isset($prevData['inspection_cost'])) {
+                $set('inspection_cost', $prevData['inspection_cost']);
+            }
+            if (isset($prevData['packing_cost'])) {
+                $set('packing_cost', $prevData['packing_cost']);
+            }
+            if (isset($prevData['overhead_self_percent'])) {
+                $set('overhead_self_percent', $prevData['overhead_self_percent']);
+            }
+
             $rate = (float) ($get('exchange_rate') ?? $prevData['exchange_rate'] ?? 16000);
             $set('exchange_rate', $rate);
-            $set('coil_price_idr', round((float) ($prevData['coil_price'] ?? 0) * $rate, 2));
-            $set('sheet_price_idr', round((float) ($prevData['sheet_price'] ?? 0) * $rate, 2));
+            $set('coil_price_idr', round((float) ($prevData['coil_price'] ?? 0) * $rate));
+            $set('sheet_price_idr', round((float) ($prevData['sheet_price'] ?? 0) * $rate));
+
+            $set('prev_record_found', true);
+            $set('prev_quarter_label', $prevData['label'] ?? null);
+            $set('prev_coil_price', (float) ($prevData['coil_price'] ?? 0));
+            $set('prev_sheet_price', (float) ($prevData['sheet_price'] ?? 0));
+            $set('prev_rate', (float) ($prevData['exchange_rate'] ?? 16000));
 
             if ($notify) {
                 Notification::make()
@@ -101,17 +559,15 @@ class FastenerResource extends Resource
             ->schema([
                 Forms\Components\Group::make()
                     ->schema([
-                        // Auto-Isi dari File Excel
                         // Auto-Isi dari File Excel (Opsional - Terlipat)
                         Forms\Components\Section::make('Auto-Deteksi & Isi dari File Excel (.xlsx / .csv)')
-                            ->description('Unggah file Excel untuk membaca kolom dan mengisi formulir di bawah secara instan dan otomatis')
+                            ->description('Unggah file Excel untuk membaca kolom dan mengisi formulir secara otomatis')
                             ->icon('heroicon-o-arrow-up-tray')
                             ->collapsible()
                             ->collapsed()
                             ->schema([
                                 Forms\Components\FileUpload::make('excel_auto_fill')
                                     ->label('Pilih File Excel (.xlsx / .csv)')
-                                    ->helperText('Setelah file diunggah, data baris pertama akan otomatis dideteksi dan mengisikan spesifikasi part/fastener, ketebalan/diameter, dan harga ke formulir.')
                                     ->disk('public')
                                     ->directory('temp-excel-detect')
                                     ->live()
@@ -172,9 +628,6 @@ class FastenerResource extends Resource
                                                 if (! empty($detected['gap_steel_kg_usd'])) {
                                                     $set('gap_steel_kg_usd', (float) $detected['gap_steel_kg_usd']);
                                                 }
-                                                if (! empty($detected['fluktuasi_jfe'])) {
-                                                    $set('fluktuasi_jfe', (float) $detected['fluktuasi_jfe']);
-                                                }
 
                                                 Notification::make()
                                                     ->title('Data Excel Berhasil Dideteksi!')
@@ -188,10 +641,9 @@ class FastenerResource extends Resource
                                     ->columnSpanFull(),
                             ]),
 
-                        // SECTION 1: Periode Kontrak Kuartalan (Q1 - Q4)
-                        Forms\Components\Section::make('1. Periode Kontrak Pasterner')
-                            ->description('Pilih tahun dan kuartal (Q1 - Q4). Data dapat otomatis ditarik dari kuartal sebelumnya (misal Q1 2027 dari Q4 2026)')
-                            ->icon('heroicon-o-calendar')
+                        // SECTION 1: Spesifikasi Fastener & Periode
+                        Forms\Components\Section::make('1. Spesifikasi Fastener & Periode')
+                            ->icon('heroicon-o-scale')
                             ->schema([
                                 Forms\Components\Select::make('year')
                                     ->label('Tahun Kontrak')
@@ -204,92 +656,47 @@ class FastenerResource extends Resource
 
                                         return $years;
                                     })
-                                    ->default((int) date('Y'))
+                                    ->default(function () {
+                                        $latestYear = Fastener::latest('year')->value('year');
+
+                                        return $latestYear ?: (int) date('Y');
+                                    })
                                     ->required()
                                     ->live()
-                                    ->afterStateUpdated(function (Get $get, Set $set, $state) {
-                                        if ($state) {
-                                            $match = Currency::where('code', 'USD')->where('year', (int) $state)->first()
-                                                ?? Currency::where('code', 'USD')->first();
-                                            if ($match) {
-                                                $set('currency_id', $match->id);
-                                                $set('currency_code', $match->code);
-                                                $set('exchange_rate', (float) $match->exchange_rate_to_idr);
-
-                                                $coil = (float) ($get('coil_price') ?? 0);
-                                                $sheet = (float) ($get('sheet_price') ?? 0);
-                                                $rate = (float) $match->exchange_rate_to_idr;
-                                                $set('coil_price_idr', round($coil * $rate, 2));
-                                                $set('sheet_price_idr', round($sheet * $rate, 2));
-                                            }
-                                        }
-
+                                    ->afterStateUpdated(function (Get $get, Set $set) {
+                                        static::syncCurrencyAndPrices($get, $set);
                                         static::pullPreviousQuarterData($get, $set, false);
+                                        static::lookupPreviousQuarterRecord($get, $set);
                                     })
                                     ->columnSpan(1),
 
-                                Forms\Components\Hidden::make('currency_id')
-                                    ->default(function (Get $get) {
-                                        $year = (int) ($get('year') ?? date('Y'));
-
-                                        return Currency::where('code', 'USD')->where('year', $year)->first()?->id
-                                            ?? Currency::where('code', 'USD')->first()?->id
-                                            ?? Currency::first()?->id;
-                                    }),
-
-                                Forms\Components\Hidden::make('currency_code')
-                                    ->default('USD'),
-
                                 Forms\Components\Select::make('quarter')
-                                    ->label('Kuartal (Q1 - Q4)')
+                                    ->label('Kuartal (Quarter)')
                                     ->options([
-                                        'Q1' => 'Kuartal 1 (Q1)',
-                                        'Q2' => 'Kuartal 2 (Q2)',
-                                        'Q3' => 'Kuartal 3 (Q3)',
-                                        'Q4' => 'Kuartal 4 (Q4)',
+                                        'Q1' => 'Q1 (Januari - Maret)',
+                                        'Q2' => 'Q2 (April - Juni)',
+                                        'Q3' => 'Q3 (Juli - September)',
+                                        'Q4' => 'Q4 (Oktober - Desember)',
                                     ])
                                     ->default('Q1')
                                     ->required()
                                     ->live()
-                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::pullPreviousQuarterData($get, $set, false))
-                                    ->helperText('Pilih kuartal penetapan harga')
+                                    ->afterStateUpdated(function (Get $get, Set $set, ?string $state) {
+                                        if ($state === 'Q1') {
+                                            $set('price_mode', 'baseline');
+                                            $set('hr_steel_usd', 0);
+                                            $set('cr_steel_usd', 0);
+                                        } else {
+                                            $set('price_mode', 'adjustment');
+                                        }
+                                        static::syncCurrencyAndPrices($get, $set);
+                                        static::pullPreviousQuarterData($get, $set, false);
+                                        static::lookupPreviousQuarterRecord($get, $set);
+                                    })
                                     ->columnSpan(1),
 
-                                Forms\Components\Actions::make([
-                                    Forms\Components\Actions\Action::make('pull_previous_data')
-                                        ->label('Tarik Data Kuartal Sebelumnya')
-                                        ->icon('heroicon-o-arrow-path')
-                                        ->color('primary')
-                                        ->tooltip('Otomatis mengambil data dari kuartal sebelumnya (misal Q1 2027 mengambil dari Q4 2026)')
-                                        ->action(fn (Get $get, Set $set) => static::pullPreviousQuarterData($get, $set, true)),
-                                ])
-                                    ->columnSpan(1)
-                                    ->alignEnd(),
-
-                                Forms\Components\Placeholder::make('previous_quarter_info')
-                                    ->hiddenLabel()
-                                    ->content(function (Get $get) {
-                                        $quarter = $get('quarter') ?? 'Q1';
-                                        $year = (int) ($get('year') ?? date('Y'));
-                                        $info = Fastener::getPreviousQuarterInfo($quarter, $year);
-                                        $prevData = Fastener::findPreviousQuarterData($quarter, $year, $get('supplier_id') ? (int) $get('supplier_id') : null, $get('steel_spec'));
-
-                                        if ($prevData) {
-                                            return new HtmlString("<div class='rounded-lg bg-primary-50 p-3 text-xs text-primary-800 dark:bg-primary-950/40 dark:text-primary-300 border border-primary-200 dark:border-primary-800 flex items-center gap-2'><span>📌</span> <span><strong>Acuan Aktif:</strong> Mengambil data dari <strong>{$prevData['label']}</strong> ({$prevData['source']}) — Spec: <strong>{$prevData['steel_spec']}</strong>, Coil/Wire: <strong>\${$prevData['coil_price']}</strong>, Sheet/Rod: <strong>\${$prevData['sheet_price']}</strong>, Gap/MT: <strong>\${$prevData['gap_steel_usd']}</strong>.</span></div>");
-                                        }
-
-                                        return new HtmlString("<div class='rounded-lg bg-gray-50 p-2.5 text-xs text-gray-600 dark:bg-gray-800/40 dark:text-gray-400 border border-gray-200 dark:border-gray-700 flex items-center gap-2'><span>ℹ️</span> <span>Belum ada data acuan di <strong>{$info['label']}</strong>. Anda dapat mengisi form secara manual.</span></div>");
-                                    })
-                                    ->columnSpanFull(),
-                            ])->columns(3),
-
-                        // SECTION 2: Identitas Supplier & Spesifikasi
-                        Forms\Components\Section::make('2. Supplier & Spesifikasi Pasterner')
-                            ->description('Pilih supplier (PT HSSI, PT USCI, PT TOHO, dll.), ketik nama supplier sendiri, dan spesifikasi baja / wire')
-                            ->icon('heroicon-o-building-office')
-                            ->schema([
                                 Forms\Components\Select::make('supplier_id')
-                                    ->label('Pilih Supplier / Tambah Baru (+)')
+                                    ->label('Pilih Supplier')
                                     ->relationship(
                                         name: 'supplier',
                                         titleAttribute: 'name',
@@ -299,9 +706,7 @@ class FastenerResource extends Resource
                                                 $q->whereIn('name', ['PT HSSI', 'PT USCI'])
                                                     ->orWhere('name', 'like', '%HSSI%')
                                                     ->orWhere('name', 'like', '%USCI%')
-                                                    ->orWhere('name', 'like', '%FASTENER%')
-                                                    ->orWhere('name', 'like', '%TOHO%')
-                                                    ->orWhere('name', 'like', '%MOON%');
+                                                    ->orWhere('category', 'Fastener');
                                                 if ($selectedId) {
                                                     $q->orWhere('id', $selectedId);
                                                 }
@@ -310,10 +715,22 @@ class FastenerResource extends Resource
                                     )
                                     ->searchable()
                                     ->preload()
+                                    ->required(fn (Get $get) => empty($get('supplier_name')))
+                                    ->live()
+                                    ->afterStateUpdated(function ($state, Set $set, Get $get) {
+                                        if ($state) {
+                                            $supplier = Supplier::find($state);
+                                            if ($supplier) {
+                                                $set('vendor_code', $supplier->code);
+                                                $set('supplier_name', $supplier->name);
+                                            }
+                                        }
+                                        static::lookupPreviousQuarterRecord($get, $set);
+                                    })
                                     ->createOptionForm([
                                         Forms\Components\TextInput::make('name')
                                             ->label('Nama Supplier Baru')
-                                            ->placeholder('Contoh: PT Toho Fastener Indonesia')
+                                            ->placeholder('Contoh: PT Toho Fastener Tbk')
                                             ->required()
                                             ->maxLength(255)
                                             ->live(onBlur: true)
@@ -324,66 +741,52 @@ class FastenerResource extends Resource
                                                 }
                                             }),
 
-                                        Forms\Components\TextInput::make('code')
-                                            ->label('Vendor Code (Kode Supplier)')
-                                            ->placeholder('Contoh: VND-TOHO-01')
-                                            ->required()
-                                            ->unique('suppliers', 'code')
-                                            ->maxLength(50),
-
-                                        Forms\Components\Select::make('category')
-                                            ->label('Kategori')
-                                            ->options([
-                                                'Fastener' => 'Fastener (Baut, Mur, Paku, Wire)',
-                                                'Steel' => 'Steel (Baja / Raw Material)',
-                                                'Component' => 'Component (Part Komponen)',
-                                            ])
-                                            ->default('Fastener')
-                                            ->required(),
+                                        Forms\Components\Hidden::make('code')
+                                            ->default(fn () => 'VND-SUP-'.rand(100, 999)),
                                     ])
-                                    ->createOptionAction(function (Forms\Components\Actions\Action $action) {
-                                        return $action
-                                            ->modalHeading('Bikin Supplier Baru')
-                                            ->modalButton('Simpan & Gunakan')
-                                            ->modalWidth('md');
-                                    })
-                                    ->live()
-                                    ->afterStateUpdated(function ($state, Set $set, Get $get) {
-                                        if ($state) {
-                                            $supplier = Supplier::find($state);
-                                            if ($supplier) {
-                                                $set('vendor_code', $supplier->code);
-                                                $set('supplier_name', $supplier->name);
-                                            }
-                                        }
-                                        static::pullPreviousQuarterData($get, $set, false);
-                                    })
-                                    ->helperText('Klik (+) untuk menambah supplier baru')
                                     ->columnSpan(1),
 
-                                Forms\Components\TextInput::make('supplier_name')
-                                    ->label('Supplier Name')
-                                    ->placeholder('Ketik sendiri nama supplier atau pilih dari dropdown')
-                                    ->required(fn (Get $get) => empty($get('supplier_id')))
+                                Forms\Components\TextInput::make('part_number')
+                                    ->label('Part Number')
+                                    ->placeholder('Contoh: 9004A-01046')
                                     ->live(onBlur: true)
-                                    ->afterStateUpdated(function ($state, Set $set, Get $get) {
-                                        if ($state && empty($get('vendor_code'))) {
-                                            $clean = strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $state), 0, 5));
-                                            $set('vendor_code', 'VND-'.($clean ?: 'SUP').'-'.rand(10, 99));
-                                        }
-                                    })
                                     ->columnSpan(1),
 
-                                Forms\Components\TextInput::make('vendor_code')
-                                    ->label('Vendor Code')
-                                    ->placeholder('Contoh: VND-TOHO atau VND-MOON')
-                                    ->required(fn (Get $get) => empty($get('supplier_id')))
+                                Forms\Components\TextInput::make('part_name')
+                                    ->label('Part Name')
+                                    ->placeholder('Contoh: BOLT, REAR BUMPER')
+                                    ->live(onBlur: true)
+                                    ->columnSpan(1),
+
+                                Forms\Components\TextInput::make('model_name')
+                                    ->label('Model')
+                                    ->placeholder('Contoh: D26A')
+                                    ->default('D26A')
+                                    ->columnSpan(1),
+
+                                Forms\Components\TextInput::make('monthly_volume')
+                                    ->label('Monthly Volume (Pcs)')
+                                    ->numeric()
+                                    ->placeholder('Contoh: 20000')
+                                    ->default(20000)
+                                    ->suffix('pcs/bln')
+                                    ->columnSpan(1),
+
+                                Forms\Components\TextInput::make('drawing_reference')
+                                    ->label('Drawing Reference')
+                                    ->placeholder('Contoh: Official Dwg (supplier selection)')
+                                    ->default('Official Dwg (supplier selection)')
+                                    ->columnSpan(1),
+
+                                Forms\Components\TextInput::make('eci_number')
+                                    ->label('ECI Number')
+                                    ->placeholder('Contoh: F1225')
                                     ->columnSpan(1),
 
                                 Forms\Components\TextInput::make('steel_spec')
-                                    ->label('Spec (Spesifikasi Material / Wire)')
-                                    ->placeholder('Contoh: SWMB, SWRCH10A, SWRCH18A, SPHC')
-                                    ->helperText('Hanya kode spesifikasi grade material/wire tanpa angka diameter/ketebalan dan mm. Ukuran diameter diisi pada kolom Diameter.')
+                                    ->label('Spesifikasi Baja (Spec)')
+                                    ->placeholder('Contoh: SWCH-45K, SPH270C, SPC270C')
+                                    ->datalist(fn () => MaterialSteel::distinct()->pluck('steel_spec')->filter()->toArray())
                                     ->required()
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(function (Get $get, Set $set, ?string $state) {
@@ -393,186 +796,501 @@ class FastenerResource extends Resource
                                                 $set('steel_spec', $clean);
                                             }
                                         }
-                                        static::pullPreviousQuarterData($get, $set, false);
+                                        $found = static::lookupCurrentQuarterSteel($get, $set, true);
+                                        if (! $found) {
+                                            static::lookupPreviousQuarterRecord($get, $set);
+                                        }
                                     })
                                     ->dehydrateStateUsing(fn (?string $state) => Fastener::cleanSteelSpec($state))
                                     ->columnSpan(1),
 
                                 Forms\Components\TextInput::make('double_thickness')
-                                    ->label('Diameter / Thickness(mm)')
-                                    ->placeholder('Contoh: 3.0 atau 4.5')
-                                    ->helperText('Isi ukuran diameter / ketebalan dalam mm (tanpa teks mm)')
+                                    ->label('Thickness / Diameter (mm)')
+                                    ->placeholder('Contoh: 4.4 atau 5.0')
                                     ->live(onBlur: true)
-                                    ->afterStateUpdated(function ($state, Set $set) {
+                                    ->afterStateUpdated(function ($state, Set $set, Get $get) {
                                         if ($state) {
                                             $clean = trim(preg_replace('/[a-zA-Z\s]+/', '', $state));
                                             $set('double_thickness', $clean);
                                             $set('diameter', $clean);
                                         }
+                                        static::lookupPreviousQuarterRecord($get, $set);
                                     })
                                     ->columnSpan(1),
 
+                                Forms\Components\TextInput::make('wire_spec')
+                                    ->label('Wire Spec (Spesifikasi Kawat)')
+                                    ->placeholder('Contoh: WIRE OF RIVET [SWCH-45K]')
+                                    ->default('WIRE OF RIVET [SWCH-45K]')
+                                    ->live(onBlur: true)
+                                    ->columnSpan(1),
+
+                                // Hidden fields untuk integritas data
                                 Forms\Components\Hidden::make('diameter'),
+                                Forms\Components\Hidden::make('vendor_code'),
+                                Forms\Components\Hidden::make('supplier_name'),
+                                Forms\Components\Hidden::make('currency_id'),
+                                Forms\Components\Hidden::make('currency_code')->default('USD'),
+                                Forms\Components\Hidden::make('gap_steel_kg_usd')->default(0),
+                                Forms\Components\Hidden::make('fluktuasi_jfe')->default(0),
+
+                                // Form state helpers untuk acuan kuartal sebelumnya
+                                Forms\Components\Hidden::make('prev_quarter_label')->dehydrated(false),
+                                Forms\Components\Hidden::make('prev_record_found')->default(false)->dehydrated(false),
+                                Forms\Components\Hidden::make('prev_coil_price')->dehydrated(false),
+                                Forms\Components\Hidden::make('prev_sheet_price')->dehydrated(false),
+                                Forms\Components\Hidden::make('prev_rate')->dehydrated(false),
                             ])->columns(3),
 
-                        // SECTION 3: Penetapan Harga & Kurs Pasterner
-                        Forms\Components\Section::make('3. Penetapan Harga & Kurs Pasterner')
-                            ->description('Cukup masukkan Coil/Wire ($) dan Gap/MT ($), harga lainnya otomatis dihitung')
+                        // SECTION 2: Penetapan Harga Bahan Baku & Kurs
+                        Forms\Components\Section::make('2. Harga Bahan Baku & Kurs')
                             ->icon('heroicon-o-currency-dollar')
                             ->schema([
-                                Forms\Components\TextInput::make('coil_price')
-                                    ->label('Coil / Wire (USD / kg)')
-                                    ->numeric()
-                                    ->step(0.0001)
-                                    ->prefix('$')
-                                    ->placeholder('0.0000')
-                                    ->live(onBlur: true)
+                                Forms\Components\Radio::make('price_mode')
+                                    ->label('Mode Penetapan Harga')
+                                    ->dehydrated(false)
+                                    ->options([
+                                        'baseline' => 'Data Awal / Baseline (Tanpa Perbandingan — Langsung Isi Harga Coil & Sheet)',
+                                        'adjustment' => 'Pembaruan Kuartalan (Kenaikan / Penurunan HR / CR Dolar MT)',
+                                    ])
+                                    ->default(fn (Get $get) => ($get('quarter') ?? 'Q1') === 'Q1' ? 'baseline' : 'adjustment')
+                                    ->formatStateUsing(function ($state, Get $get, ?Fastener $record) {
+                                        if ($state !== null && $state !== '') {
+                                            return $state;
+                                        }
+                                        if ($record) {
+                                            $hasHr = $record->hr_steel_usd !== null && (float) $record->hr_steel_usd != 0.0;
+                                            $hasCr = $record->cr_steel_usd !== null && (float) $record->cr_steel_usd != 0.0;
+                                            $hasGap = $record->gap_steel_usd !== null && (float) $record->gap_steel_usd != 0.0;
+
+                                            return ($record->quarter === 'Q1' && ! $hasHr && ! $hasCr && ! $hasGap) ? 'baseline' : 'adjustment';
+                                        }
+
+                                        return ($get('quarter') ?? 'Q1') === 'Q1' ? 'baseline' : 'adjustment';
+                                    })
+                                    ->live()
                                     ->afterStateUpdated(function ($state, Set $set, Get $get) {
-                                        $coil = (float) ($state ?? 0);
-                                        $rate = (float) ($get('exchange_rate') ?? 1);
-                                        $sheet = (float) ($get('sheet_price') ?? 0);
+                                        if ($state === 'baseline') {
+                                            $set('hr_steel_usd', 0);
+                                            $set('cr_steel_usd', 0);
+                                            $set('gap_steel_usd', 0);
+                                            $set('gap_steel_kg_usd', 0);
+                                            $set('fluktuasi_jfe', 0);
+                                            static::recalculateFormPrices($get, $set);
+                                        } else {
+                                            static::lookupPreviousQuarterRecord($get, $set);
+                                        }
+                                    })
+                                    ->columnSpanFull(),
 
-                                        $set('coil_price_idr', round($coil * $rate, 2));
+                                Forms\Components\Placeholder::make('prev_quarter_info')
+                                    ->label('Status Data Acuan')
+                                    ->content(function (Get $get, ?Fastener $record) {
+                                        $found = $get('prev_record_found');
+                                        $prevLabel = $get('prev_quarter_label');
+                                        $prevCoil = $get('prev_coil_price');
+                                        $prevSheet = $get('prev_sheet_price');
 
-                                        if ($sheet > 0 && $coil > 0) {
-                                            $gapKg = round($sheet - $coil, 4);
-                                            $gapUsd = round(($sheet - $coil) * 1000, 4);
-                                            $set('gap_steel_usd', $gapUsd);
-                                            $set('gap_steel_kg_usd', $gapKg);
-                                        } elseif ($coil > 0 && empty($sheet)) {
-                                            $gapKg = (float) ($get('gap_steel_kg_usd') ?? 0);
-                                            if ($gapKg != 0) {
-                                                $calcSheet = round($coil + $gapKg, 4);
-                                                $set('sheet_price', $calcSheet);
-                                                $set('sheet_price_idr', round($calcSheet * $rate, 2));
+                                        if (! $found && $record) {
+                                            $quarter = $get('quarter') ?? $record->quarter;
+                                            $year = (int) ($get('year') ?? $record->year);
+                                            $supplierId = $get('supplier_id') ?? $record->supplier_id;
+                                            $spec = $get('steel_spec') ?? $record->steel_spec;
+
+                                            $prev = Fastener::findPreviousQuarterData($quarter, $year, $supplierId ? (int) $supplierId : null, $spec);
+                                            if ($prev) {
+                                                $prevCoil = $prev['coil_price'] ?? null;
+                                                $prevSheet = $prev['sheet_price'] ?? null;
+                                                $prevRate = $prev['exchange_rate'] ?? null;
+                                                $prevLabel = $prev['label'] ?? null;
+                                                $found = true;
                                             }
                                         }
-                                    })
-                                    ->helperText('Harga material bentuk Coil / Wire ($/kg)')
-                                    ->columnSpan(1),
 
-                                Forms\Components\TextInput::make('gap_steel_usd')
-                                    ->label('Gap / MT ( USD )')
+                                        if ($found && $prevCoil !== null) {
+                                            $prevRate = $get('prev_rate') ?? ($prev['exchange_rate'] ?? null);
+                                            $coilStr = static::formatUsd($prevCoil, '');
+                                            $sheetStr = static::formatUsd($prevSheet, '');
+                                            $rateFormatted = $prevRate ? ' | Kurs '.static::formatIdr($prevRate, true) : '';
+
+                                            return "📌 Ditemukan data acuan {$prevLabel}: Harga Coil \${$coilStr} | Sheet \${$sheetStr}{$rateFormatted}. Harga dan Perubahan Dolar Rupiah otomatis ditarik sama dengan {$prevLabel}.";
+                                        }
+
+                                        return 'ℹ️ Belum ada data di '.($prevLabel ?? 'Kuartal Sebelumnya').' untuk spesifikasi ini (Spesifikasi Baru). Silakan masukkan Harga Wire, Coil, atau Sheet langsung di bawah.';
+                                    })
+                                    ->visible(function (Get $get, ?Fastener $record) {
+                                        $mode = $get('price_mode');
+                                        if ($mode !== null) {
+                                            return $mode === 'adjustment';
+                                        }
+                                        $quarter = $get('quarter') ?? $record?->quarter ?? 'Q1';
+
+                                        return $quarter !== 'Q1';
+                                    })
+                                    ->columnSpanFull(),
+
+                                Forms\Components\TextInput::make('hr_steel_usd')
+                                    ->label('HR Dolar / MT ($/MT)')
                                     ->numeric()
                                     ->step(0.0001)
                                     ->prefix('$')
-                                    ->placeholder('Contoh: -20 atau 50')
-                                    ->live(onBlur: true)
-                                    ->afterStateUpdated(function ($state, Set $set, Get $get) {
-                                        $val = (float) ($state ?? 0);
-                                        $kg = round($val / 1000, 4);
-                                        $set('gap_steel_kg_usd', $kg);
-
-                                        $coil = (float) ($get('coil_price') ?? 0);
-                                        if ($coil > 0) {
-                                            $sheet = round($coil + $kg, 4);
-                                            $set('sheet_price', $sheet);
-                                            $rate = (float) ($get('exchange_rate') ?? 1);
-                                            $set('sheet_price_idr', round($sheet * $rate, 2));
+                                    ->placeholder('Contoh: -20 atau 50 (Hot Rolled: SPH, SAPH)')
+                                    ->default(0)
+                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) $state : null)
+                                    ->visible(function (Get $get, ?Fastener $record) {
+                                        $mode = $get('price_mode');
+                                        if ($mode !== null) {
+                                            return $mode === 'adjustment';
                                         }
+                                        $quarter = $get('quarter') ?? $record?->quarter ?? 'Q1';
+                                        $hasAdj = $record && (($record->hr_steel_usd !== null && (float) $record->hr_steel_usd != 0.0) || ($record->gap_steel_usd !== null && (float) $record->gap_steel_usd != 0.0));
+
+                                        return $quarter !== 'Q1' || $hasAdj;
                                     })
-                                    ->helperText('Gap per MT (USD/MT)')
+                                    ->live(onBlur: true)
+                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromHrCr($get, $set, 'HR'))
                                     ->columnSpan(1),
 
-                                Forms\Components\TextInput::make('exchange_rate')
-                                    ->label('Ex Rate ( IDR )')
+                                Forms\Components\TextInput::make('cr_steel_usd')
+                                    ->label('CR Dolar / MT ($/MT)')
                                     ->numeric()
                                     ->step(0.0001)
-                                    ->required()
-                                    ->prefix('Rp')
-                                    ->default(function (Get $get) {
-                                        $year = (int) ($get('year') ?? date('Y'));
+                                    ->prefix('$')
+                                    ->placeholder('Contoh: -20 atau 100 (Cold Rolled: SPC, NSC)')
+                                    ->default(0)
+                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) $state : null)
+                                    ->visible(function (Get $get, ?Fastener $record) {
+                                        $mode = $get('price_mode');
+                                        if ($mode !== null) {
+                                            return $mode === 'adjustment';
+                                        }
+                                        $quarter = $get('quarter') ?? $record?->quarter ?? 'Q1';
+                                        $hasAdj = $record && (($record->cr_steel_usd !== null && (float) $record->cr_steel_usd != 0.0) || ($record->gap_steel_usd !== null && (float) $record->gap_steel_usd != 0.0));
 
-                                        return Currency::where('code', 'USD')->where('year', $year)->first()?->exchange_rate_to_idr
-                                            ?? Currency::where('code', 'USD')->first()?->exchange_rate_to_idr
-                                            ?? 16000;
+                                        return $quarter !== 'Q1' || $hasAdj;
                                     })
                                     ->live(onBlur: true)
-                                    ->afterStateUpdated(function ($state, Set $set, Get $get) {
-                                        $rate = (float) ($state ?? 1);
-                                        $coilPrice = (float) ($get('coil_price') ?? 0);
-                                        $sheetPrice = (float) ($get('sheet_price') ?? 0);
+                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromHrCr($get, $set, 'CR'))
+                                    ->columnSpan(1),
 
-                                        $set('coil_price_idr', round($coilPrice * $rate, 2));
-                                        $set('sheet_price_idr', round($sheetPrice * $rate, 2));
+                                Forms\Components\Hidden::make('gap_steel_usd')->default(0),
+
+                                Forms\Components\TextInput::make('exchange_rate')
+                                    ->label('Perubahan Dolar Rupiah (Kurs IDR)')
+                                    ->numeric()
+                                    ->prefix('Rp')
+                                    ->placeholder('Contoh: 16000')
+                                    ->default(function (Get $get) {
+                                        $prevRate = $get('prev_rate');
+                                        if ($prevRate !== null && (float) $prevRate > 0) {
+                                            return (int) round((float) $prevRate);
+                                        }
+
+                                        $year = (int) ($get('year') ?? date('Y'));
+                                        $quarter = $get('quarter') ?? 'Q1';
+
+                                        $rate = Currency::where('code', 'USD')->where('year', $year)->where('quarter', $quarter)->value('exchange_rate_to_idr')
+                                            ?? Currency::where('code', 'USD')->where('year', $year)->value('exchange_rate_to_idr')
+                                            ?? Currency::where('code', 'USD')->latest('year')->value('exchange_rate_to_idr')
+                                            ?? 16000;
+
+                                        return (int) round((float) $rate);
                                     })
-                                    ->helperText('Kurs nilai tukar ke Rupiah')
+                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (int) round((float) $state) : null)
+                                    ->live(onBlur: true)
+                                    ->afterStateUpdated(function (Get $get, Set $set, $state) {
+                                        static::recalculateFormPrices($get, $set);
+                                        $oldRate = (float) ($get('old_exchange_rate') ?? 0);
+                                        if ($oldRate > 0 && $state) {
+                                            $set('exchange_rate_fluctuation', round((float) $state / $oldRate, 6));
+                                        }
+                                    })
+                                    ->required()
+                                    ->columnSpan(2),
+
+                                Forms\Components\TextInput::make('old_exchange_rate')
+                                    ->label('Kurs Lama (Old Rate Rp)')
+                                    ->numeric()
+                                    ->prefix('Rp')
+                                    ->placeholder('Contoh: 14555')
+                                    ->live(onBlur: true)
+                                    ->afterStateUpdated(function (Get $get, Set $set, $state) {
+                                        $newRate = (float) ($get('exchange_rate') ?? 0);
+                                        if ($state && (float) $state > 0 && $newRate > 0) {
+                                            $set('exchange_rate_fluctuation', round($newRate / (float) $state, 6));
+                                        }
+                                    })
+                                    ->columnSpan(1),
+
+                                Forms\Components\TextInput::make('exchange_rate_fluctuation')
+                                    ->label('Faktor Fluktuasi Kurs')
+                                    ->numeric()
+                                    ->step(0.000001)
+                                    ->placeholder('Contoh: 1.013535')
+                                    ->helperText('Perbandingan kurs baru / kurs lama (Exchg fluctuation)')
+                                    ->columnSpan(1),
+
+                                Forms\Components\TextInput::make('wire_price_usd_kg')
+                                    ->label('Harga Wire / Kawat ($/Kg)')
+                                    ->numeric()
+                                    ->step(0.0001)
+                                    ->prefix('$')
+                                    ->placeholder('Contoh: 1.6600')
+                                    ->default(1.66)
+                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) $state : null)
+                                    ->live(onBlur: true)
+                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromWire($get, $set))
+                                    ->columnSpan(2),
+
+                                Forms\Components\TextInput::make('coil_price')
+                                    ->label('Harga Coil ($/Kg)')
+                                    ->numeric()
+                                    ->step(0.0001)
+                                    ->prefix('$')
+                                    ->placeholder('Contoh: 1.1206')
+                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) $state : null)
+                                    ->live(onBlur: true)
+                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromCoil($get, $set))
                                     ->columnSpan(1),
 
                                 Forms\Components\TextInput::make('sheet_price')
-                                    ->label('Sheet / Rod (USD / kg)')
+                                    ->label('Harga Sheet ($/Kg)')
                                     ->numeric()
                                     ->step(0.0001)
                                     ->prefix('$')
-                                    ->placeholder('Otomatis: Coil + Gap')
+                                    ->placeholder('Contoh: 1.1456')
+                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) $state : null)
                                     ->live(onBlur: true)
-                                    ->afterStateUpdated(function ($state, Set $set, Get $get) {
-                                        $sheet = (float) ($state ?? 0);
-                                        $rate = (float) ($get('exchange_rate') ?? 1);
-                                        $coil = (float) ($get('coil_price') ?? 0);
-
-                                        $set('sheet_price_idr', round($sheet * $rate, 2));
-
-                                        if ($sheet > 0 && $coil > 0) {
-                                            $gapKg = round($sheet - $coil, 4);
-                                            $gapUsd = round(($sheet - $coil) * 1000, 4);
-                                            $set('gap_steel_usd', $gapUsd);
-                                            $set('gap_steel_kg_usd', $gapKg);
-                                        }
-                                    })
-                                    ->helperText('Otomatis: Coil/Wire ($) + Gap ($)')
-                                    ->columnSpan(1),
-
-                                Forms\Components\TextInput::make('gap_steel_kg_usd')
-                                    ->label('Gap / Kg ( USD )')
-                                    ->numeric()
-                                    ->step(0.0001)
-                                    ->prefix('$')
-                                    ->placeholder('Otomatis: Gap MT ÷ 1000')
-                                    ->live(onBlur: true)
-                                    ->afterStateUpdated(function ($state, Set $set, Get $get) {
-                                        $val = (float) ($state ?? 0);
-                                        $mt = round($val * 1000, 4);
-                                        $set('gap_steel_usd', $mt);
-
-                                        $coil = (float) ($get('coil_price') ?? 0);
-                                        if ($coil > 0) {
-                                            $sheet = round($coil + $val, 4);
-                                            $set('sheet_price', $sheet);
-                                            $rate = (float) ($get('exchange_rate') ?? 1);
-                                            $set('sheet_price_idr', round($sheet * $rate, 2));
-                                        }
-                                    })
-                                    ->helperText('Rumus: Gap / MT ÷ 1.000')
+                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromSheet($get, $set))
                                     ->columnSpan(1),
 
                                 Forms\Components\TextInput::make('coil_price_idr')
-                                    ->label('Coil (IDR)')
+                                    ->label('Total Coil (IDR/Kg)')
                                     ->prefix('Rp')
                                     ->readOnly()
                                     ->dehydrated()
-                                    ->placeholder('Otomatis: Coil × Kurs')
-                                    ->helperText('Otomatis: Coil × Ex Rate')
+                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (int) round((float) $state) : null)
                                     ->columnSpan(1),
 
                                 Forms\Components\TextInput::make('sheet_price_idr')
-                                    ->label('Sheet (IDR)')
+                                    ->label('Total Sheet (IDR/Kg)')
                                     ->prefix('Rp')
                                     ->readOnly()
                                     ->dehydrated()
-                                    ->placeholder('Otomatis: Sheet × Kurs')
-                                    ->helperText('Otomatis: Sheet × Ex Rate')
+                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (int) round((float) $state) : null)
                                     ->columnSpan(1),
+                            ])->columns(2),
+
+                        // SECTION 3: Rincian Wire, Washer & Biaya Proses (Nitto Alam Breakdown)
+                        Forms\Components\Section::make('3. Rincian Wire, Washer & Biaya Proses Fastener')
+                            ->icon('heroicon-o-cog-6-tooth')
+                            ->schema([
+                                Forms\Components\TextInput::make('gross_weight_gr')
+                                    ->label('Gross Weight (gr / pc)')
+                                    ->numeric()
+                                    ->step(0.0001)
+                                    ->default(4.84)
+                                    ->suffix('gr/pc')
+                                    ->live(onBlur: true)
+                                    ->columnSpan(1),
+
+                                Forms\Components\TextInput::make('nett_weight_gr')
+                                    ->label('Nett Weight (gr / pc)')
+                                    ->numeric()
+                                    ->step(0.0001)
+                                    ->default(4.40)
+                                    ->suffix('gr/pc')
+                                    ->live(onBlur: true)
+                                    ->columnSpan(1),
+
+                                Forms\Components\TextInput::make('material_control_percent')
+                                    ->label('Material Control (%)')
+                                    ->numeric()
+                                    ->default(5)
+                                    ->suffix('%')
+                                    ->live(onBlur: true)
+                                    ->columnSpan(1),
+
+                                Forms\Components\TextInput::make('washer_price')
+                                    ->label('Harga Washer (Rp / pc)')
+                                    ->numeric()
+                                    ->default(198)
+                                    ->prefix('Rp')
+                                    ->live(onBlur: true)
+                                    ->columnSpan(1),
+
+                                Forms\Components\TextInput::make('washer_weight_gr')
+                                    ->label('Berat Washer (gr / pc)')
+                                    ->numeric()
+                                    ->step(0.0001)
+                                    ->default(4.50)
+                                    ->suffix('gr/pc')
+                                    ->live(onBlur: true)
+                                    ->columnSpan(1),
+
+                                Forms\Components\TextInput::make('heading_cost')
+                                    ->label('Heading Cost (Rp / pc)')
+                                    ->numeric()
+                                    ->default(48)
+                                    ->prefix('Rp')
+                                    ->live(onBlur: true)
+                                    ->columnSpan(1),
+
+                                Forms\Components\TextInput::make('rolling_cost')
+                                    ->label('Rolling Cost (Rp / pc)')
+                                    ->numeric()
+                                    ->default(76)
+                                    ->prefix('Rp')
+                                    ->live(onBlur: true)
+                                    ->columnSpan(1),
+
+                                Forms\Components\TextInput::make('washing_cost_kg')
+                                    ->label('Washing Cost (Rp / kg)')
+                                    ->numeric()
+                                    ->default(500)
+                                    ->prefix('Rp')
+                                    ->live(onBlur: true)
+                                    ->columnSpan(1),
+
+                                Forms\Components\TextInput::make('plating_cost_kg')
+                                    ->label('Plating Cost (Rp / kg)')
+                                    ->numeric()
+                                    ->default(10000)
+                                    ->prefix('Rp')
+                                    ->live(onBlur: true)
+                                    ->columnSpan(1),
+
+                                Forms\Components\TextInput::make('inspection_cost')
+                                    ->label('Inspection Cost (Rp / pc)')
+                                    ->numeric()
+                                    ->default(5)
+                                    ->prefix('Rp')
+                                    ->live(onBlur: true)
+                                    ->columnSpan(1),
+
+                                Forms\Components\TextInput::make('packing_cost')
+                                    ->label('Packing Cost (Rp / pc)')
+                                    ->numeric()
+                                    ->default(3)
+                                    ->prefix('Rp')
+                                    ->live(onBlur: true)
+                                    ->columnSpan(1),
+
+                                Forms\Components\TextInput::make('overhead_self_percent')
+                                    ->label('Overhead Self (%)')
+                                    ->numeric()
+                                    ->default(14.3)
+                                    ->suffix('%')
+                                    ->live(onBlur: true)
+                                    ->columnSpan(1),
+
+                                Forms\Components\TextInput::make('tooling_depreciation')
+                                    ->label('Die & Jig Depreciation (Rp / pc)')
+                                    ->numeric()
+                                    ->default(0)
+                                    ->prefix('Rp')
+                                    ->placeholder('0')
+                                    ->helperText('Biaya depresiasi cetakan/jig per pcs jika ada')
+                                    ->live(onBlur: true)
+                                    ->columnSpan(1),
+
+                                Forms\Components\Placeholder::make('calculation_summary')
+                                    ->hiddenLabel()
+                                    ->content(function (Get $get) {
+                                        $rate = (float) ($get('exchange_rate') ?? 16000);
+                                        $wireUsdKg = (float) ($get('wire_price_usd_kg') ?: ($get('coil_price') ?: 1.66));
+                                        $wireIdrKg = round($wireUsdKg * $rate, 2);
+
+                                        $grossGr = (float) ($get('gross_weight_gr') ?? 4.84);
+                                        $wirePc = round(($grossGr / 1000) * $wireIdrKg, 4);
+
+                                        $ctrlPct = (float) ($get('material_control_percent') ?? 5);
+                                        $ctrlCost = round(($ctrlPct / 100) * $wirePc, 4);
+
+                                        $washerPrice = (float) ($get('washer_price') ?? 198);
+                                        $matTotal = round($wirePc + $ctrlCost + $washerPrice, 4);
+
+                                        $nettGr = (float) ($get('nett_weight_gr') ?? 4.4);
+                                        $washerGr = (float) ($get('washer_weight_gr') ?? 4.5);
+                                        $totalPartWeightKg = ($nettGr + $washerGr) / 1000;
+
+                                        $washKg = (float) ($get('washing_cost_kg') ?? 500);
+                                        $washCost = round($totalPartWeightKg * $washKg, 4);
+
+                                        $plateKg = (float) ($get('plating_cost_kg') ?? 10000);
+                                        $plateCost = round($totalPartWeightKg * $plateKg, 4);
+
+                                        $heading = (float) ($get('heading_cost') ?? 48);
+                                        $rolling = (float) ($get('rolling_cost') ?? 76);
+                                        $inspect = (float) ($get('inspection_cost') ?? 5);
+                                        $packing = (float) ($get('packing_cost') ?? 3);
+
+                                        $procTotal = round($heading + $rolling + $washCost + $plateCost + $inspect + $packing, 4);
+                                        $subtotal = round($matTotal + $procTotal, 4);
+
+                                        $ohSelfPct = (float) ($get('overhead_self_percent') ?? 14.3);
+                                        $ohCost = round(($ohSelfPct / 100) * $subtotal, 4);
+                                        $tooling = (float) ($get('tooling_depreciation') ?? 0);
+
+                                        $partCost = round($subtotal + $ohCost + $tooling, 4);
+
+                                        return new HtmlString("
+                                            <div class='rounded-xl border border-primary-200 bg-white p-5 shadow-sm dark:border-primary-800 dark:bg-gray-900'>
+                                                <div class='mb-3 flex items-center justify-between border-b border-gray-100 pb-2 dark:border-gray-800'>
+                                                    <h3 class='text-sm font-semibold text-primary-950 dark:text-primary-100 flex items-center gap-2'>
+                                                        <span>📊</span> Rincian Komponen Biaya Fastener (PT Nitto Alam)
+                                                    </h3>
+                                                    <span class='text-xs font-medium text-gray-500'>Auto-calculated</span>
+                                                </div>
+                                                <div class='grid grid-cols-2 md:grid-cols-4 gap-4 text-xs'>
+                                                    <div class='rounded-lg bg-gray-50 p-2.5 dark:bg-gray-800/60'>
+                                                        <div class='text-gray-500 dark:text-gray-400'>Wire Cost / pc</div>
+                                                        <div class='mt-1 text-sm font-bold text-gray-800 dark:text-gray-200'>Rp ".number_format($wirePc, 2, ',', '.')."</div>
+                                                        <div class='text-[10px] text-gray-400'>{$grossGr} gr × Rp ".number_format($wireIdrKg, 0, ',', '.')."/kg</div>
+                                                    </div>
+                                                    <div class='rounded-lg bg-amber-50 p-2.5 dark:bg-amber-950/30'>
+                                                        <div class='text-amber-800 dark:text-amber-300'>Washer & Material Control</div>
+                                                        <div class='mt-1 text-sm font-bold text-amber-700 dark:text-amber-400'>Rp ".number_format($ctrlCost + $washerPrice, 2, ',', '.')."</div>
+                                                        <div class='text-[10px] text-amber-600'>Washer: Rp {$washerPrice} + Ctrl: Rp ".number_format($ctrlCost, 2)."</div>
+                                                    </div>
+                                                    <div class='rounded-lg bg-blue-50 p-2.5 dark:bg-blue-950/30'>
+                                                        <div class='text-blue-800 dark:text-blue-300'>Total Biaya Material</div>
+                                                        <div class='mt-1 text-sm font-bold text-blue-700 dark:text-blue-400'>Rp ".number_format($matTotal, 2, ',', '.')."</div>
+                                                        <div class='text-[10px] text-blue-600'>Wire + Washer + Ctrl</div>
+                                                    </div>
+                                                    <div class='rounded-lg bg-purple-50 p-2.5 dark:bg-purple-950/30'>
+                                                        <div class='text-purple-800 dark:text-purple-300'>Total Biaya Proses</div>
+                                                        <div class='mt-1 text-sm font-bold text-purple-700 dark:text-purple-400'>Rp ".number_format($procTotal, 2, ',', '.')."</div>
+                                                        <div class='text-[10px] text-purple-600'>Heading + Roll + Wash + Plate</div>
+                                                    </div>
+                                                </div>
+                                                <div class='mt-3 grid grid-cols-2 md:grid-cols-2 gap-4 text-xs pt-3 border-t border-gray-100 dark:border-gray-800'>
+                                                    <div>
+                                                        <span class='text-gray-500'>Subtotal (Mat'l + Proc):</span>
+                                                        <span class='font-semibold text-gray-800 dark:text-gray-200 ml-1'>Rp ".number_format($subtotal, 2, ',', '.')."</span>
+                                                    </div>
+                                                    <div>
+                                                        <span class='text-gray-500'>Overhead Self ({$ohSelfPct}%):</span>
+                                                        <span class='font-semibold text-gray-800 dark:text-gray-200 ml-1'>Rp ".number_format($ohCost, 2, ',', '.')."</span>
+                                                    </div>
+                                                </div>
+                                                <div class='mt-3 flex items-center justify-between rounded-lg bg-emerald-50 px-4 py-3 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800'>
+                                                    <div class='text-sm font-bold text-emerald-900 dark:text-emerald-100'>FINAL FASTENER COST:</div>
+                                                    <div class='text-lg font-black text-emerald-700 dark:text-emerald-300'>Rp ".number_format($partCost, 2, ',', '.').'</div>
+                                                </div>
+                                            </div>
+                                        ');
+                                    })
+                                    ->columnSpanFull(),
                             ])->columns(3),
 
-                        // SECTION 4: Opsi Lanjutan & Catatan (Terlipat Rapi)
-                        Forms\Components\Section::make('4. Opsi Lanjutan & Catatan (Opsional)')
-                            ->icon('heroicon-o-adjustments-horizontal')
+                        // SECTION 4: Catatan & Status (Collapsible)
+                        Forms\Components\Section::make('4. Catatan & Status (Opsional)')
                             ->collapsible()
                             ->collapsed()
                             ->schema([
                                 Forms\Components\Select::make('status')
-                                    ->label('Status')
+                                    ->label('Status Kontrak')
                                     ->options([
                                         'Active' => 'Active (Sedang Berlaku)',
                                         'Draft' => 'Draft (Dalam Pengajuan)',
@@ -583,10 +1301,10 @@ class FastenerResource extends Resource
                                     ->columnSpan(1),
 
                                 Forms\Components\Textarea::make('notes')
-                                    ->label('Catatan Pasterner')
-                                    ->placeholder('Misal: Berdasarkan surat kesepakatan harga No. SKH-2026/PAS-01...')
+                                    ->label('Catatan Kontrak / Referensi Supplier')
+                                    ->placeholder('Misal: Berdasarkan surat penawaran harga Fasteners No...')
                                     ->columnSpanFull(),
-                            ])->columns(2),
+                            ])->columns(1),
                     ])->columnSpanFull(),
             ]);
     }
@@ -608,16 +1326,22 @@ class FastenerResource extends Resource
                     })
                     ->sortable(['year', 'quarter']),
 
-                Tables\Columns\TextColumn::make('vendor_code')
-                    ->label('Vendor Code')
-                    ->badge()
-                    ->color('gray')
+                Tables\Columns\TextColumn::make('supplier_name')
+                    ->label('Supplier')
+                    ->weight('bold')
                     ->searchable()
                     ->sortable(),
 
-                Tables\Columns\TextColumn::make('supplier_name')
-                    ->label('Supplier Name')
+                Tables\Columns\TextColumn::make('part_number')
+                    ->label('Part Number')
                     ->weight('bold')
+                    ->placeholder('-')
+                    ->searchable()
+                    ->sortable(),
+
+                Tables\Columns\TextColumn::make('part_name')
+                    ->label('Part Name')
+                    ->placeholder('-')
                     ->searchable()
                     ->sortable(),
 
@@ -628,7 +1352,7 @@ class FastenerResource extends Resource
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('double_thickness')
-                    ->label('Thickness(mm)')
+                    ->label('Thickness / Dia (mm)')
                     ->wrapHeader()
                     ->formatStateUsing(function ($state, Fastener $record) {
                         $val = $state ?: $record->diameter;
@@ -642,62 +1366,70 @@ class FastenerResource extends Resource
                     ->searchable()
                     ->sortable(),
 
-                Tables\Columns\TextColumn::make('gap_steel_usd')
-                    ->label('Gap/MT (USD)')
+                Tables\Columns\TextColumn::make('hr_steel_usd')
+                    ->label('HR Dolar/MT')
                     ->wrapHeader()
-                    ->formatStateUsing(fn ($state, Fastener $record) => $state !== null && (float) $state != 0 ? "{$record->currency_code} ".number_format((float) $state, 2) : '-')
+                    ->formatStateUsing(fn ($state, Fastener $record) => static::formatUsd($state, $record->currency_code))
                     ->weight('bold')
                     ->alignRight()
                     ->sortable(),
 
-                Tables\Columns\TextColumn::make('gap_steel_kg_usd')
-                    ->label('Gap/Kg (USD)')
+                Tables\Columns\TextColumn::make('cr_steel_usd')
+                    ->label('CR Dolar/MT')
                     ->wrapHeader()
-                    ->formatStateUsing(function ($state, Fastener $record) {
-                        if ($state !== null && (float) $state != 0) {
-                            return "{$record->currency_code} ".number_format((float) $state, 4);
-                        }
-                        if ($record->gap_steel_usd !== null && (float) $record->gap_steel_usd != 0) {
-                            return "{$record->currency_code} ".number_format((float) $record->gap_steel_usd / 1000, 4);
-                        }
-
-                        return '-';
-                    })
+                    ->formatStateUsing(fn ($state, Fastener $record) => static::formatUsd($state, $record->currency_code))
+                    ->weight('bold')
                     ->alignRight()
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('exchange_rate')
-                    ->label('Ex Rate (IDR)')
+                    ->label('Perubahan Dolar Rupiah')
                     ->wrapHeader()
-                    ->formatStateUsing(fn ($state) => 'Rp '.number_format((float) $state, 0, ',', '.'))
+                    ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
+                    ->alignRight()
+                    ->sortable(),
+
+                Tables\Columns\TextColumn::make('wire_price_usd_kg')
+                    ->label('Wire ($/Kg)')
+                    ->wrapHeader()
+                    ->formatStateUsing(fn ($state, Fastener $record) => static::formatUsd($state, $record->currency_code))
                     ->alignRight()
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('coil_price')
                     ->label('Coil (USD)')
                     ->wrapHeader()
-                    ->formatStateUsing(fn ($state, Fastener $record) => $state && (float) $state > 0 ? "{$record->currency_code} ".number_format((float) $state, 4) : '-')
+                    ->formatStateUsing(fn ($state, Fastener $record) => static::formatUsd($state, $record->currency_code))
                     ->alignRight()
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('coil_price_idr')
                     ->label('Coil (IDR)')
                     ->wrapHeader()
-                    ->formatStateUsing(fn ($state) => $state && (float) $state > 0 ? 'Rp '.number_format((float) $state, 0, ',', '.') : '-')
+                    ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
                     ->alignRight()
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('sheet_price')
                     ->label('Sheet (USD)')
                     ->wrapHeader()
-                    ->formatStateUsing(fn ($state, Fastener $record) => $state && (float) $state > 0 ? "{$record->currency_code} ".number_format((float) $state, 4) : '-')
+                    ->formatStateUsing(fn ($state, Fastener $record) => static::formatUsd($state, $record->currency_code))
                     ->alignRight()
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('sheet_price_idr')
                     ->label('Sheet (IDR)')
                     ->wrapHeader()
-                    ->formatStateUsing(fn ($state) => $state && (float) $state > 0 ? 'Rp '.number_format((float) $state, 0, ',', '.') : '-')
+                    ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
+                    ->alignRight()
+                    ->sortable(),
+
+                Tables\Columns\TextColumn::make('part_cost')
+                    ->label('Total Part Cost')
+                    ->wrapHeader()
+                    ->formatStateUsing(fn ($state) => $state && (float) $state > 0 ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
+                    ->weight('black')
+                    ->color('success')
                     ->alignRight()
                     ->sortable(),
 
@@ -709,27 +1441,91 @@ class FastenerResource extends Resource
                         'Draft' => 'warning',
                         default => 'gray',
                     }),
+
+                // Kolom gap untuk kompatibilitas test (toggleable hidden by default)
+                Tables\Columns\TextColumn::make('gap_steel_usd')
+                    ->label('Gap/MT (USD)')
+                    ->wrapHeader()
+                    ->formatStateUsing(fn ($state, Fastener $record) => static::formatUsd($state, $record->currency_code))
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('gap_steel_kg_usd')
+                    ->label('Gap/Kg (USD)')
+                    ->wrapHeader()
+                    ->formatStateUsing(fn ($state, Fastener $record) => static::formatUsd($state, $record->currency_code))
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('drawing_reference')
+                    ->label('Drawing Ref')
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('eci_number')
+                    ->label('ECI No')
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('old_exchange_rate')
+                    ->label('Old Rate (Rp)')
+                    ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
+                    ->alignRight()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('exchange_rate_fluctuation')
+                    ->label('Fluktuasi Kurs')
+                    ->formatStateUsing(fn ($state) => $state ? number_format((float) $state, 4) : '-')
+                    ->alignRight()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('tooling_depreciation')
+                    ->label('Tooling / Jig Depr')
+                    ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
+                    ->alignRight()
+                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->defaultSort('year', 'desc')
             ->filters([
                 Tables\Filters\SelectFilter::make('quarter')
                     ->label('Filter Kuartal')
-                    ->options([
-                        'Q1' => 'Q1 (Kuartal 1)',
-                        'Q2' => 'Q2 (Kuartal 2)',
-                        'Q3' => 'Q3 (Kuartal 3)',
-                        'Q4' => 'Q4 (Kuartal 4)',
-                    ])
+                    ->options(function () {
+                        $counts = Fastener::query()
+                            ->selectRaw('quarter, count(*) as total')
+                            ->groupBy('quarter')
+                            ->pluck('total', 'quarter');
+
+                        return [
+                            'Q1' => 'Q1 (Januari - Maret) ('.($counts['Q1'] ?? 0).' data)',
+                            'Q2' => 'Q2 (April - Juni) ('.($counts['Q2'] ?? 0).' data)',
+                            'Q3' => 'Q3 (Juli - September) ('.($counts['Q3'] ?? 0).' data)',
+                            'Q4' => 'Q4 (Oktober - Desember) ('.($counts['Q4'] ?? 0).' data)',
+                        ];
+                    })
                     ->multiple(),
 
-                Tables\Filters\SelectFilter::make('vendor_code')
-                    ->label('Filter Vendor Code')
+                Tables\Filters\SelectFilter::make('supplier_name')
+                    ->label('Filter Supplier')
                     ->options(function () {
-                        return Supplier::query()
-                            ->orderBy('code')
-                            ->get()
-                            ->mapWithKeys(fn ($s) => [$s->code => "{$s->code} — {$s->name}"])
+                        $counts = Fastener::query()
+                            ->whereNotNull('supplier_name')
+                            ->selectRaw('supplier_name, count(*) as total')
+                            ->groupBy('supplier_name')
+                            ->pluck('total', 'supplier_name');
+
+                        $supplierMap = Supplier::query()
+                            ->orderBy('name')
+                            ->pluck('name', 'name')
                             ->toArray();
+
+                        $options = [];
+                        foreach ($counts as $name => $total) {
+                            $options[$name] = "{$name} ({$total} data)";
+                        }
+
+                        foreach ($supplierMap as $name) {
+                            if (! isset($options[$name])) {
+                                $options[$name] = "{$name} (0 data)";
+                            }
+                        }
+
+                        return $options;
                     })
                     ->searchable()
                     ->multiple(),
@@ -737,31 +1533,50 @@ class FastenerResource extends Resource
                 Tables\Filters\SelectFilter::make('year')
                     ->label('Filter Tahun')
                     ->options(function () {
+                        $counts = Fastener::query()
+                            ->selectRaw('year, count(*) as total')
+                            ->groupBy('year')
+                            ->pluck('total', 'year');
+
                         $current = (int) date('Y');
-                        $years = [];
-                        for ($y = $current - 2; $y <= $current + 2; $y++) {
-                            $years[$y] = (string) $y;
+                        $dbYears = Fastener::distinct()->pluck('year')->filter()->toArray();
+                        $rangeYears = range($current + 2, $current - 2);
+                        $allYears = array_unique(array_merge($dbYears, $rangeYears));
+                        rsort($allYears);
+
+                        $options = [];
+                        foreach ($allYears as $y) {
+                            $total = $counts[$y] ?? 0;
+                            $options[$y] = "Tahun {$y} ({$total} data)";
                         }
 
-                        return $years;
+                        return $options;
                     }),
 
-                Tables\Filters\SelectFilter::make('supplier_id')
-                    ->label('Filter Supplier Name')
-                    ->relationship('supplier', 'name')
-                    ->searchable()
-                    ->preload(),
+                Tables\Filters\SelectFilter::make('status')
+                    ->label('Filter Status')
+                    ->options(function () {
+                        $counts = Fastener::query()
+                            ->selectRaw('status, count(*) as total')
+                            ->groupBy('status')
+                            ->pluck('total', 'status');
+
+                        return [
+                            'Active' => 'Active ('.($counts['Active'] ?? 0).' data)',
+                            'Draft' => 'Draft ('.($counts['Draft'] ?? 0).' data)',
+                        ];
+                    }),
             ])
+            ->filtersTriggerAction(
+                fn (Tables\Actions\Action $action) => $action
+                    ->button()
+                    ->label(fn () => 'Filter Data ('.Fastener::count().' Data)')
+            )
             ->filtersFormColumns(2)
             ->actions([
-                Tables\Actions\EditAction::make()
-                    ->iconButton()
-                    ->tooltip('Edit Pasterner'),
-                Tables\Actions\DeleteAction::make()
-                    ->iconButton()
-                    ->tooltip('Hapus Pasterner'),
+                Tables\Actions\EditAction::make(),
+                Tables\Actions\DeleteAction::make(),
             ])
-            ->columnToggleFormColumns(2)
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\DeleteBulkAction::make(),

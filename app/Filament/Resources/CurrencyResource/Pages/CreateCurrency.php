@@ -81,7 +81,7 @@ class CreateCurrency extends CreateRecord
             ]
         );
 
-        // 3. Otomatis hitung ulang ke Material Steel, Stamping Part, dan Fastener (pasterner)
+        // 3. Otomatis hitung ulang ke Material Steel, Stamping Part, dan Fasteners
         CurrencyRecalculationService::recalculateForCurrency($usd);
         CurrencyRecalculationService::recalculateForCurrency($jpy);
 
@@ -103,7 +103,7 @@ class CreateCurrency extends CreateRecord
         return Notification::make()
             ->success()
             ->title('Kurs Berhasil Disimpan!')
-            ->body('Kurs USD & JPY berhasil disimpan dan harga pada Material Steel, Stamping Part, serta Pasterner telah otomatis diperbarui.');
+            ->body('Kurs USD & JPY berhasil disimpan dan harga pada Material Steel, Stamping Part, serta Fasteners telah otomatis diperbarui.');
     }
 
     protected function getHeaderActions(): array

@@ -66,6 +66,18 @@ class EditStampingPart extends EditRecord
             $data['currency_code'] = 'USD';
         }
 
+        unset(
+            $data['excel_auto_fill'],
+            $data['price_mode'],
+            $data['prev_quarter_label'],
+            $data['prev_record_found'],
+            $data['prev_coil_price'],
+            $data['prev_sheet_price'],
+            $data['prev_rate'],
+            $data['prev_quarter_info'],
+            $data['calculation_summary']
+        );
+
         return $data;
     }
 }

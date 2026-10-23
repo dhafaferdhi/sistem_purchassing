@@ -64,7 +64,7 @@ class FastenerSeeder extends Seeder
                 'gap_steel_kg_usd' => 0.1000,
                 'exchange_rate' => $rate2026,
                 'status' => 'Active',
-                'notes' => 'Kontrak Pasterner Q4 2026 Supplier PT HSSI',
+                'notes' => 'Kontrak Fasteners Q4 2026 Supplier PT HSSI',
                 'created_by' => $admin?->id,
             ],
 
@@ -88,7 +88,7 @@ class FastenerSeeder extends Seeder
                 'gap_steel_kg_usd' => 0.0600,
                 'exchange_rate' => $rate2026,
                 'status' => 'Active',
-                'notes' => 'Kontrak Pasterner Q4 2026 Supplier PT USCI',
+                'notes' => 'Kontrak Fasteners Q4 2026 Supplier PT USCI',
                 'created_by' => $admin?->id,
             ],
 
@@ -112,7 +112,7 @@ class FastenerSeeder extends Seeder
                 'gap_steel_kg_usd' => 0.1000,
                 'exchange_rate' => $rate2027Q1,
                 'status' => 'Active',
-                'notes' => 'Kontrak Pasterner Q1 2027 Supplier PT HSSI',
+                'notes' => 'Kontrak Fasteners Q1 2027 Supplier PT HSSI',
                 'created_by' => $admin?->id,
             ],
 
@@ -136,7 +136,7 @@ class FastenerSeeder extends Seeder
                 'gap_steel_kg_usd' => 0.1000,
                 'exchange_rate' => $rate2027Q1,
                 'status' => 'Active',
-                'notes' => 'Kontrak Pasterner Q1 2027 Supplier PT USCI',
+                'notes' => 'Kontrak Fasteners Q1 2027 Supplier PT USCI',
                 'created_by' => $admin?->id,
             ],
 
@@ -160,7 +160,7 @@ class FastenerSeeder extends Seeder
                 'gap_steel_kg_usd' => 0.1200,
                 'exchange_rate' => $rate2027Q2,
                 'status' => 'Active',
-                'notes' => 'Kontrak Pasterner Q2 2027 Supplier PT HSSI',
+                'notes' => 'Kontrak Fasteners Q2 2027 Supplier PT HSSI',
                 'created_by' => $admin?->id,
             ],
 
@@ -184,7 +184,7 @@ class FastenerSeeder extends Seeder
                 'gap_steel_kg_usd' => 0.1200,
                 'exchange_rate' => $rate2027Q2,
                 'status' => 'Active',
-                'notes' => 'Kontrak Pasterner Q2 2027 Supplier PT USCI',
+                'notes' => 'Kontrak Fasteners Q2 2027 Supplier PT USCI',
                 'created_by' => $admin?->id,
             ],
         ];

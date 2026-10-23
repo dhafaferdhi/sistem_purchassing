@@ -243,6 +243,13 @@ class MaterialSteelResource extends Resource
         $set('coil_price_idr', $coilIdr);
         $set('sheet_price_idr', $sheetIdr);
 
+        if ($get('ap_coil_price')) {
+            $set('ap_coil_price_idr', round((float) $get('ap_coil_price') * $rate));
+        }
+        if ($get('ap_sheet_price')) {
+            $set('ap_sheet_price_idr', round((float) $get('ap_sheet_price') * $rate));
+        }
+
         $steelPrice = $coil > 0 ? $coil : $sheet;
         $set('steel_price', $steelPrice);
         $set('steel_price_idr', round($steelPrice * $rate));
@@ -747,6 +754,52 @@ class MaterialSteelResource extends Resource
                                     ->dehydrated()
                                     ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (int) round((float) $state) : null)
                                     ->columnSpan(1),
+
+                                Forms\Components\Section::make('Harga AP (Applied / Proposal) - Opsional')
+                                    ->description('Untuk membandingkan harga resmi (AR) dengan harga pengajuan/tagihan (AP) seperti di Excel')
+                                    ->collapsible()
+                                    ->collapsed()
+                                    ->schema([
+                                        Forms\Components\TextInput::make('ap_coil_price')
+                                            ->label('AP Coil ($/Kg)')
+                                            ->numeric()
+                                            ->step(0.0001)
+                                            ->prefix('$')
+                                            ->placeholder('Contoh: 1.1519')
+                                            ->live(onBlur: true)
+                                            ->afterStateUpdated(function (Get $get, Set $set, $state) {
+                                                $rate = (float) ($get('exchange_rate') ?? 16000);
+                                                $set('ap_coil_price_idr', $state ? (int) round((float) $state * $rate) : null);
+                                            })
+                                            ->columnSpan(1),
+
+                                        Forms\Components\TextInput::make('ap_sheet_price')
+                                            ->label('AP Sheet ($/Kg)')
+                                            ->numeric()
+                                            ->step(0.0001)
+                                            ->prefix('$')
+                                            ->placeholder('Contoh: 1.1769')
+                                            ->live(onBlur: true)
+                                            ->afterStateUpdated(function (Get $get, Set $set, $state) {
+                                                $rate = (float) ($get('exchange_rate') ?? 16000);
+                                                $set('ap_sheet_price_idr', $state ? (int) round((float) $state * $rate) : null);
+                                            })
+                                            ->columnSpan(1),
+
+                                        Forms\Components\TextInput::make('ap_coil_price_idr')
+                                            ->label('AP Total Coil (IDR/Kg)')
+                                            ->prefix('Rp')
+                                            ->readOnly()
+                                            ->dehydrated()
+                                            ->columnSpan(1),
+
+                                        Forms\Components\TextInput::make('ap_sheet_price_idr')
+                                            ->label('AP Total Sheet (IDR/Kg)')
+                                            ->prefix('Rp')
+                                            ->readOnly()
+                                            ->dehydrated()
+                                            ->columnSpan(1),
+                                    ])->columns(2),
                             ])->columns(2),
 
                         // SECTION 3: Catatan & Status (Collapsible)
@@ -867,6 +920,20 @@ class MaterialSteelResource extends Resource
                     ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
                     ->alignRight()
                     ->sortable(),
+
+                Tables\Columns\TextColumn::make('ap_coil_price')
+                    ->label('AP Coil ($)')
+                    ->wrapHeader()
+                    ->formatStateUsing(fn ($state, MaterialSteel $record) => static::formatUsd($state, $record->currency_code))
+                    ->alignRight()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('ap_sheet_price')
+                    ->label('AP Sheet ($)')
+                    ->wrapHeader()
+                    ->formatStateUsing(fn ($state, MaterialSteel $record) => static::formatUsd($state, $record->currency_code))
+                    ->alignRight()
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('status')
                     ->label('Status')

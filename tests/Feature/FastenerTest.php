@@ -10,6 +10,7 @@ use App\Filament\Resources\FastenerResource\Pages\CreateFastener;
 use App\Filament\Resources\FastenerResource\Pages\ListFasteners;
 use App\Models\Currency;
 use App\Models\Fastener;
+use App\Models\MaterialSteel;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Services\CurrencyRecalculationService;
@@ -94,8 +95,25 @@ class FastenerTest extends TestCase
             ->assertFormFieldExists('supplier_id')
             ->assertFormFieldExists('supplier_name')
             ->assertFormFieldExists('vendor_code')
+            ->assertFormFieldExists('part_number')
+            ->assertFormFieldExists('part_name')
+            ->assertFormFieldExists('model_name')
+            ->assertFormFieldExists('monthly_volume')
             ->assertFormFieldExists('steel_spec')
             ->assertFormFieldExists('double_thickness')
+            ->assertFormFieldExists('wire_spec')
+            ->assertFormFieldExists('nett_weight_gr')
+            ->assertFormFieldExists('gross_weight_gr')
+            ->assertFormFieldExists('material_control_percent')
+            ->assertFormFieldExists('washer_price')
+            ->assertFormFieldExists('washer_weight_gr')
+            ->assertFormFieldExists('heading_cost')
+            ->assertFormFieldExists('rolling_cost')
+            ->assertFormFieldExists('washing_cost_kg')
+            ->assertFormFieldExists('plating_cost_kg')
+            ->assertFormFieldExists('inspection_cost')
+            ->assertFormFieldExists('packing_cost')
+            ->assertFormFieldExists('overhead_self_percent')
             ->assertFormFieldExists('gap_steel_usd')
             ->assertFormFieldExists('gap_steel_kg_usd')
             ->assertFormFieldExists('exchange_rate')
@@ -103,7 +121,63 @@ class FastenerTest extends TestCase
             ->assertFormFieldExists('coil_price_idr')
             ->assertFormFieldExists('sheet_price')
             ->assertFormFieldExists('sheet_price_idr')
+            ->assertFormFieldExists('wire_price_usd_kg')
             ->assertActionExists('back');
+    }
+
+    public function test_fastener_calculates_nitto_alam_excel_comparative_quotation_formulas(): void
+    {
+        $fastener = Fastener::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'part_number' => '9004A-01046',
+            'part_name' => 'BOLT, REAR BUMPER',
+            'model_name' => 'D26A',
+            'monthly_volume' => 20000,
+            'steel_spec' => 'SWCH-45K',
+            'wire_spec' => 'WIRE OF RIVET [SWCH-45K]',
+            'wire_price_usd_kg' => 1.66,
+            'gross_weight_gr' => 4.84,
+            'nett_weight_gr' => 4.4,
+            'washer_weight_gr' => 4.5,
+            'washer_price' => 198,
+            'material_control_percent' => 5,
+            'heading_cost' => 48,
+            'rolling_cost' => 76,
+            'washing_cost_kg' => 500,
+            'plating_cost_kg' => 10000,
+            'inspection_cost' => 5,
+            'packing_cost' => 3,
+            'overhead_self_percent' => 14.3,
+            'exchange_rate' => 16000.0,
+            'coil_price' => 1.66,
+            'sheet_price' => 1.66,
+        ]);
+
+        // wire_price_idr_kg = 1.66 * 16000 = 26560
+        $this->assertEquals(26560.00, (float) $fastener->wire_price_idr_kg);
+        // wire_price_pc = (4.84 / 1000) * 26560 = 128.5504
+        $this->assertEqualsWithDelta(128.5504, (float) $fastener->wire_price_pc, 0.001);
+        // material_control_cost = 5% * 128.5504 = 6.4275
+        $this->assertEqualsWithDelta(6.4275, (float) $fastener->material_control_cost, 0.001);
+        // material_total = 128.5504 + 6.4275 + 198 = 332.9779
+        $this->assertEqualsWithDelta(332.9779, (float) $fastener->material_total, 0.001);
+        // totalPartWeightKg = (4.4 + 4.5) / 1000 = 0.0089 kg
+        // washing_cost = 0.0089 * 500 = 4.45
+        $this->assertEqualsWithDelta(4.45, (float) $fastener->washing_cost, 0.001);
+        // plating_cost = 0.0089 * 10000 = 89.00
+        $this->assertEqualsWithDelta(89.00, (float) $fastener->plating_cost, 0.001);
+        // process_total = 48 + 76 + 4.45 + 89.00 + 5 + 3 = 225.45
+        $this->assertEqualsWithDelta(225.45, (float) $fastener->process_total, 0.001);
+        // subtotal = 332.9779 + 225.45 = 558.4279
+        $this->assertEqualsWithDelta(558.4279, (float) $fastener->subtotal, 0.001);
+        // overhead_self_cost = 14.3% * 558.4279 = 79.8552
+        $this->assertEqualsWithDelta(79.8552, (float) $fastener->overhead_self_cost, 0.001);
+        // part_cost = 558.4279 + 79.8552 = 638.2831
+        $this->assertEqualsWithDelta(638.2831, (float) $fastener->part_cost, 0.01);
     }
 
     public function test_can_create_fastener_and_formulas_calculated_correctly(): void
@@ -228,7 +302,7 @@ class FastenerTest extends TestCase
 
     public function test_navigation_label_and_sort_position(): void
     {
-        $this->assertEquals('Pasterner', FastenerResource::getNavigationLabel());
+        $this->assertEquals('Fasteners', FastenerResource::getNavigationLabel());
         $this->assertEquals('Master Data', FastenerResource::getNavigationGroup());
         $this->assertEquals(4, FastenerResource::getNavigationSort());
         $this->assertEquals(5, MonthlyRollover::getNavigationSort());
@@ -258,5 +332,139 @@ class FastenerTest extends TestCase
 
         $relations = CurrencyResource::getRelations();
         $this->assertContains(FastenersRelationManager::class, $relations);
+    }
+
+    public function test_fasteners_table_and_form_harmonized_with_material_steel(): void
+    {
+        $this->actingAs($this->admin);
+
+        $fastener = Fastener::create([
+            'year' => 2026,
+            'quarter' => 'Q2',
+            'supplier_id' => $this->supplier->id,
+            'supplier_name' => $this->supplier->name,
+            'steel_spec' => 'SWCH-45K',
+            'double_thickness' => '4.4',
+            'hr_steel_usd' => 0.0,
+            'cr_steel_usd' => -20.0,
+            'exchange_rate' => 16000.0,
+            'wire_price_usd_kg' => 1.64,
+            'coil_price' => 1.64,
+            'sheet_price' => 1.64,
+        ]);
+
+        Livewire::test(ListFasteners::class)
+            ->assertCanSeeTableRecords([$fastener])
+            ->assertTableColumnExists('hr_steel_usd')
+            ->assertTableColumnExists('cr_steel_usd')
+            ->assertTableColumnExists('exchange_rate')
+            ->assertTableColumnExists('wire_price_usd_kg')
+            ->assertTableColumnExists('coil_price')
+            ->assertTableColumnExists('coil_price_idr')
+            ->assertTableColumnExists('sheet_price')
+            ->assertTableColumnExists('sheet_price_idr')
+            ->assertTableColumnExists('part_cost');
+
+        Livewire::test(CreateFastener::class)
+            ->assertFormFieldExists('price_mode')
+            ->assertFormFieldExists('hr_steel_usd')
+            ->assertFormFieldExists('cr_steel_usd')
+            ->assertFormFieldExists('exchange_rate')
+            ->assertFormFieldExists('wire_price_usd_kg')
+            ->assertFormFieldExists('coil_price')
+            ->assertFormFieldExists('sheet_price');
+
+        $this->assertEquals('USD 1.1', FastenerResource::formatUsd(1.1));
+        $this->assertEquals('USD -20', FastenerResource::formatUsd(-20));
+        $this->assertEquals('-', FastenerResource::formatUsd(0));
+        $this->assertEquals('Rp 16.000', FastenerResource::formatIdr(16000));
+    }
+
+    public function test_fastener_q2_adjustment_pulls_rate_and_calculates_from_q1(): void
+    {
+        $this->actingAs($this->admin);
+
+        // Q1 Baseline record
+        Fastener::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'supplier_name' => $this->supplier->name,
+            'steel_spec' => 'SWCH-45K',
+            'double_thickness' => '4.4',
+            'wire_spec' => 'WIRE OF RIVET [SWCH-45K]',
+            'exchange_rate' => 16000.0,
+            'wire_price_usd_kg' => 1.66,
+            'coil_price' => 1.66,
+            'sheet_price' => 1.66,
+        ]);
+
+        // Create Q2 via Livewire
+        Livewire::test(CreateFastener::class)
+            ->set('data.year', 2026)
+            ->set('data.quarter', 'Q2')
+            ->set('data.supplier_id', $this->supplier->id)
+            ->set('data.steel_spec', 'SWCH-45K')
+            ->set('data.cr_steel_usd', -20)
+            ->call('create')
+            ->assertHasNoFormErrors();
+
+        $q2 = Fastener::where('year', 2026)->where('quarter', 'Q2')->where('steel_spec', 'SWCH-45K')->first();
+        $this->assertNotNull($q2);
+        // Kurs IDR ditarik sama dengan Q1 (16000)
+        $this->assertEquals(16000.0, (float) $q2->exchange_rate);
+        // Coil berkurang -0.02 $/kg (1.66 - 0.02 = 1.64)
+        $this->assertEquals(1.64, (float) $q2->coil_price);
+    }
+
+    public function test_creating_fastener_connects_to_material_steel(): void
+    {
+        $this->actingAs($this->admin);
+
+        MaterialSteel::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'steel_spec' => 'SPH270C-OD',
+            'double_thickness' => '1.6',
+            'coil_price' => 1.1000,
+            'sheet_price' => 1.3000,
+            'exchange_rate' => 17000.0,
+        ]);
+
+        MaterialSteel::create([
+            'year' => 2026,
+            'quarter' => 'Q2',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'steel_spec' => 'SPH270C-OD',
+            'double_thickness' => '1.6',
+            'coil_price' => 1.0800,
+            'sheet_price' => 1.2800,
+            'exchange_rate' => 18000.0,
+        ]);
+
+        // Q1 auto connect to Material Steel Q1
+        Livewire::test(CreateFastener::class)
+            ->set('data.year', 2026)
+            ->set('data.quarter', 'Q1')
+            ->set('data.steel_spec', 'SPH270C-OD')
+            ->assertSet('data.coil_price', 1.1)
+            ->assertSet('data.sheet_price', 1.3)
+            ->assertSet('data.double_thickness', '1.6')
+            ->assertSet('data.exchange_rate', 17000.0);
+
+        // Q2 auto connect to Material Steel Q2
+        Livewire::test(CreateFastener::class)
+            ->set('data.year', 2026)
+            ->set('data.quarter', 'Q2')
+            ->set('data.steel_spec', 'SPH270C-OD')
+            ->assertSet('data.coil_price', 1.08)
+            ->assertSet('data.sheet_price', 1.28)
+            ->assertSet('data.double_thickness', '1.6')
+            ->assertSet('data.exchange_rate', 18000.0);
     }
 }

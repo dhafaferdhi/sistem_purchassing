@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Filament\Resources\StampingPartResource;
 use App\Filament\Resources\StampingPartResource\Pages\CreateStampingPart;
 use App\Filament\Resources\StampingPartResource\Pages\ListStampingParts;
 use App\Models\Currency;
@@ -92,10 +93,24 @@ class StampingPartTest extends TestCase
             ->assertFormFieldExists('supplier_id')
             ->assertFormFieldExists('supplier_name')
             ->assertFormFieldExists('vendor_code')
+            ->assertFormFieldExists('part_number')
+            ->assertFormFieldExists('part_name')
+            ->assertFormFieldExists('model_name')
+            ->assertFormFieldExists('monthly_volume')
             ->assertFormFieldExists('steel_spec')
             ->assertFormFieldExists('double_thickness')
+            ->assertFormFieldExists('wide')
+            ->assertFormFieldExists('pitch')
+            ->assertFormFieldExists('yield_rate')
             ->assertFormFieldExists('size')
             ->assertFormFieldExists('berat')
+            ->assertFormFieldExists('scrap_weight')
+            ->assertFormFieldExists('scrap_price_per_kg')
+            ->assertFormFieldExists('process_name')
+            ->assertFormFieldExists('process_man_hour')
+            ->assertFormFieldExists('process_charge')
+            ->assertFormFieldExists('overhead_supplied_percent')
+            ->assertFormFieldExists('overhead_self_percent')
             ->assertFormFieldExists('gap_steel_usd')
             ->assertFormFieldExists('gap_steel_kg_usd')
             ->assertFormFieldExists('exchange_rate')
@@ -104,6 +119,96 @@ class StampingPartTest extends TestCase
             ->assertFormFieldExists('sheet_price')
             ->assertFormFieldExists('sheet_price_idr')
             ->assertActionExists('back');
+    }
+
+    public function test_stamping_part_calculates_posmi_excel_comparative_quotation_formulas(): void
+    {
+        $part = StampingPart::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'part_number' => '72388-X7V00-A',
+            'part_name' => 'BRKT, SEAT BELT ANCHOR LH',
+            'model_name' => 'D26A',
+            'monthly_volume' => 16500,
+            'steel_spec' => 'SPH270-OD',
+            'double_thickness' => '1.2',
+            'wide' => 177,
+            'pitch' => 165,
+            'yield_rate' => 1,
+            'berat' => 0.2780,
+            'scrap_weight' => 0.2780,
+            'scrap_price_per_kg' => -1500,
+            'process_name' => '1. PROGRESSIVE 250T',
+            'process_man_hour' => 9,
+            'process_charge' => 45,
+            'overhead_supplied_percent' => 11,
+            'overhead_self_percent' => 4,
+            'exchange_rate' => 16000.0,
+            'coil_price' => 1.8500,
+            'sheet_price' => 1.8500,
+        ]);
+
+        // coil_price_idr = 1.85 * 16000 = 29600
+        $this->assertEquals(29600.00, (float) $part->coil_price_idr);
+        // gross_material_cost = 0.2780 * 29600 = 8228.80
+        $this->assertEquals(8228.80, (float) $part->gross_material_cost);
+        // scrap_cost = 0.2780 * -1500 = -417.00
+        $this->assertEquals(-417.00, (float) $part->scrap_cost);
+        // material_total = 8228.80 + (-417.00) = 7811.80
+        $this->assertEquals(7811.80, (float) $part->material_total);
+        // process_total = 9 * 45 = 405.00
+        $this->assertEquals(405.00, (float) $part->process_total);
+        // subtotal = 7811.80 + 405.00 = 8216.80
+        $this->assertEquals(8216.80, (float) $part->subtotal);
+        // overhead_supplied_cost = 11% * 405.00 = 44.55
+        $this->assertEquals(44.55, (float) $part->overhead_supplied_cost);
+        // overhead_self_cost = 4% * 7811.80 = 312.47
+        $this->assertEquals(312.47, (float) $part->overhead_self_cost);
+        // part_cost = 8216.80 + 44.55 + 312.47 = 8573.82
+        $this->assertEquals(8573.82, (float) $part->part_cost);
+    }
+
+    public function test_stamping_part_matches_exact_posmi_excel_with_yield_rate_2(): void
+    {
+        // Parameter persis dari Excel PT Posmi Steel:
+        // SPH440-OD, Thickness 2.6, Wide 390, Pitch 148, Yield 2, Weight 0.5890326 kg
+        // Steel Rate IDR: 17617.60, Scrap: 0.278 kg @ -1500
+        // Progressive 250T: 9 sec, 45 charge, yield 2 -> (9 * 45) / 2 = 202.50
+        // O/H Supplied (11% of process) = 22.275, O/H Self (4% of material total) = 398.4136
+        // Part Cost = 10583.5294
+        $part = StampingPart::create([
+            'year' => 2022,
+            'quarter' => 'Q2',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => 'PT. POSMI STEEL INDONESIA',
+            'part_number' => '72388-X7V00-A',
+            'part_name' => 'BRKT, SEAT BELT ANCHOR LH',
+            'model_name' => 'D26A',
+            'monthly_volume' => 16500,
+            'steel_spec' => 'SPH440-OD',
+            'double_thickness' => '2.6',
+            'wide' => 390,
+            'pitch' => 148,
+            'yield_rate' => 2,
+            'berat' => 0.5890,
+            'scrap_weight' => 0.2780,
+            'scrap_price_per_kg' => -1500,
+            'process_name' => '1. PROGRESSIVE 250T',
+            'process_man_hour' => 9,
+            'process_charge' => 45,
+            'overhead_supplied_percent' => 11,
+            'overhead_self_percent' => 4,
+            'exchange_rate' => 14300.0,
+            'coil_price' => 1.232, // 17617.6 / 14300
+            'sheet_price' => 1.232,
+        ]);
+
+        $this->assertEquals(202.50, (float) $part->process_total);
+        $this->assertEquals(22.28, (float) $part->overhead_supplied_cost);
     }
 
     public function test_stamping_part_calculates_formulas_matching_material_steel(): void
@@ -380,5 +485,138 @@ class StampingPartTest extends TestCase
             'gap_steel_usd' => 80.0000,
             'gap_steel_kg_usd' => 0.0800,
         ]);
+    }
+
+    public function test_stamping_parts_table_and_form_harmonized_with_material_steel(): void
+    {
+        $this->actingAs($this->admin);
+
+        $part = StampingPart::create([
+            'year' => 2026,
+            'quarter' => 'Q2',
+            'supplier_id' => $this->supplier->id,
+            'supplier_name' => $this->supplier->name,
+            'steel_spec' => 'SPH270-OD',
+            'double_thickness' => '1.2',
+            'hr_steel_usd' => -20.0,
+            'cr_steel_usd' => 0.0,
+            'exchange_rate' => 16000.0,
+            'coil_price' => 1.1006,
+            'sheet_price' => 1.1256,
+        ]);
+
+        Livewire::test(ListStampingParts::class)
+            ->assertCanSeeTableRecords([$part])
+            ->assertTableColumnExists('hr_steel_usd')
+            ->assertTableColumnExists('cr_steel_usd')
+            ->assertTableColumnExists('exchange_rate')
+            ->assertTableColumnExists('coil_price')
+            ->assertTableColumnExists('coil_price_idr')
+            ->assertTableColumnExists('sheet_price')
+            ->assertTableColumnExists('sheet_price_idr')
+            ->assertTableColumnExists('part_cost');
+
+        Livewire::test(CreateStampingPart::class)
+            ->assertFormFieldExists('price_mode')
+            ->assertFormFieldExists('hr_steel_usd')
+            ->assertFormFieldExists('cr_steel_usd')
+            ->assertFormFieldExists('exchange_rate')
+            ->assertFormFieldExists('coil_price')
+            ->assertFormFieldExists('sheet_price');
+
+        // Uji helper format mata uang tanpa desimal nol tak perlu
+        $this->assertEquals('USD 1.1', StampingPartResource::formatUsd(1.1));
+        $this->assertEquals('USD -20', StampingPartResource::formatUsd(-20));
+        $this->assertEquals('-', StampingPartResource::formatUsd(0));
+        $this->assertEquals('Rp 16.000', StampingPartResource::formatIdr(16000));
+    }
+
+    public function test_stamping_part_q2_adjustment_pulls_rate_and_calculates_from_q1(): void
+    {
+        $this->actingAs($this->admin);
+
+        // Q1 Baseline record
+        StampingPart::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'supplier_name' => $this->supplier->name,
+            'steel_spec' => 'SPH270-OD',
+            'double_thickness' => '1.2',
+            'exchange_rate' => 16000.0,
+            'coil_price' => 1.1206,
+            'sheet_price' => 1.1456,
+            'berat' => 0.2780,
+            'scrap_weight' => 0.2780,
+        ]);
+
+        // Create Q2 via Livewire
+        Livewire::test(CreateStampingPart::class)
+            ->set('data.year', 2026)
+            ->set('data.quarter', 'Q2')
+            ->set('data.supplier_id', $this->supplier->id)
+            ->set('data.steel_spec', 'SPH270-OD')
+            ->set('data.hr_steel_usd', -20)
+            ->call('create')
+            ->assertHasNoFormErrors();
+
+        $q2 = StampingPart::where('year', 2026)->where('quarter', 'Q2')->where('steel_spec', 'SPH270-OD')->first();
+        $this->assertNotNull($q2);
+        // Kurs IDR ditarik sama dengan Q1 (16000)
+        $this->assertEquals(16000.0, (float) $q2->exchange_rate);
+        // Coil berkurang -0.02 $/kg (1.1206 - 0.02 = 1.1006)
+        $this->assertEquals(1.1006, (float) $q2->coil_price);
+        $this->assertEquals(1.1256, (float) $q2->sheet_price);
+    }
+
+    public function test_creating_stamping_part_connects_to_material_steel(): void
+    {
+        $this->actingAs($this->admin);
+
+        MaterialSteel::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'steel_spec' => 'SPH270C-OD',
+            'double_thickness' => '1.6',
+            'coil_price' => 1.1000,
+            'sheet_price' => 1.3000,
+            'exchange_rate' => 17000.0,
+        ]);
+
+        MaterialSteel::create([
+            'year' => 2026,
+            'quarter' => 'Q2',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'steel_spec' => 'SPH270C-OD',
+            'double_thickness' => '1.6',
+            'coil_price' => 1.0800,
+            'sheet_price' => 1.2800,
+            'exchange_rate' => 18000.0,
+        ]);
+
+        // Q1 auto connect to Material Steel Q1
+        Livewire::test(CreateStampingPart::class)
+            ->set('data.year', 2026)
+            ->set('data.quarter', 'Q1')
+            ->set('data.steel_spec', 'SPH270C-OD')
+            ->assertSet('data.coil_price', 1.1)
+            ->assertSet('data.sheet_price', 1.3)
+            ->assertSet('data.double_thickness', '1.6')
+            ->assertSet('data.exchange_rate', 17000.0);
+
+        // Q2 auto connect to Material Steel Q2
+        Livewire::test(CreateStampingPart::class)
+            ->set('data.year', 2026)
+            ->set('data.quarter', 'Q2')
+            ->set('data.steel_spec', 'SPH270C-OD')
+            ->assertSet('data.coil_price', 1.08)
+            ->assertSet('data.sheet_price', 1.28)
+            ->assertSet('data.double_thickness', '1.6')
+            ->assertSet('data.exchange_rate', 18000.0);
     }
 }
