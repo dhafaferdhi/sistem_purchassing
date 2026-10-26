@@ -459,7 +459,7 @@ class QuotationResource extends Resource
 
                 Tables\Columns\TextColumn::make('scrap_recovery_value')
                     ->label('Scrap Recovery')
-                    ->formatStateUsing(fn ($state) => $state > 0 ? 'Rp '.number_format($state, 2, ',', '.') : '-')
+                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
                     ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('price_idr')

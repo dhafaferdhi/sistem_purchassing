@@ -14,6 +14,7 @@ class Fastener extends Model
         'supplier_name',
         'vendor_code',
         'part_number',
+        'old_part_number',
         'part_name',
         'model_name',
         'monthly_volume',
@@ -201,19 +202,30 @@ class Fastener extends Model
             // Bersihkan angka ketebalan/diameter dan satuan mm dari steel_spec (misal: "SPCC-SD 1.2mm" -> "SPCC-SD")
             if (! empty($model->steel_spec)) {
                 $model->steel_spec = static::cleanSteelSpec($model->steel_spec);
+            } elseif (! empty($model->wire_spec)) {
+                $model->steel_spec = static::cleanSteelSpec($model->wire_spec);
+            } else {
+                $model->steel_spec = 'SWCH';
             }
 
             // Sinkronisasi HR / CR Dolar MT dengan gap_steel_usd
             $steelType = static::determineSteelType($model->steel_spec);
+            $hasHr = $model->hr_steel_usd !== null && (float) $model->hr_steel_usd != 0.0;
+            $hasCr = $model->cr_steel_usd !== null && (float) $model->cr_steel_usd != 0.0;
+
             if ($steelType === 'HR') {
-                if ($model->hr_steel_usd !== null && (float) $model->hr_steel_usd != 0.0) {
+                if ($hasHr) {
                     $model->gap_steel_usd = (float) $model->hr_steel_usd;
+                } elseif ($hasCr) {
+                    $model->gap_steel_usd = (float) $model->cr_steel_usd;
                 } elseif ($model->gap_steel_usd !== null && (float) $model->gap_steel_usd != 0.0 && empty($model->hr_steel_usd)) {
                     $model->hr_steel_usd = (float) $model->gap_steel_usd;
                 }
             } else {
-                if ($model->cr_steel_usd !== null && (float) $model->cr_steel_usd != 0.0) {
+                if ($hasCr) {
                     $model->gap_steel_usd = (float) $model->cr_steel_usd;
+                } elseif ($hasHr) {
+                    $model->gap_steel_usd = (float) $model->hr_steel_usd;
                 } elseif ($model->gap_steel_usd !== null && (float) $model->gap_steel_usd != 0.0 && empty($model->cr_steel_usd)) {
                     $model->cr_steel_usd = (float) $model->gap_steel_usd;
                 }
@@ -231,9 +243,9 @@ class Fastener extends Model
                 }
             } elseif ($model->gap_steel_kg_usd !== null && (float) $model->gap_steel_kg_usd != 0.0) {
                 $model->gap_steel_usd = round((float) $model->gap_steel_kg_usd * 1000, 4);
-            } elseif ($sheetPrice > 0 || $coilPrice > 0) {
-                $model->gap_steel_kg_usd = round($sheetPrice - $coilPrice, 4);
-                $model->gap_steel_usd = round(($sheetPrice - $coilPrice) * 1000, 4);
+            } else {
+                $model->gap_steel_usd = 0;
+                $model->gap_steel_kg_usd = 0;
             }
 
             // Perhitungan Harga Coil & Sheet dalam Rupiah (IDR)
@@ -376,9 +388,6 @@ class Fastener extends Model
                 $gapKg = round($gapUsd / 1000, 4);
             } elseif ($gapUsd == 0.0 && $gapKg != 0.0) {
                 $gapUsd = round($gapKg * 1000, 4);
-            } elseif ($gapKg == 0.0 && $gapUsd == 0.0 && ((float) ($record->sheet_price ?? 0) > 0 || (float) ($record->coil_price ?? 0) > 0)) {
-                $gapKg = round((float) ($record->sheet_price ?? 0) - (float) ($record->coil_price ?? 0), 4);
-                $gapUsd = round($gapKg * 1000, 4);
             }
 
             return [
@@ -386,7 +395,13 @@ class Fastener extends Model
                 'prev_year' => $prevYear,
                 'prev_quarter' => $prevQuarter,
                 'label' => $info['label'],
+                'part_number' => $record->part_number,
+                'old_part_number' => $record->old_part_number,
+                'part_name' => $record->part_name,
+                'model_name' => $record->model_name,
+                'monthly_volume' => $record->monthly_volume,
                 'steel_spec' => $record->steel_spec,
+                'wire_spec' => $record->wire_spec,
                 'double_thickness' => $record->double_thickness,
                 'diameter' => $record->diameter ?: $record->double_thickness,
                 'gap_steel_usd' => $gapUsd,
@@ -397,6 +412,18 @@ class Fastener extends Model
                 'coil_price' => (float) $record->coil_price,
                 'sheet_price' => (float) $record->sheet_price,
                 'wire_price_usd_kg' => (float) ($record->wire_price_usd_kg ?? 0),
+                'gross_weight_gr' => (float) ($record->gross_weight_gr ?? 4.84),
+                'nett_weight_gr' => (float) ($record->nett_weight_gr ?? 4.40),
+                'material_control_percent' => (float) ($record->material_control_percent ?? 5),
+                'washer_price' => (float) ($record->washer_price ?? 198),
+                'washer_weight_gr' => (float) ($record->washer_weight_gr ?? 4.5),
+                'heading_cost' => (float) ($record->heading_cost ?? 48),
+                'rolling_cost' => (float) ($record->rolling_cost ?? 76),
+                'washing_cost_kg' => (float) ($record->washing_cost_kg ?? 500),
+                'plating_cost_kg' => (float) ($record->plating_cost_kg ?? 10000),
+                'inspection_cost' => (float) ($record->inspection_cost ?? 5),
+                'packing_cost' => (float) ($record->packing_cost ?? 3),
+                'overhead_self_percent' => (float) ($record->overhead_self_percent ?? 14.3),
                 'drawing_reference' => $record->drawing_reference,
                 'eci_number' => $record->eci_number,
                 'tooling_depreciation' => (float) ($record->tooling_depreciation ?? 0),

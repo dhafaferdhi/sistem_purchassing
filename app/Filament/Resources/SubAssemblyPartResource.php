@@ -13,7 +13,10 @@ use Filament\Forms\Form;
 use Filament\Forms\Get;
 use Filament\Forms\Set;
 use Filament\Resources\Resource;
+use Filament\Support\Enums\ActionSize;
+use Filament\Support\Enums\MaxWidth;
 use Filament\Tables;
+use Filament\Tables\Enums\ActionsPosition;
 use Filament\Tables\Table;
 use Illuminate\Support\HtmlString;
 
@@ -35,8 +38,13 @@ class SubAssemblyPartResource extends Resource
 
     public static function formatIdr(?float $amount, bool $prefix = true): string
     {
-        if ($amount === null || (float) $amount === 0.0) {
+        if ($amount === null) {
             return '-';
+        }
+
+        $f = (float) $amount;
+        if ($f == 0.0) {
+            return $prefix ? 'Rp 0' : '0';
         }
 
         $formatted = number_format(round($amount), 0, ',', '.');
@@ -705,9 +713,22 @@ class SubAssemblyPartResource extends Resource
             )
             ->filtersFormColumns(2)
             ->actions([
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
-            ])
+                Tables\Actions\Action::make('view_sheet')
+                    ->label('Lembar Kalkulasi')
+                    ->tooltip('Tampilkan lembar rincian kalkulasi format resmi Excel')
+                    ->icon('heroicon-o-document-chart-bar')
+                    ->color('info')
+                    ->button()
+                    ->size(ActionSize::Small)
+                    ->slideOver()
+                    ->modalHeading(fn (SubAssemblyPart $record) => "Lembar Perhitungan Sub-Assembly: {$record->part_number} - {$record->part_name}")
+                    ->modalWidth(MaxWidth::FiveExtraLarge)
+                    ->modalSubmitAction(false)
+                    ->modalCancelActionLabel('Tutup')
+                    ->modalContent(fn (SubAssemblyPart $record) => view('filament.resources.sub-assembly-parts.sheet-modal', ['record' => $record])),
+                Tables\Actions\EditAction::make()->iconButton(),
+                Tables\Actions\DeleteAction::make()->iconButton(),
+            ], position: ActionsPosition::BeforeColumns)
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\DeleteBulkAction::make(),

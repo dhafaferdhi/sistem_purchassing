@@ -7,6 +7,7 @@ use App\Models\Currency;
 use App\Models\Supplier;
 use Filament\Actions;
 use Filament\Resources\Pages\EditRecord;
+use Filament\Support\Enums\MaxWidth;
 
 class EditStampingPart extends EditRecord
 {
@@ -15,6 +16,16 @@ class EditStampingPart extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
+            Actions\Action::make('view_sheet')
+                ->label('Lembar Kalkulasi')
+                ->icon('heroicon-o-document-chart-bar')
+                ->color('info')
+                ->slideOver()
+                ->modalHeading(fn () => "Lembar Perhitungan Part Cost: {$this->record->part_number} - {$this->record->part_name}")
+                ->modalWidth(MaxWidth::FiveExtraLarge)
+                ->modalSubmitAction(false)
+                ->modalCancelActionLabel('Tutup')
+                ->modalContent(fn () => view('filament.resources.stamping-parts.sheet-modal', ['record' => $this->record])),
             Actions\Action::make('back')
                 ->label('Keluar / Kembali')
                 ->icon('heroicon-o-arrow-left')

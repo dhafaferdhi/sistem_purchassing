@@ -49,8 +49,9 @@
             font-size: 0.7rem !important;
         }
         .fi-resource-sub-assembly-parts .fi-ta-actions {
-            gap: 0.2rem !important;
-            justify-content: flex-end;
+            gap: 0.35rem !important;
+            justify-content: flex-start !important;
+            flex-wrap: nowrap !important;
         }
         .fi-resource-sub-assembly-parts .fi-ta-actions .fi-icon-btn {
             width: 1.75rem !important;

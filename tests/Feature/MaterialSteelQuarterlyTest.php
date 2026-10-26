@@ -388,6 +388,7 @@ class MaterialSteelQuarterlyTest extends TestCase
             'double_thickness' => '2.0 mm', // Input dengan 'mm' harus otomatis dibersihkan menjadi '2.0'
             'currency_id' => $this->currency->id,
             'currency_code' => 'USD',
+            'gap_steel_usd' => 60.0,
             'coil_price' => 1.8700,
             'sheet_price' => 1.9300,
             'exchange_rate' => 16000.0000,
@@ -456,6 +457,7 @@ class MaterialSteelQuarterlyTest extends TestCase
                 'exchange_rate' => 16000.0,
                 'coil_price' => 2.0500,
                 'sheet_price' => 2.1500,
+                'hr_steel_usd' => 100.0,
             ])
             ->call('create')
             ->assertHasNoFormErrors();
@@ -550,8 +552,6 @@ class MaterialSteelQuarterlyTest extends TestCase
         $this->actingAs($this->admin);
 
         Livewire::test(CreateMaterialSteel::class)
-            ->assertFormFieldExists('price_mode')
-            ->assertFormSet(['price_mode' => 'baseline'])
             ->fillForm([
                 'year' => 2026,
                 'quarter' => 'Q1',
@@ -641,8 +641,8 @@ class MaterialSteelQuarterlyTest extends TestCase
             ->assertActionDoesNotExist('import_excel');
 
         Livewire::test(ListMaterialSteels::class)
-            ->assertActionExists('import_excel')
-            ->assertActionExists('download_template');
+            ->assertActionDoesNotExist('import_excel')
+            ->assertActionDoesNotExist('download_template');
     }
 
     public function test_create_q2_with_gap_mt_auto_calculates_from_q1_baseline(): void
@@ -672,7 +672,6 @@ class MaterialSteelQuarterlyTest extends TestCase
                 'supplier_id' => $this->supplier->id,
                 'steel_spec' => 'SPH270C-OD',
                 'double_thickness' => '1.6',
-                'price_mode' => 'adjustment',
                 'gap_steel_usd' => 0.5,
                 'exchange_rate' => 17000.0,
             ])
@@ -718,7 +717,6 @@ class MaterialSteelQuarterlyTest extends TestCase
                 'supplier_id' => $this->supplier->id,
                 'steel_spec' => 'SPH440-OD',
                 'double_thickness' => '2.0',
-                'price_mode' => 'baseline',
                 'coil_price' => 1.2000,
                 'sheet_price' => 1.2500,
                 'exchange_rate' => 17500.0,
@@ -760,7 +758,6 @@ class MaterialSteelQuarterlyTest extends TestCase
 
         Livewire::test(EditMaterialSteel::class, ['record' => $steel->getKey()])
             ->fillForm([
-                'price_mode' => 'adjustment',
                 'coil_price' => 1.8500,
                 'sheet_price' => 1.9500,
                 'gap_steel_usd' => 10.0,
@@ -804,7 +801,6 @@ class MaterialSteelQuarterlyTest extends TestCase
                 'supplier_id' => $this->supplier->id,
                 'steel_spec' => 'SPH270C-OD',
                 'double_thickness' => '1.6',
-                'price_mode' => 'adjustment',
                 'hr_steel_usd' => -20.0,
                 'exchange_rate' => 17796.0,
             ])
@@ -853,7 +849,6 @@ class MaterialSteelQuarterlyTest extends TestCase
                 'supplier_id' => $this->supplier->id,
                 'steel_spec' => 'SPC270C',
                 'double_thickness' => '0.5',
-                'price_mode' => 'adjustment',
                 'cr_steel_usd' => 100.0,
                 'exchange_rate' => 17796.0,
             ])
@@ -939,7 +934,6 @@ class MaterialSteelQuarterlyTest extends TestCase
                 'supplier_id' => $this->supplier->id,
                 'steel_spec' => 'SPH270C-OD',
                 'double_thickness' => '1.6',
-                'price_mode' => 'adjustment',
                 'hr_steel_usd' => -20.0,
                 'cr_steel_usd' => -20.0,
             ])
@@ -969,7 +963,7 @@ class MaterialSteelQuarterlyTest extends TestCase
         $this->assertEquals('USD -20', MaterialSteelResource::formatUsd('-20.00'));
         $this->assertEquals('USD 0.974', MaterialSteelResource::formatUsd('0.9740'));
         $this->assertEquals('1.1', MaterialSteelResource::formatUsd(1.1000, null));
-        $this->assertEquals('-', MaterialSteelResource::formatUsd(0));
+        $this->assertEquals('USD 0', MaterialSteelResource::formatUsd(0));
         $this->assertEquals('-', MaterialSteelResource::formatUsd(null));
 
         // IDR: no trailing decimal zero sen (Rp 16.000 instead of Rp 16.000,00 or 16000.00)
@@ -977,7 +971,7 @@ class MaterialSteelQuarterlyTest extends TestCase
         $this->assertEquals('Rp 16.000', MaterialSteelResource::formatIdr('16000.00'));
         $this->assertEquals('Rp 17.459', MaterialSteelResource::formatIdr(17459.20));
         $this->assertEquals('16.000', MaterialSteelResource::formatIdr(16000, false));
-        $this->assertEquals('-', MaterialSteelResource::formatIdr(0));
+        $this->assertEquals('Rp 0', MaterialSteelResource::formatIdr(0));
         $this->assertEquals('-', MaterialSteelResource::formatIdr(null));
     }
 
@@ -1010,11 +1004,25 @@ class MaterialSteelQuarterlyTest extends TestCase
                 'steel_spec' => 'SPH440-PULL-TEST',
                 'double_thickness' => '2.6',
             ])
-            ->callAction('pull_previous')
+            ->callAction('pull_previous', [
+                'hr_steel_usd' => -20,
+            ])
             ->assertFormSet([
                 'size' => '2.6 x 1219 x C',
-                'coil_price' => '1.25',
-                'sheet_price' => '1.28',
-            ]);
+                'coil_price' => '1.23',
+                'sheet_price' => '1.26',
+                'hr_steel_usd' => '-20',
+            ])
+            ->call('create')
+            ->assertHasNoFormErrors();
+
+        $this->assertDatabaseHas('material_steels', [
+            'year' => 2026,
+            'quarter' => 'Q2',
+            'steel_spec' => 'SPH440-PULL-TEST',
+            'coil_price' => 1.2300,
+            'sheet_price' => 1.2600,
+            'hr_steel_usd' => -20.0,
+        ]);
     }
 }

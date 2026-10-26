@@ -63,12 +63,23 @@ class CreateStampingPart extends CreateRecord
             $raw['sheet_price_idr'] = round((float) ($raw['sheet_price'] ?? 0) * $rate, 2);
 
             $steelRate = (float) ($raw['sheet_price_idr'] ?: $raw['coil_price_idr']);
-            $berat = (float) ($raw['berat'] ?? 0);
-            $grossMat = round($berat * $steelRate, 2);
+            $thk = (float) ($raw['double_thickness'] ?? $prevData['double_thickness'] ?? 0);
+            $wide = (float) ($raw['wide'] ?? $prevData['wide'] ?? 0);
+            $pitch = (float) ($raw['pitch'] ?? $prevData['pitch'] ?? 0);
+            $yieldRate = (float) ($raw['yield_rate'] ?? $prevData['yield_rate'] ?? 1);
+            $yieldRate = $yieldRate > 0 ? $yieldRate : 1;
+
+            $berat = (float) ($raw['berat'] ?? $prevData['berat'] ?? 0);
+            if ($berat <= 0.0 && $thk > 0 && $wide > 0 && $pitch > 0) {
+                $berat = round(($thk * $wide * $pitch * 7.85) / (1000000 * $yieldRate), 4);
+                $raw['berat'] = $berat;
+            }
+
+            $grossMat = $berat > 0 && $steelRate > 0 ? round($berat * $steelRate, 2) : 0;
             $raw['gross_material_cost'] = $grossMat;
 
-            $scrapWeight = (float) ($raw['scrap_weight'] ?? 0);
-            $scrapPrice = (float) ($raw['scrap_price_per_kg'] ?? -1500);
+            $scrapWeight = $berat > 0 ? (float) ($raw['scrap_weight'] ?? $prevData['scrap_weight'] ?? 0) : 0;
+            $scrapPrice = (float) ($raw['scrap_price_per_kg'] ?? $prevData['scrap_price_per_kg'] ?? -1500);
             $scrapCost = round($scrapWeight * $scrapPrice, 2);
             $raw['scrap_cost'] = $scrapCost;
 
@@ -77,7 +88,7 @@ class CreateStampingPart extends CreateRecord
 
             $procMan = (float) ($raw['process_man_hour'] ?? 9);
             $procChg = (float) ($raw['process_charge'] ?? 45);
-            $procTotal = round($procMan * $procChg, 2);
+            $procTotal = round(($procMan * $procChg) / $yieldRate, 2);
             $raw['process_total'] = $procTotal;
 
             $subtotal = round($matTotal + $procTotal, 2);
@@ -156,6 +167,43 @@ class CreateStampingPart extends CreateRecord
                                 ->live(),
                         ]),
 
+                    Forms\Components\Grid::make(2)
+                        ->schema([
+                            Forms\Components\Select::make('target_year')
+                                ->label('Tahun yang Akan Diisi')
+                                ->options(function () {
+                                    $current = (int) date('Y');
+                                    $years = range($current + 2, 2020);
+
+                                    return array_combine($years, $years);
+                                })
+                                ->default(fn () => (int) ($this->data['year'] ?? date('Y')))
+                                ->required()
+                                ->live(),
+
+                            Forms\Components\Select::make('target_quarter')
+                                ->label('Kuartal yang Akan Diisi')
+                                ->options([
+                                    'Q1' => 'Q1 (Januari - Maret)',
+                                    'Q2' => 'Q2 (April - Juni)',
+                                    'Q3' => 'Q3 (Juli - September)',
+                                    'Q4' => 'Q4 (Oktober - Desember)',
+                                ])
+                                ->default(function (Forms\Get $get) {
+                                    $sq = $get('source_quarter') ?? $this->data['quarter'] ?? 'Q1';
+
+                                    return match ($sq) {
+                                        'Q1' => 'Q2',
+                                        'Q2' => 'Q3',
+                                        'Q3' => 'Q4',
+                                        'Q4' => 'Q1',
+                                        default => 'Q2',
+                                    };
+                                })
+                                ->required()
+                                ->live(),
+                        ]),
+
                     Forms\Components\Select::make('source_record_id')
                         ->label('Pilih Part Stamping Acuan')
                         ->placeholder('-- Pilih Part Stamping Acuan --')
@@ -194,8 +242,7 @@ class CreateStampingPart extends CreateRecord
                             }
 
                             return $stampings;
-                        })
-                        ->helperText('Pilih part spesifik dari daftar kuartal tersebut'),
+                        }),
 
                     Forms\Components\Placeholder::make('preview')
                         ->label('Pratinjau Data Terpilih')
@@ -258,8 +305,12 @@ class CreateStampingPart extends CreateRecord
                 ->action(function (array $data) {
                     $selected = $data['source_record_id'] ?? null;
                     $raw = $this->data ?? [];
-                    $quarter = $raw['quarter'] ?? 'Q1';
-                    $year = (int) ($raw['year'] ?? date('Y'));
+                    $targetYear = (int) ($data['target_year'] ?? $data['year'] ?? $raw['year'] ?? date('Y'));
+                    $targetQuarter = $data['target_quarter'] ?? $data['quarter'] ?? $raw['quarter'] ?? 'Q1';
+                    $raw['year'] = $targetYear;
+                    $raw['quarter'] = $targetQuarter;
+                    $quarter = $targetQuarter;
+                    $year = $targetYear;
 
                     // Handle MaterialSteel selection
                     if ($selected && str_starts_with($selected, 'steel:')) {
@@ -278,6 +329,16 @@ class CreateStampingPart extends CreateRecord
                             $raw['exchange_rate'] = $rate;
                             $raw['coil_price_idr'] = round((float) $steel->coil_price * $rate, 2);
                             $raw['sheet_price_idr'] = round((float) $steel->sheet_price * $rate, 2);
+                            $raw['gap_steel_usd'] = 0;
+                            $raw['gap_steel_kg_usd'] = 0;
+                            $raw['hr_steel_usd'] = 0;
+                            $raw['cr_steel_usd'] = 0;
+                            $raw['berat'] = null;
+                            $raw['scrap_weight'] = 0;
+                            $raw['scrap_cost'] = 0;
+                            $raw['gross_material_cost'] = 0;
+                            $raw['material_total'] = 0;
+                            $raw['part_cost'] = 0;
                             $this->form->fill($raw);
 
                             Notification::make()
@@ -335,6 +396,11 @@ class CreateStampingPart extends CreateRecord
                             }
                         }
 
+                        $raw['prev_coil_price'] = (float) $record->coil_price;
+                        $raw['prev_sheet_price'] = (float) $record->sheet_price;
+                        $raw['prev_record_found'] = true;
+                        $raw['prev_quarter_label'] = "{$record->quarter} {$record->year}";
+
                         if (! empty($record->supplier_id)) {
                             $raw['supplier_id'] = $record->supplier_id;
                             $raw['vendor_code'] = $record->vendor_code;
@@ -347,12 +413,23 @@ class CreateStampingPart extends CreateRecord
                         $raw['sheet_price_idr'] = round((float) ($raw['sheet_price'] ?? 0) * $rate, 2);
 
                         $steelRate = (float) ($raw['sheet_price_idr'] ?: $raw['coil_price_idr']);
-                        $berat = (float) ($raw['berat'] ?? 0);
-                        $grossMat = round($berat * $steelRate, 2);
+                        $thk = (float) ($raw['double_thickness'] ?? $record->double_thickness ?? 0);
+                        $wide = (float) ($raw['wide'] ?? $record->wide ?? 0);
+                        $pitch = (float) ($raw['pitch'] ?? $record->pitch ?? 0);
+                        $yieldRate = (float) ($raw['yield_rate'] ?? $record->yield_rate ?? 1);
+                        $yieldRate = $yieldRate > 0 ? $yieldRate : 1;
+
+                        $berat = (float) ($raw['berat'] ?? $record->berat ?? 0);
+                        if ($berat <= 0.0 && $thk > 0 && $wide > 0 && $pitch > 0) {
+                            $berat = round(($thk * $wide * $pitch * 7.85) / (1000000 * $yieldRate), 4);
+                            $raw['berat'] = $berat;
+                        }
+
+                        $grossMat = $berat > 0 && $steelRate > 0 ? round($berat * $steelRate, 2) : 0;
                         $raw['gross_material_cost'] = $grossMat;
 
-                        $scrapWeight = (float) ($raw['scrap_weight'] ?? 0);
-                        $scrapPrice = (float) ($raw['scrap_price_per_kg'] ?? -1500);
+                        $scrapWeight = $berat > 0 ? (float) ($raw['scrap_weight'] ?? $record->scrap_weight ?? 0) : 0;
+                        $scrapPrice = (float) ($raw['scrap_price_per_kg'] ?? $record->scrap_price_per_kg ?? -1500);
                         $scrapCost = round($scrapWeight * $scrapPrice, 2);
                         $raw['scrap_cost'] = $scrapCost;
 
@@ -361,7 +438,7 @@ class CreateStampingPart extends CreateRecord
 
                         $procMan = (float) ($raw['process_man_hour'] ?? 9);
                         $procChg = (float) ($raw['process_charge'] ?? 45);
-                        $procTotal = round($procMan * $procChg, 2);
+                        $procTotal = round(($procMan * $procChg) / $yieldRate, 2);
                         $raw['process_total'] = $procTotal;
 
                         $subtotal = round($matTotal + $procTotal, 2);
@@ -406,6 +483,16 @@ class CreateStampingPart extends CreateRecord
                             $raw['exchange_rate'] = $rate;
                             $raw['coil_price_idr'] = round((float) $currentSteel->coil_price * $rate, 2);
                             $raw['sheet_price_idr'] = round((float) $currentSteel->sheet_price * $rate, 2);
+                            $raw['gap_steel_usd'] = 0;
+                            $raw['gap_steel_kg_usd'] = 0;
+                            $raw['hr_steel_usd'] = 0;
+                            $raw['cr_steel_usd'] = 0;
+                            $raw['berat'] = null;
+                            $raw['scrap_weight'] = 0;
+                            $raw['scrap_cost'] = 0;
+                            $raw['gross_material_cost'] = 0;
+                            $raw['material_total'] = 0;
+                            $raw['part_cost'] = 0;
                             $this->form->fill($raw);
 
                             Notification::make()

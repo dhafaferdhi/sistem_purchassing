@@ -146,34 +146,33 @@ class MaterialSteel extends Model
 
             // Sinkronisasi nilai HR Dolar/MT & CR Dolar/MT
             $steelType = static::determineSteelType($model->steel_spec);
+            $hasHr = $model->hr_steel_usd !== null && (float) $model->hr_steel_usd != 0.0;
+            $hasCr = $model->cr_steel_usd !== null && (float) $model->cr_steel_usd != 0.0;
+
             if ($steelType === 'HR') {
-                if ($model->hr_steel_usd !== null && (float) $model->hr_steel_usd != 0.0) {
-                    $model->gap_steel_usd = $model->hr_steel_usd;
+                if ($hasHr) {
+                    $model->gap_steel_usd = (float) $model->hr_steel_usd;
+                } elseif ($hasCr) {
+                    $model->gap_steel_usd = (float) $model->cr_steel_usd;
                 } elseif ($model->gap_steel_usd !== null && (float) $model->gap_steel_usd != 0.0) {
-                    $model->hr_steel_usd = $model->gap_steel_usd;
+                    $model->hr_steel_usd = (float) $model->gap_steel_usd;
                 }
             } else {
-                if ($model->cr_steel_usd !== null && (float) $model->cr_steel_usd != 0.0) {
-                    $model->gap_steel_usd = $model->cr_steel_usd;
+                if ($hasCr) {
+                    $model->gap_steel_usd = (float) $model->cr_steel_usd;
+                } elseif ($hasHr) {
+                    $model->gap_steel_usd = (float) $model->hr_steel_usd;
                 } elseif ($model->gap_steel_usd !== null && (float) $model->gap_steel_usd != 0.0) {
-                    $model->cr_steel_usd = $model->gap_steel_usd;
+                    $model->cr_steel_usd = (float) $model->gap_steel_usd;
                 }
             }
 
             // Perhitungan Rumus Gap Steel:
             // Gap / MT (USD) dan Gap / Kg (USD) [Rumus Excel: Gap / Kg = Gap / MT / 1000]
-            if ($model->quarter === 'Q1' && ($model->hr_steel_usd === null || (float) $model->hr_steel_usd == 0) && ($model->cr_steel_usd === null || (float) $model->cr_steel_usd == 0)) {
-                $model->gap_steel_usd = 0;
-                $model->gap_steel_kg_usd = 0;
-                $model->hr_steel_usd = 0;
-                $model->cr_steel_usd = 0;
-            } elseif ($model->gap_steel_usd !== null) {
+            if ($model->gap_steel_usd !== null && (float) $model->gap_steel_usd != 0.0) {
                 $model->gap_steel_kg_usd = round((float) $model->gap_steel_usd / 1000, 4);
-            } elseif ($model->gap_steel_kg_usd !== null) {
+            } elseif ($model->gap_steel_kg_usd !== null && (float) $model->gap_steel_kg_usd != 0.0) {
                 $model->gap_steel_usd = round((float) $model->gap_steel_kg_usd * 1000, 4);
-            } elseif ($model->quarter !== 'Q1' && ($sheetPrice > 0 || $coilPrice > 0)) {
-                $model->gap_steel_kg_usd = round($sheetPrice - $coilPrice, 4);
-                $model->gap_steel_usd = round(($sheetPrice - $coilPrice) * 1000, 4);
             } else {
                 $model->gap_steel_usd = 0;
                 $model->gap_steel_kg_usd = 0;

@@ -77,6 +77,43 @@ class CreateSubAssemblyPart extends CreateRecord
                                 ->live(),
                         ]),
 
+                    Forms\Components\Grid::make(2)
+                        ->schema([
+                            Forms\Components\Select::make('target_year')
+                                ->label('Tahun yang Akan Diisi')
+                                ->options(function () {
+                                    $current = (int) date('Y');
+                                    $years = range($current + 2, 2020);
+
+                                    return array_combine($years, $years);
+                                })
+                                ->default(fn () => (int) ($this->data['year'] ?? date('Y')))
+                                ->required()
+                                ->live(),
+
+                            Forms\Components\Select::make('target_quarter')
+                                ->label('Kuartal yang Akan Diisi')
+                                ->options([
+                                    'Q1' => 'Q1 (Januari - Maret)',
+                                    'Q2' => 'Q2 (April - Juni)',
+                                    'Q3' => 'Q3 (Juli - September)',
+                                    'Q4' => 'Q4 (Oktober - Desember)',
+                                ])
+                                ->default(function (Forms\Get $get) {
+                                    $sq = $get('source_quarter') ?? $this->data['quarter'] ?? 'Q1';
+
+                                    return match ($sq) {
+                                        'Q1' => 'Q2',
+                                        'Q2' => 'Q3',
+                                        'Q3' => 'Q4',
+                                        'Q4' => 'Q1',
+                                        default => 'Q2',
+                                    };
+                                })
+                                ->required()
+                                ->live(),
+                        ]),
+
                     Forms\Components\Select::make('source_record_id')
                         ->label('Pilih Sub-Assembly Part Acuan')
                         ->placeholder('-- Pilih Sub-Assembly Part Acuan --')
@@ -97,8 +134,7 @@ class CreateSubAssemblyPart extends CreateRecord
                                     return [$item->id => $label];
                                 })
                                 ->toArray();
-                        })
-                        ->helperText('Pilih sub-assembly spesifik dari daftar kuartal tersebut'),
+                        }),
 
                     Forms\Components\Placeholder::make('preview')
                         ->label('Pratinjau Data Terpilih')
@@ -140,8 +176,12 @@ class CreateSubAssemblyPart extends CreateRecord
                 ->action(function (array $data) {
                     $selectedId = $data['source_record_id'] ?? null;
                     $raw = $this->data ?? [];
-                    $quarter = $raw['quarter'] ?? 'Q1';
-                    $year = (int) ($raw['year'] ?? date('Y'));
+                    $targetYear = (int) ($data['target_year'] ?? $data['year'] ?? $raw['year'] ?? date('Y'));
+                    $targetQuarter = $data['target_quarter'] ?? $data['quarter'] ?? $raw['quarter'] ?? 'Q1';
+                    $raw['year'] = $targetYear;
+                    $raw['quarter'] = $targetQuarter;
+                    $quarter = $targetQuarter;
+                    $year = $targetYear;
 
                     $record = null;
                     if ($selectedId) {

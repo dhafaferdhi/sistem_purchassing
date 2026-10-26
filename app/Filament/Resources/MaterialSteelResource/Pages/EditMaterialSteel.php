@@ -51,8 +51,6 @@ class EditMaterialSteel extends EditRecord
             }
         }
 
-        $data['price_mode'] = ($quarter === 'Q1' && ! $hasHr && ! $hasCr && ! $hasGap) ? 'baseline' : 'adjustment';
-
         return $data;
     }
 
@@ -97,41 +95,31 @@ class EditMaterialSteel extends EditRecord
 
         $currentRecordGap = (float) ($this->record->gap_steel_usd ?? 0);
 
-        $quarter = $data['quarter'] ?? $this->record->quarter ?? 'Q1';
-        $priceMode = $data['price_mode'] ?? null;
-
-        if ($priceMode === 'baseline') {
-            $data['hr_steel_usd'] = 0;
-            $data['cr_steel_usd'] = 0;
-            $data['gap_steel_usd'] = 0;
-            $data['gap_steel_kg_usd'] = 0;
-            $data['fluktuasi_jfe'] = 0;
+        if ($steelType === 'HR') {
+            if ($gapVal !== null && $gapVal != $currentRecordGap) {
+                $data['hr_steel_usd'] = $gapVal;
+                $data['gap_steel_usd'] = $gapVal;
+            } elseif ($hrVal !== null && $hrVal != 0.0) {
+                $data['gap_steel_usd'] = $hrVal;
+            } elseif ($gapVal !== null) {
+                $data['hr_steel_usd'] = $gapVal;
+            }
         } else {
-            if ($steelType === 'HR') {
-                if ($gapVal !== null && $gapVal != $currentRecordGap) {
-                    $data['hr_steel_usd'] = $gapVal;
-                    $data['gap_steel_usd'] = $gapVal;
-                } elseif ($hrVal !== null && $hrVal != 0.0) {
-                    $data['gap_steel_usd'] = $hrVal;
-                } elseif ($gapVal !== null) {
-                    $data['hr_steel_usd'] = $gapVal;
-                }
-            } else {
-                if ($gapVal !== null && $gapVal != $currentRecordGap) {
-                    $data['cr_steel_usd'] = $gapVal;
-                    $data['gap_steel_usd'] = $gapVal;
-                } elseif ($crVal !== null && $crVal != 0.0) {
-                    $data['gap_steel_usd'] = $crVal;
-                } elseif ($gapVal !== null) {
-                    $data['cr_steel_usd'] = $gapVal;
-                }
+            if ($gapVal !== null && $gapVal != $currentRecordGap) {
+                $data['cr_steel_usd'] = $gapVal;
+                $data['gap_steel_usd'] = $gapVal;
+            } elseif ($crVal !== null && $crVal != 0.0) {
+                $data['gap_steel_usd'] = $crVal;
+            } elseif ($gapVal !== null) {
+                $data['cr_steel_usd'] = $gapVal;
             }
-
-            if (! isset($data['gap_steel_usd']) || $data['gap_steel_usd'] === null) {
-                $data['gap_steel_usd'] = 0;
-            }
-            $data['gap_steel_kg_usd'] = round((float) $data['gap_steel_usd'] / 1000, 4);
         }
+
+        if (! isset($data['gap_steel_usd']) || $data['gap_steel_usd'] === null) {
+            $data['gap_steel_usd'] = 0;
+        }
+        $data['gap_steel_kg_usd'] = round((float) $data['gap_steel_usd'] / 1000, 4);
+        $data['fluktuasi_jfe'] = $data['gap_steel_kg_usd'];
         $data['gap_steel_idr'] = round((float) $data['gap_steel_usd'] * $exchangeRate, 2);
 
         $data['coil_price_idr'] = round($coilPrice * $exchangeRate, 2);

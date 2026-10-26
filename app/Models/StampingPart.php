@@ -176,15 +176,22 @@ class StampingPart extends Model
 
             // Sinkronisasi HR / CR Dolar MT dengan gap_steel_usd
             $steelType = static::determineSteelType($model->steel_spec);
+            $hasHr = $model->hr_steel_usd !== null && (float) $model->hr_steel_usd != 0.0;
+            $hasCr = $model->cr_steel_usd !== null && (float) $model->cr_steel_usd != 0.0;
+
             if ($steelType === 'HR') {
-                if ($model->hr_steel_usd !== null && (float) $model->hr_steel_usd != 0.0) {
+                if ($hasHr) {
                     $model->gap_steel_usd = (float) $model->hr_steel_usd;
+                } elseif ($hasCr) {
+                    $model->gap_steel_usd = (float) $model->cr_steel_usd;
                 } elseif ($model->gap_steel_usd !== null && (float) $model->gap_steel_usd != 0.0 && empty($model->hr_steel_usd)) {
                     $model->hr_steel_usd = (float) $model->gap_steel_usd;
                 }
             } else {
-                if ($model->cr_steel_usd !== null && (float) $model->cr_steel_usd != 0.0) {
+                if ($hasCr) {
                     $model->gap_steel_usd = (float) $model->cr_steel_usd;
+                } elseif ($hasHr) {
+                    $model->gap_steel_usd = (float) $model->hr_steel_usd;
                 } elseif ($model->gap_steel_usd !== null && (float) $model->gap_steel_usd != 0.0 && empty($model->cr_steel_usd)) {
                     $model->cr_steel_usd = (float) $model->gap_steel_usd;
                 }
@@ -202,9 +209,9 @@ class StampingPart extends Model
                 }
             } elseif ($model->gap_steel_kg_usd !== null && (float) $model->gap_steel_kg_usd != 0.0) {
                 $model->gap_steel_usd = round((float) $model->gap_steel_kg_usd * 1000, 4);
-            } elseif ($sheetPrice > 0 || $coilPrice > 0) {
-                $model->gap_steel_kg_usd = round($sheetPrice - $coilPrice, 4);
-                $model->gap_steel_usd = round(($sheetPrice - $coilPrice) * 1000, 4);
+            } else {
+                $model->gap_steel_usd = 0;
+                $model->gap_steel_kg_usd = 0;
             }
 
             // Perhitungan Harga Coil & Sheet dalam Rupiah (IDR)
@@ -213,17 +220,33 @@ class StampingPart extends Model
 
             // Perhitungan Biaya Material & Proses Stamping Part Sesuai Excel
             $berat = (float) ($model->berat ?? 0);
-            $steelRate = (float) ($model->coil_price_idr ?: ($model->sheet_price_idr ?: round((float) ($coilPrice ?: $sheetPrice) * $rate, 2)));
+
+            // Auto calculate berat jika kosong tetapi dimensi blank tersedia
+            if ($berat <= 0.0) {
+                $thk = (float) ($model->double_thickness ?? 0);
+                $wide = (float) ($model->wide ?? 0);
+                $pitch = (float) ($model->pitch ?? 0);
+                $yr = (float) ($model->yield_rate ?: 1);
+                $yr = $yr > 0 ? $yr : 1;
+                if ($thk > 0 && $wide > 0 && $pitch > 0) {
+                    $berat = round(($thk * $wide * $pitch * 7.85) / (1000000 * $yr), 4);
+                    $model->berat = $berat;
+                }
+            }
+
+            $steelRate = (float) ($model->sheet_price_idr ?: ($model->coil_price_idr ?: round((float) ($sheetPrice ?: $coilPrice) * $rate, 2)));
 
             if ($berat > 0 && $steelRate > 0) {
                 $model->gross_material_cost = round($berat * $steelRate, 2);
+                $scrapWeight = (float) ($model->scrap_weight ?? 0);
+                $scrapPrice = (float) ($model->scrap_price_per_kg ?? -1500);
+                $model->scrap_cost = round($scrapWeight * $scrapPrice, 2);
+                $model->material_total = round((float) $model->gross_material_cost + (float) $model->scrap_cost, 2);
+            } else {
+                $model->gross_material_cost = 0;
+                $model->scrap_cost = 0;
+                $model->material_total = 0;
             }
-
-            $scrapWeight = (float) ($model->scrap_weight ?? 0);
-            $scrapPrice = (float) ($model->scrap_price_per_kg ?? -1500);
-            $model->scrap_cost = round($scrapWeight * $scrapPrice, 2);
-
-            $model->material_total = round((float) $model->gross_material_cost + (float) $model->scrap_cost, 2);
 
             $manHour = (float) ($model->process_man_hour ?? 9);
             $charge = (float) ($model->process_charge ?? 45);
@@ -338,9 +361,6 @@ class StampingPart extends Model
                 $gapKg = round($gapUsd / 1000, 4);
             } elseif ($gapUsd == 0.0 && $gapKg != 0.0) {
                 $gapUsd = round($gapKg * 1000, 4);
-            } elseif ($gapKg == 0.0 && $gapUsd == 0.0 && ((float) ($record->sheet_price ?? 0) > 0 || (float) ($record->coil_price ?? 0) > 0)) {
-                $gapKg = round((float) ($record->sheet_price ?? 0) - (float) ($record->coil_price ?? 0), 4);
-                $gapUsd = round($gapKg * 1000, 4);
             }
 
             return [
@@ -422,9 +442,6 @@ class StampingPart extends Model
             if ($gapKg == 0.0 && $gapUsd != 0.0) {
                 $gapKg = round($gapUsd / 1000, 4);
             } elseif ($gapUsd == 0.0 && $gapKg != 0.0) {
-                $gapUsd = round($gapKg * 1000, 4);
-            } elseif ($gapKg == 0.0 && $gapUsd == 0.0 && ((float) ($steelRecord->sheet_price ?? 0) > 0 || (float) ($steelRecord->coil_price ?? 0) > 0)) {
-                $gapKg = round((float) ($steelRecord->sheet_price ?? 0) - (float) ($steelRecord->coil_price ?? 0), 4);
                 $gapUsd = round($gapKg * 1000, 4);
             }
 

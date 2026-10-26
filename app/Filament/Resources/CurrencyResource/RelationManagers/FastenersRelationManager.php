@@ -86,27 +86,27 @@ class FastenersRelationManager extends RelationManager
 
                 Tables\Columns\TextColumn::make('exchange_rate')
                     ->label('Kurs')
-                    ->formatStateUsing(fn ($state) => 'Rp '.number_format((float) $state, 0, ',', '.'))
+                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 0, ',', '.') : '-')
                     ->alignRight(),
 
                 Tables\Columns\TextColumn::make('coil_price')
                     ->label('Coil ($)')
-                    ->formatStateUsing(fn ($record) => $record->coil_price && (float) $record->coil_price > 0 ? '$'.number_format((float) $record->coil_price, 4, ',', '.') : '-')
+                    ->formatStateUsing(fn ($record) => $record->coil_price !== null && $record->coil_price !== '' ? '$'.number_format((float) $record->coil_price, 4, ',', '.') : '-')
                     ->alignRight(),
 
                 Tables\Columns\TextColumn::make('coil_price_idr')
                     ->label('Coil (Rp)')
-                    ->formatStateUsing(fn ($record) => $record->coil_price_idr && (float) $record->coil_price_idr > 0 ? 'Rp '.number_format((float) $record->coil_price_idr, 0, ',', '.') : '-')
+                    ->formatStateUsing(fn ($record) => $record->coil_price_idr !== null && $record->coil_price_idr !== '' ? 'Rp '.number_format((float) $record->coil_price_idr, 0, ',', '.') : '-')
                     ->alignRight(),
 
                 Tables\Columns\TextColumn::make('sheet_price')
                     ->label('Sheet ($)')
-                    ->formatStateUsing(fn ($record) => $record->sheet_price && (float) $record->sheet_price > 0 ? '$'.number_format((float) $record->sheet_price, 4, ',', '.') : '-')
+                    ->formatStateUsing(fn ($record) => $record->sheet_price !== null && $record->sheet_price !== '' ? '$'.number_format((float) $record->sheet_price, 4, ',', '.') : '-')
                     ->alignRight(),
 
                 Tables\Columns\TextColumn::make('sheet_price_idr')
                     ->label('Sheet (Rp)')
-                    ->formatStateUsing(fn ($record) => $record->sheet_price_idr && (float) $record->sheet_price_idr > 0 ? 'Rp '.number_format((float) $record->sheet_price_idr, 0, ',', '.') : '-')
+                    ->formatStateUsing(fn ($record) => $record->sheet_price_idr !== null && $record->sheet_price_idr !== '' ? 'Rp '.number_format((float) $record->sheet_price_idr, 0, ',', '.') : '-')
                     ->alignRight(),
 
                 Tables\Columns\TextColumn::make('status')

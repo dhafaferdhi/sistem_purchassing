@@ -144,6 +144,43 @@ class CreateFastener extends CreateRecord
                                 ->live(),
                         ]),
 
+                    Forms\Components\Grid::make(2)
+                        ->schema([
+                            Forms\Components\Select::make('target_year')
+                                ->label('Tahun yang Akan Diisi')
+                                ->options(function () {
+                                    $current = (int) date('Y');
+                                    $years = range($current + 2, 2020);
+
+                                    return array_combine($years, $years);
+                                })
+                                ->default(fn () => (int) ($this->data['year'] ?? date('Y')))
+                                ->required()
+                                ->live(),
+
+                            Forms\Components\Select::make('target_quarter')
+                                ->label('Kuartal yang Akan Diisi')
+                                ->options([
+                                    'Q1' => 'Q1 (Januari - Maret)',
+                                    'Q2' => 'Q2 (April - Juni)',
+                                    'Q3' => 'Q3 (Juli - September)',
+                                    'Q4' => 'Q4 (Oktober - Desember)',
+                                ])
+                                ->default(function (Forms\Get $get) {
+                                    $sq = $get('source_quarter') ?? $this->data['quarter'] ?? 'Q1';
+
+                                    return match ($sq) {
+                                        'Q1' => 'Q2',
+                                        'Q2' => 'Q3',
+                                        'Q3' => 'Q4',
+                                        'Q4' => 'Q1',
+                                        default => 'Q2',
+                                    };
+                                })
+                                ->required()
+                                ->live(),
+                        ]),
+
                     Forms\Components\Select::make('source_record_id')
                         ->label('Pilih Item Fastener Acuan')
                         ->placeholder('-- Pilih Item Fastener Acuan --')
@@ -182,8 +219,7 @@ class CreateFastener extends CreateRecord
                             }
 
                             return $fasteners;
-                        })
-                        ->helperText('Pilih item fastener spesifik dari daftar kuartal tersebut'),
+                        }),
 
                     Forms\Components\Placeholder::make('preview')
                         ->label('Pratinjau Data Terpilih')
@@ -246,8 +282,12 @@ class CreateFastener extends CreateRecord
                 ->action(function (array $data) {
                     $selected = $data['source_record_id'] ?? null;
                     $raw = $this->data ?? [];
-                    $quarter = $raw['quarter'] ?? 'Q1';
-                    $year = (int) ($raw['year'] ?? date('Y'));
+                    $targetYear = (int) ($data['target_year'] ?? $data['year'] ?? $raw['year'] ?? date('Y'));
+                    $targetQuarter = $data['target_quarter'] ?? $data['quarter'] ?? $raw['quarter'] ?? 'Q1';
+                    $raw['year'] = $targetYear;
+                    $raw['quarter'] = $targetQuarter;
+                    $quarter = $targetQuarter;
+                    $year = $targetYear;
 
                     // Handle MaterialSteel selection
                     if ($selected && str_starts_with($selected, 'steel:')) {
@@ -312,15 +352,17 @@ class CreateFastener extends CreateRecord
                         $raw['steel_spec'] = $record->steel_spec;
                         $raw['double_thickness'] = $record->double_thickness;
                         $raw['diameter'] = $record->diameter ?: $record->double_thickness;
-                        $raw['gap_steel_usd'] = (float) ($record->gap_steel_usd ?? 0);
-                        $raw['gap_steel_kg_usd'] = (float) ($record->gap_steel_kg_usd ?? 0);
+                        $raw['gap_steel_usd'] = 0;
+                        $raw['gap_steel_kg_usd'] = 0;
+                        $raw['hr_steel_usd'] = 0;
+                        $raw['cr_steel_usd'] = 0;
                         $raw['coil_price'] = (float) ($record->coil_price ?? 0);
                         $raw['sheet_price'] = (float) ($record->sheet_price ?? 0);
                         $raw['drawing_reference'] = $record->drawing_reference;
                         $raw['eci_number'] = $record->eci_number;
                         $raw['tooling_depreciation'] = (float) ($record->tooling_depreciation ?? 0);
-                        $raw['old_exchange_rate'] = (float) ($record->old_exchange_rate ?? $record->exchange_rate);
-                        $raw['exchange_rate_fluctuation'] = (float) ($record->exchange_rate_fluctuation ?? 1.0);
+                        $raw['old_exchange_rate'] = (float) ($record->exchange_rate ?: ($record->old_exchange_rate ?: 16000));
+                        $raw['exchange_rate_fluctuation'] = 1.0;
 
                         foreach ([
                             'part_number', 'part_name', 'wire_spec', 'wire_price_usd_kg',
@@ -333,6 +375,12 @@ class CreateFastener extends CreateRecord
                                 $raw[$field] = $record->{$field};
                             }
                         }
+
+                        $raw['prev_coil_price'] = (float) ($record->coil_price ?? 0);
+                        $raw['prev_sheet_price'] = (float) ($record->sheet_price ?? 0);
+                        $raw['prev_wire_price'] = (float) ($record->wire_price_usd_kg ?? $record->coil_price ?? 0);
+                        $raw['prev_record_found'] = true;
+                        $raw['prev_quarter_label'] = "{$record->quarter} {$record->year}";
 
                         if (! empty($record->supplier_id)) {
                             $raw['supplier_id'] = $record->supplier_id;

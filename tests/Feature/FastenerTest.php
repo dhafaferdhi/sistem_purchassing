@@ -194,6 +194,7 @@ class FastenerTest extends TestCase
             'double_thickness' => '4.0mm',
             'coil_price' => 1.8500,
             'sheet_price' => 1.9500,
+            'gap_steel_usd' => 100.0,
             'exchange_rate' => 16000.0,
         ]);
 
@@ -366,7 +367,6 @@ class FastenerTest extends TestCase
             ->assertTableColumnExists('part_cost');
 
         Livewire::test(CreateFastener::class)
-            ->assertFormFieldExists('price_mode')
             ->assertFormFieldExists('hr_steel_usd')
             ->assertFormFieldExists('cr_steel_usd')
             ->assertFormFieldExists('exchange_rate')
@@ -376,7 +376,7 @@ class FastenerTest extends TestCase
 
         $this->assertEquals('USD 1.1', FastenerResource::formatUsd(1.1));
         $this->assertEquals('USD -20', FastenerResource::formatUsd(-20));
-        $this->assertEquals('-', FastenerResource::formatUsd(0));
+        $this->assertEquals('USD 0', FastenerResource::formatUsd(0));
         $this->assertEquals('Rp 16.000', FastenerResource::formatIdr(16000));
     }
 
@@ -466,5 +466,41 @@ class FastenerTest extends TestCase
             ->assertSet('data.sheet_price', 1.28)
             ->assertSet('data.double_thickness', '1.6')
             ->assertSet('data.exchange_rate', 18000.0);
+    }
+
+    public function test_fastener_pull_previous_with_target_quarter_and_year(): void
+    {
+        $this->actingAs($this->admin);
+
+        $fastener = Fastener::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'part_number' => 'FAST-TARGET-001',
+            'part_name' => 'BOLT TEST',
+            'steel_spec' => 'SWRCH10A',
+            'double_thickness' => '6.0',
+            'diameter' => '6.0',
+            'coil_price' => 1.4000,
+            'sheet_price' => 1.4500,
+            'wire_price_usd_kg' => 1.4000,
+            'exchange_rate' => 16000.0,
+            'part_cost' => 500.0,
+        ]);
+
+        Livewire::test(CreateFastener::class)
+            ->callAction('pull_previous', [
+                'source_year' => 2026,
+                'source_quarter' => 'Q1',
+                'target_year' => 2026,
+                'target_quarter' => 'Q2',
+                'source_record_id' => 'fastener:'.$fastener->id,
+            ])
+            ->assertSet('data.year', 2026)
+            ->assertSet('data.quarter', 'Q2')
+            ->assertSet('data.part_number', 'FAST-TARGET-001')
+            ->assertSet('data.steel_spec', 'SWRCH10A');
     }
 }

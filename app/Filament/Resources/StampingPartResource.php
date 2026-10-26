@@ -7,17 +7,18 @@ use App\Models\Currency;
 use App\Models\MaterialSteel;
 use App\Models\StampingPart;
 use App\Models\Supplier;
-use App\Services\ExcelImportService;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
 use Filament\Forms\Set;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
+use Filament\Support\Enums\ActionSize;
+use Filament\Support\Enums\MaxWidth;
 use Filament\Tables;
+use Filament\Tables\Enums\ActionsPosition;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\HtmlString;
 
 class StampingPartResource extends Resource
@@ -35,15 +36,19 @@ class StampingPartResource extends Resource
     /**
      * Format angka mata uang USD tanpa trailing zero yang tidak perlu (contoh: 1.1 alih-alih 1.1000, -20 alih-alih -20.00).
      */
-    public static function formatUsd(mixed $value, ?string $currency = 'USD'): string
+    public static function formatUsd(mixed $value, ?string $currency = '$'): string
     {
         if ($value === null || $value === '') {
             return '-';
         }
 
+        if ($currency === 'USD') {
+            $currency = '$';
+        }
+
         $f = (float) $value;
         if ($f == 0.0) {
-            return '-';
+            return $currency ? "{$currency} 0" : '0';
         }
 
         $formatted = rtrim(rtrim(number_format($f, 4, '.', ''), '0'), '.');
@@ -62,7 +67,7 @@ class StampingPartResource extends Resource
 
         $f = (float) $value;
         if ($f == 0.0) {
-            return '-';
+            return $withPrefix ? 'Rp 0' : '0';
         }
 
         $formatted = number_format(round($f), 0, ',', '.');
@@ -149,7 +154,7 @@ class StampingPartResource extends Resource
             if ($notify) {
                 Notification::make()
                     ->title("Data Material Steel {$quarter} {$year} Ditemukan!")
-                    ->body("Harga Coil USD {$steel->coil_price}, Sheet USD {$steel->sheet_price}, Kurs Rp ".number_format($steel->exchange_rate, 0, ',', '.').' berhasil diisi otomatis.')
+                    ->body("Harga Coil $ {$steel->coil_price}, Sheet $ {$steel->sheet_price}, Kurs Rp ".number_format($steel->exchange_rate, 0, ',', '.').' berhasil diisi otomatis.')
                     ->success()
                     ->send();
             }
@@ -203,8 +208,19 @@ class StampingPartResource extends Resource
             if (! empty($prev['size']) && empty($get('size'))) {
                 $set('size', $prev['size']);
             }
-            if (isset($prev['berat']) && (float) $prev['berat'] > 0 && empty($get('berat'))) {
-                $set('berat', $prev['berat']);
+            $berat = (float) ($prev['berat'] ?? 0);
+            if ($berat <= 0.0) {
+                $thk = (float) ($prev['double_thickness'] ?? $get('double_thickness') ?? 0);
+                $wide = (float) ($prev['wide'] ?? $get('wide') ?? 0);
+                $pitch = (float) ($prev['pitch'] ?? $get('pitch') ?? 0);
+                $yr = (float) ($prev['yield_rate'] ?? $get('yield_rate') ?? 1);
+                $yr = $yr > 0 ? $yr : 1;
+                if ($thk > 0 && $wide > 0 && $pitch > 0) {
+                    $berat = round(($thk * $wide * $pitch * 7.85) / (1000000 * $yr), 4);
+                }
+            }
+            if ($berat > 0 && empty($get('berat'))) {
+                $set('berat', $berat);
             }
             if (isset($prev['wide']) && empty($get('wide'))) {
                 $set('wide', $prev['wide']);
@@ -237,54 +253,51 @@ class StampingPartResource extends Resource
                 $set('overhead_self_percent', $prev['overhead_self_percent']);
             }
 
-            $mode = $get('price_mode');
-            if ($mode === 'adjustment') {
-                if (! empty($prev['exchange_rate']) && (float) $prev['exchange_rate'] > 0) {
-                    $set('exchange_rate', (float) $prev['exchange_rate']);
+            if (! empty($prev['exchange_rate']) && (float) $prev['exchange_rate'] > 0) {
+                $set('exchange_rate', (float) $prev['exchange_rate']);
+            }
+
+            $spec = $get('steel_spec') ?: ($prev['steel_spec'] ?? null);
+            $steelType = StampingPart::determineSteelType($spec);
+
+            $hrMt = $get('hr_steel_usd');
+            $crMt = $get('cr_steel_usd');
+
+            $newAdj = 0.0;
+            if ($steelType === 'HR') {
+                if ($hrMt !== null && $hrMt !== '' && (float) $hrMt != 0.0) {
+                    $newAdj = (float) $hrMt;
                 }
-
-                $spec = $get('steel_spec') ?: ($prev['steel_spec'] ?? null);
-                $steelType = StampingPart::determineSteelType($spec);
-
-                $hrMt = $get('hr_steel_usd');
-                $crMt = $get('cr_steel_usd');
-                $gapMt = $get('gap_steel_usd');
-
-                if ($steelType === 'HR') {
-                    if ($hrMt !== null && $hrMt !== '' && (float) $hrMt != 0.0) {
-                        $appliedMt = (float) $hrMt;
-                    } elseif ($gapMt !== null && $gapMt !== '' && (float) $gapMt != 0.0) {
-                        $appliedMt = (float) $gapMt;
-                        $set('hr_steel_usd', $appliedMt);
-                    } else {
-                        $appliedMt = (float) ($hrMt ?? $gapMt ?? 0);
-                    }
-                } else {
-                    if ($crMt !== null && $crMt !== '' && (float) $crMt != 0.0) {
-                        $appliedMt = (float) $crMt;
-                    } elseif ($gapMt !== null && $gapMt !== '' && (float) $gapMt != 0.0) {
-                        $appliedMt = (float) $gapMt;
-                        $set('cr_steel_usd', $appliedMt);
-                    } else {
-                        $appliedMt = (float) ($crMt ?? $gapMt ?? 0);
-                    }
+            } else {
+                if ($crMt !== null && $crMt !== '' && (float) $crMt != 0.0) {
+                    $newAdj = (float) $crMt;
                 }
+            }
 
-                $set('gap_steel_usd', $appliedMt);
-                $appliedKg = round($appliedMt / 1000, 4);
+            $prevCoil = (float) ($prev['coil_price'] ?? 0);
+            $prevSheet = (float) ($prev['sheet_price'] ?? 0);
 
-                $prevCoil = (float) ($prev['coil_price'] ?? 0);
-                $prevSheet = (float) ($prev['sheet_price'] ?? 0);
-
+            if ($newAdj != 0.0) {
+                $appliedKg = round($newAdj / 1000, 4);
                 if ($prevCoil > 0) {
                     $set('coil_price', round($prevCoil + $appliedKg, 4));
                 }
                 if ($prevSheet > 0) {
                     $set('sheet_price', round($prevSheet + $appliedKg, 4));
                 }
-
-                static::recalculateFormPrices($get, $set);
+                $set('gap_steel_usd', $newAdj);
+            } else {
+                if ($prevCoil > 0) {
+                    $set('coil_price', $prevCoil);
+                }
+                if ($prevSheet > 0) {
+                    $set('sheet_price', $prevSheet);
+                }
+                $set('gap_steel_usd', 0);
+                $set('gap_steel_kg_usd', 0);
             }
+
+            static::recalculateFormPrices($get, $set);
         } else {
             $set('prev_record_found', false);
             $set('prev_coil_price', null);
@@ -310,31 +323,30 @@ class StampingPartResource extends Resource
     {
         $coil = (float) ($get('coil_price') ?? 0);
         $rate = (float) ($get('exchange_rate') ?? 1);
-        $sheet = (float) ($get('sheet_price') ?? 0);
 
         $set('coil_price_idr', round($coil * $rate));
-
-        if ($sheet > 0 && $coil > 0) {
-            $gapKg = round($sheet - $coil, 4);
-            $gapUsd = round(($sheet - $coil) * 1000, 4);
-            $set('gap_steel_usd', $gapUsd);
-            $set('gap_steel_kg_usd', $gapKg);
-        }
     }
 
     public static function updatePricesFromSheet(Get $get, Set $set): void
     {
         $sheet = (float) ($get('sheet_price') ?? 0);
-        $coil = (float) ($get('coil_price') ?? 0);
         $rate = (float) ($get('exchange_rate') ?? 1);
 
         $set('sheet_price_idr', round($sheet * $rate));
+    }
 
-        if ($sheet > 0 && $coil > 0) {
-            $gapKg = round($sheet - $coil, 4);
-            $gapUsd = round(($sheet - $coil) * 1000, 4);
-            $set('gap_steel_usd', $gapUsd);
-            $set('gap_steel_kg_usd', $gapKg);
+    public static function calculateWeightFromDimensions(Get $get, Set $set): void
+    {
+        $thk = (float) ($get('double_thickness') ?? 0);
+        $wide = (float) ($get('wide') ?? 0);
+        $pitch = (float) ($get('pitch') ?? 0);
+        $yr = (float) ($get('yield_rate') ?: 1);
+        $yr = $yr > 0 ? $yr : 1;
+
+        if ($thk > 0 && $wide > 0 && $pitch > 0) {
+            // Rumus Excel Posmi / Fuji Seat: (Tebal x Wide x Pitch x 7.85) / (1.000.000 x Yield)
+            $weight = round(($thk * $wide * $pitch * 7.85) / (1000000 * $yr), 4);
+            $set('berat', $weight);
         }
     }
 
@@ -345,25 +357,32 @@ class StampingPartResource extends Resource
 
         $hrMt = $get('hr_steel_usd');
         $crMt = $get('cr_steel_usd');
-        $gapMt = $get('gap_steel_usd');
 
-        if ($steelType === 'HR') {
-            if ($hrMt !== null && $hrMt !== '' && (float) $hrMt != 0.0) {
-                $appliedMt = (float) $hrMt;
-            } elseif ($gapMt !== null && $gapMt !== '' && (float) $gapMt != 0.0) {
-                $appliedMt = (float) $gapMt;
-                $set('hr_steel_usd', $appliedMt);
-            } else {
-                $appliedMt = (float) ($hrMt ?? $gapMt ?? 0);
-            }
+        // Tentukan nilai MT yang diterapkan berdasarkan input spesifik user & tipe baja
+        if ($source === 'HR' && $hrMt !== null && $hrMt !== '') {
+            $appliedMt = (float) $hrMt;
+        } elseif ($source === 'CR' && $crMt !== null && $crMt !== '') {
+            $appliedMt = (float) $crMt;
         } else {
-            if ($crMt !== null && $crMt !== '' && (float) $crMt != 0.0) {
-                $appliedMt = (float) $crMt;
-            } elseif ($gapMt !== null && $gapMt !== '' && (float) $gapMt != 0.0) {
-                $appliedMt = (float) $gapMt;
-                $set('cr_steel_usd', $appliedMt);
+            $hasHr = $hrMt !== null && $hrMt !== '';
+            $hasCr = $crMt !== null && $crMt !== '';
+
+            if ($steelType === 'HR') {
+                if ($hasHr && (float) $hrMt != 0.0) {
+                    $appliedMt = (float) $hrMt;
+                } elseif ($hasCr && (float) $crMt != 0.0) {
+                    $appliedMt = (float) $crMt;
+                } else {
+                    $appliedMt = $hasHr ? (float) $hrMt : ($hasCr ? (float) $crMt : 0.0);
+                }
             } else {
-                $appliedMt = (float) ($crMt ?? $gapMt ?? 0);
+                if ($hasCr && (float) $crMt != 0.0) {
+                    $appliedMt = (float) $crMt;
+                } elseif ($hasHr && (float) $hrMt != 0.0) {
+                    $appliedMt = (float) $hrMt;
+                } else {
+                    $appliedMt = $hasCr ? (float) $crMt : ($hasHr ? (float) $hrMt : 0.0);
+                }
             }
         }
 
@@ -414,15 +433,22 @@ class StampingPartResource extends Resource
             if (! empty($prevData['size'])) {
                 $set('size', $prevData['size']);
             }
-            if (isset($prevData['berat']) && (float) $prevData['berat'] > 0) {
-                $set('berat', $prevData['berat']);
+            $berat = (float) ($prevData['berat'] ?? 0);
+            if ($berat <= 0.0) {
+                $thk = (float) ($prevData['double_thickness'] ?? 0);
+                $wide = (float) ($prevData['wide'] ?? 0);
+                $pitch = (float) ($prevData['pitch'] ?? 0);
+                $yr = (float) ($prevData['yield_rate'] ?? 1);
+                $yr = $yr > 0 ? $yr : 1;
+                if ($thk > 0 && $wide > 0 && $pitch > 0) {
+                    $berat = round(($thk * $wide * $pitch * 7.85) / (1000000 * $yr), 4);
+                }
             }
-            if (isset($prevData['gap_steel_usd'])) {
-                $set('gap_steel_usd', $prevData['gap_steel_usd']);
+            if ($berat > 0) {
+                $set('berat', $berat);
             }
-            if (isset($prevData['gap_steel_kg_usd'])) {
-                $set('gap_steel_kg_usd', $prevData['gap_steel_kg_usd']);
-            }
+            $set('gap_steel_usd', 0);
+            $set('gap_steel_kg_usd', 0);
             if (isset($prevData['coil_price'])) {
                 $set('coil_price', $prevData['coil_price']);
             }
@@ -512,93 +538,6 @@ class StampingPartResource extends Resource
             ->schema([
                 Forms\Components\Group::make()
                     ->schema([
-                        // Auto-Isi dari File Excel (Opsional - Terlipat)
-                        Forms\Components\Section::make('Auto-Deteksi & Isi dari File Excel (.xlsx / .csv)')
-                            ->description('Unggah file Excel untuk membaca kolom dan mengisi formulir secara otomatis')
-                            ->icon('heroicon-o-arrow-up-tray')
-                            ->collapsible()
-                            ->collapsed()
-                            ->schema([
-                                Forms\Components\FileUpload::make('excel_auto_fill')
-                                    ->label('Pilih File Excel (.xlsx / .csv)')
-                                    ->disk('public')
-                                    ->directory('temp-excel-detect')
-                                    ->live()
-                                    ->afterStateUpdated(function ($state, Set $set, Get $get) {
-                                        if (! $state) {
-                                            return;
-                                        }
-
-                                        $filePath = is_string($state) ? Storage::disk('public')->path($state) : (method_exists($state, 'getRealPath') ? $state->getRealPath() : null);
-                                        if (! $filePath || ! file_exists($filePath)) {
-                                            $filePath = Storage::disk('public')->path((string) $state);
-                                        }
-
-                                        if ($filePath && file_exists($filePath)) {
-                                            $detected = ExcelImportService::detectFirstRowData($filePath, [
-                                                'year' => (int) ($get('year') ?? date('Y')),
-                                                'quarter' => $get('quarter') ?? 'Q1',
-                                            ]);
-
-                                            if ($detected) {
-                                                if (! empty($detected['year'])) {
-                                                    $set('year', (int) $detected['year']);
-                                                }
-                                                if (! empty($detected['quarter'])) {
-                                                    $set('quarter', $detected['quarter']);
-                                                }
-                                                if (! empty($detected['supplier_name'])) {
-                                                    $set('supplier_name', $detected['supplier_name']);
-                                                }
-                                                if (! empty($detected['vendor_code'])) {
-                                                    $set('vendor_code', $detected['vendor_code']);
-                                                }
-                                                if (! empty($detected['steel_spec'])) {
-                                                    $set('steel_spec', $detected['steel_spec']);
-                                                }
-                                                if (! empty($detected['double_thickness'])) {
-                                                    $set('double_thickness', $detected['double_thickness']);
-                                                }
-                                                if (! empty($detected['size'])) {
-                                                    $set('size', $detected['size']);
-                                                }
-                                                if (isset($detected['berat']) && (float) $detected['berat'] > 0) {
-                                                    $set('berat', $detected['berat']);
-                                                }
-                                                if (! empty($detected['exchange_rate'])) {
-                                                    $set('exchange_rate', (float) $detected['exchange_rate']);
-                                                }
-                                                if (! empty($detected['coil_price'])) {
-                                                    $set('coil_price', (float) $detected['coil_price']);
-                                                }
-                                                if (! empty($detected['coil_price_idr'])) {
-                                                    $set('coil_price_idr', (float) $detected['coil_price_idr']);
-                                                }
-                                                if (! empty($detected['sheet_price'])) {
-                                                    $set('sheet_price', (float) $detected['sheet_price']);
-                                                }
-                                                if (! empty($detected['sheet_price_idr'])) {
-                                                    $set('sheet_price_idr', (float) $detected['sheet_price_idr']);
-                                                }
-                                                if (! empty($detected['gap_steel_usd'])) {
-                                                    $set('gap_steel_usd', (float) $detected['gap_steel_usd']);
-                                                }
-                                                if (! empty($detected['gap_steel_kg_usd'])) {
-                                                    $set('gap_steel_kg_usd', (float) $detected['gap_steel_kg_usd']);
-                                                }
-
-                                                Notification::make()
-                                                    ->title('Data Excel Berhasil Dideteksi!')
-                                                    ->body("Spesifikasi '{$detected['steel_spec']}' dan parameter harga telah berhasil terisi otomatis.")
-                                                    ->success()
-                                                    ->send();
-                                            }
-                                        }
-                                    })
-                                    ->dehydrated(false)
-                                    ->columnSpanFull(),
-                            ]),
-
                         // SECTION 1: Spesifikasi Part & Periode
                         Forms\Components\Section::make('1. Spesifikasi Part & Periode')
                             ->icon('heroicon-o-scale')
@@ -639,14 +578,7 @@ class StampingPartResource extends Resource
                                     ->default('Q1')
                                     ->required()
                                     ->live()
-                                    ->afterStateUpdated(function (Get $get, Set $set, ?string $state) {
-                                        if ($state === 'Q1') {
-                                            $set('price_mode', 'baseline');
-                                            $set('hr_steel_usd', 0);
-                                            $set('cr_steel_usd', 0);
-                                        } else {
-                                            $set('price_mode', 'adjustment');
-                                        }
+                                    ->afterStateUpdated(function (Get $get, Set $set) {
                                         static::syncCurrencyAndPrices($get, $set);
                                         static::pullPreviousQuarterData($get, $set, false);
                                         static::lookupPreviousQuarterRecord($get, $set);
@@ -772,6 +704,7 @@ class StampingPartResource extends Resource
                                             $set('double_thickness', $clean);
                                         }
                                         static::lookupPreviousQuarterRecord($get, $set);
+                                        static::calculateWeightFromDimensions($get, $set);
                                     })
                                     ->columnSpan(1),
 
@@ -809,129 +742,26 @@ class StampingPartResource extends Resource
                         Forms\Components\Section::make('2. Harga Bahan Baku & Kurs')
                             ->icon('heroicon-o-currency-dollar')
                             ->schema([
-                                Forms\Components\Radio::make('price_mode')
-                                    ->label('Mode Penetapan Harga')
-                                    ->dehydrated(false)
-                                    ->options([
-                                        'baseline' => 'Data Awal / Baseline (Tanpa Perbandingan — Langsung Isi Harga Coil & Sheet)',
-                                        'adjustment' => 'Pembaruan Kuartalan (Kenaikan / Penurunan HR / CR Dolar MT)',
-                                    ])
-                                    ->default(fn (Get $get) => ($get('quarter') ?? 'Q1') === 'Q1' ? 'baseline' : 'adjustment')
-                                    ->formatStateUsing(function ($state, Get $get, ?StampingPart $record) {
-                                        if ($state !== null && $state !== '') {
-                                            return $state;
-                                        }
-                                        if ($record) {
-                                            $hasHr = $record->hr_steel_usd !== null && (float) $record->hr_steel_usd != 0.0;
-                                            $hasCr = $record->cr_steel_usd !== null && (float) $record->cr_steel_usd != 0.0;
-                                            $hasGap = $record->gap_steel_usd !== null && (float) $record->gap_steel_usd != 0.0;
-
-                                            return ($record->quarter === 'Q1' && ! $hasHr && ! $hasCr && ! $hasGap) ? 'baseline' : 'adjustment';
-                                        }
-
-                                        return ($get('quarter') ?? 'Q1') === 'Q1' ? 'baseline' : 'adjustment';
-                                    })
-                                    ->live()
-                                    ->afterStateUpdated(function ($state, Set $set, Get $get) {
-                                        if ($state === 'baseline') {
-                                            $set('hr_steel_usd', 0);
-                                            $set('cr_steel_usd', 0);
-                                            $set('gap_steel_usd', 0);
-                                            $set('gap_steel_kg_usd', 0);
-                                            $set('fluktuasi_jfe', 0);
-                                            static::recalculateFormPrices($get, $set);
-                                        } else {
-                                            static::lookupPreviousQuarterRecord($get, $set);
-                                        }
-                                    })
-                                    ->columnSpanFull(),
-
-                                Forms\Components\Placeholder::make('prev_quarter_info')
-                                    ->label('Status Data Acuan')
-                                    ->content(function (Get $get, ?StampingPart $record) {
-                                        $found = $get('prev_record_found');
-                                        $prevLabel = $get('prev_quarter_label');
-                                        $prevCoil = $get('prev_coil_price');
-                                        $prevSheet = $get('prev_sheet_price');
-
-                                        if (! $found && $record) {
-                                            $quarter = $get('quarter') ?? $record->quarter;
-                                            $year = (int) ($get('year') ?? $record->year);
-                                            $supplierId = $get('supplier_id') ?? $record->supplier_id;
-                                            $spec = $get('steel_spec') ?? $record->steel_spec;
-
-                                            $prev = StampingPart::findPreviousQuarterData($quarter, $year, $supplierId ? (int) $supplierId : null, $spec);
-                                            if ($prev) {
-                                                $prevCoil = $prev['coil_price'] ?? null;
-                                                $prevSheet = $prev['sheet_price'] ?? null;
-                                                $prevRate = $prev['exchange_rate'] ?? null;
-                                                $prevLabel = $prev['label'] ?? null;
-                                                $found = true;
-                                            }
-                                        }
-
-                                        if ($found && $prevCoil !== null) {
-                                            $prevRate = $get('prev_rate') ?? ($prev['exchange_rate'] ?? null);
-                                            $coilStr = static::formatUsd($prevCoil, '');
-                                            $sheetStr = static::formatUsd($prevSheet, '');
-                                            $rateFormatted = $prevRate ? ' | Kurs '.static::formatIdr($prevRate, true) : '';
-
-                                            return "📌 Ditemukan data acuan {$prevLabel}: Harga Coil \${$coilStr} | Sheet \${$sheetStr}{$rateFormatted}. Harga dan Perubahan Dolar Rupiah otomatis ditarik sama dengan {$prevLabel}.";
-                                        }
-
-                                        return 'ℹ️ Belum ada data di '.($prevLabel ?? 'Kuartal Sebelumnya').' untuk spesifikasi ini (Spesifikasi Baru). Silakan masukkan Harga Coil dan Sheet langsung di bawah.';
-                                    })
-                                    ->visible(function (Get $get, ?StampingPart $record) {
-                                        $mode = $get('price_mode');
-                                        if ($mode !== null) {
-                                            return $mode === 'adjustment';
-                                        }
-                                        $quarter = $get('quarter') ?? $record?->quarter ?? 'Q1';
-
-                                        return $quarter !== 'Q1';
-                                    })
-                                    ->columnSpanFull(),
-
                                 Forms\Components\TextInput::make('hr_steel_usd')
-                                    ->label('HR Dolar / MT ($/MT)')
+                                    ->label('HR $ / MT')
                                     ->numeric()
                                     ->step(0.0001)
                                     ->prefix('$')
                                     ->placeholder('Contoh: -20 atau 50 (Hot Rolled: SPH, SAPH)')
                                     ->default(0)
                                     ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) $state : null)
-                                    ->visible(function (Get $get, ?StampingPart $record) {
-                                        $mode = $get('price_mode');
-                                        if ($mode !== null) {
-                                            return $mode === 'adjustment';
-                                        }
-                                        $quarter = $get('quarter') ?? $record?->quarter ?? 'Q1';
-                                        $hasAdj = $record && (($record->hr_steel_usd !== null && (float) $record->hr_steel_usd != 0.0) || ($record->gap_steel_usd !== null && (float) $record->gap_steel_usd != 0.0));
-
-                                        return $quarter !== 'Q1' || $hasAdj;
-                                    })
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromHrCr($get, $set, 'HR'))
                                     ->columnSpan(1),
 
                                 Forms\Components\TextInput::make('cr_steel_usd')
-                                    ->label('CR Dolar / MT ($/MT)')
+                                    ->label('CR $ / MT')
                                     ->numeric()
                                     ->step(0.0001)
                                     ->prefix('$')
                                     ->placeholder('Contoh: -20 atau 100 (Cold Rolled: SPC, NSC)')
                                     ->default(0)
                                     ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) $state : null)
-                                    ->visible(function (Get $get, ?StampingPart $record) {
-                                        $mode = $get('price_mode');
-                                        if ($mode !== null) {
-                                            return $mode === 'adjustment';
-                                        }
-                                        $quarter = $get('quarter') ?? $record?->quarter ?? 'Q1';
-                                        $hasAdj = $record && (($record->cr_steel_usd !== null && (float) $record->cr_steel_usd != 0.0) || ($record->gap_steel_usd !== null && (float) $record->gap_steel_usd != 0.0));
-
-                                        return $quarter !== 'Q1' || $hasAdj;
-                                    })
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromHrCr($get, $set, 'CR'))
                                     ->columnSpan(1),
@@ -939,7 +769,7 @@ class StampingPartResource extends Resource
                                 Forms\Components\Hidden::make('gap_steel_usd')->default(0),
 
                                 Forms\Components\TextInput::make('exchange_rate')
-                                    ->label('Perubahan Dolar Rupiah (Kurs IDR)')
+                                    ->label('Perubahan $ Rupiah (Kurs IDR)')
                                     ->numeric()
                                     ->prefix('Rp')
                                     ->placeholder('Contoh: 16000')
@@ -1013,31 +843,35 @@ class StampingPartResource extends Resource
                                 Forms\Components\TextInput::make('wide')
                                     ->label('Wide / Lebar Blank (mm)')
                                     ->numeric()
-                                    ->placeholder('Contoh: 177')
+                                    ->placeholder('Contoh: 390')
                                     ->suffix('mm')
                                     ->live(onBlur: true)
+                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::calculateWeightFromDimensions($get, $set))
                                     ->columnSpan(1),
 
                                 Forms\Components\TextInput::make('pitch')
                                     ->label('Pitch Blank (mm)')
                                     ->numeric()
-                                    ->placeholder('Contoh: 165')
+                                    ->placeholder('Contoh: 148')
                                     ->suffix('mm')
                                     ->live(onBlur: true)
+                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::calculateWeightFromDimensions($get, $set))
                                     ->columnSpan(1),
 
                                 Forms\Components\TextInput::make('yield_rate')
                                     ->label('Yield / Stroke (Pcs)')
                                     ->numeric()
                                     ->default(1)
-                                    ->placeholder('Contoh: 1')
+                                    ->placeholder('Contoh: 1 atau 2')
                                     ->suffix('pcs')
                                     ->live(onBlur: true)
+                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::calculateWeightFromDimensions($get, $set))
                                     ->columnSpan(1),
 
                                 Forms\Components\TextInput::make('berat')
                                     ->label('Berat Material Gross (Kg)')
-                                    ->placeholder('Contoh: 0.2780')
+                                    ->placeholder('Contoh: 0.5890')
+                                    ->helperText('Otomatis dihitung: (Tebal x Wide x Pitch x 7.85) / (1.000.000 x Yield), atau diisi manual')
                                     ->numeric()
                                     ->step(0.0001)
                                     ->suffix('kg')
@@ -1049,7 +883,8 @@ class StampingPartResource extends Resource
                                     ->numeric()
                                     ->step(0.0001)
                                     ->placeholder('Contoh: 0.2780')
-                                    ->default(0.278)
+                                    ->default(0)
+                                    ->helperText('Sisa potongan scrap (pengurang biaya material)')
                                     ->suffix('kg')
                                     ->live(onBlur: true)
                                     ->columnSpan(1),
@@ -1117,22 +952,30 @@ class StampingPartResource extends Resource
                                 Forms\Components\Placeholder::make('calculation_summary')
                                     ->hiddenLabel()
                                     ->content(function (Get $get) {
+                                        $thk = (float) ($get('double_thickness') ?? 0);
+                                        $wide = (float) ($get('wide') ?? 0);
+                                        $pitch = (float) ($get('pitch') ?? 0);
+                                        $yieldRate = (float) ($get('yield_rate') ?: 1);
+                                        $yieldRate = $yieldRate > 0 ? $yieldRate : 1;
+
                                         $berat = (float) ($get('berat') ?? 0);
+                                        if ($berat <= 0.0 && $thk > 0 && $wide > 0 && $pitch > 0) {
+                                            $berat = round(($thk * $wide * $pitch * 7.85) / (1000000 * $yieldRate), 4);
+                                        }
+
                                         $rate = (float) ($get('exchange_rate') ?? 16000);
                                         $coilIdr = (float) ($get('coil_price_idr') ?? round((float) ($get('coil_price') ?? 0) * $rate));
                                         $sheetIdr = (float) ($get('sheet_price_idr') ?? round((float) ($get('sheet_price') ?? 0) * $rate));
-                                        $steelRate = $coilIdr > 0 ? $coilIdr : ($sheetIdr > 0 ? $sheetIdr : round((float) ($get('coil_price') ?? $get('sheet_price') ?? 0) * $rate));
+                                        $steelRate = $sheetIdr > 0 ? $sheetIdr : ($coilIdr > 0 ? $coilIdr : round((float) ($get('sheet_price') ?? $get('coil_price') ?? 0) * $rate));
 
-                                        $grossMatCost = round($berat * $steelRate, 2);
-                                        $scrapWeight = (float) ($get('scrap_weight') ?? 0);
+                                        $grossMatCost = $berat > 0 && $steelRate > 0 ? round($berat * $steelRate, 2) : 0;
+                                        $scrapWeight = $berat > 0 ? (float) ($get('scrap_weight') ?? 0) : 0;
                                         $scrapPrice = (float) ($get('scrap_price_per_kg') ?? -1500);
                                         $scrapCost = round($scrapWeight * $scrapPrice, 2);
                                         $matTotal = round($grossMatCost + $scrapCost, 2);
 
                                         $manHour = (float) ($get('process_man_hour') ?? 9);
                                         $charge = (float) ($get('process_charge') ?? 45);
-                                        $yieldRate = (float) ($get('yield_rate') ?: 1);
-                                        $yieldRate = $yieldRate > 0 ? $yieldRate : 1;
                                         $procTotal = round(($manHour * $charge) / $yieldRate, 2);
                                         $subtotal = round($matTotal + $procTotal, 2);
 
@@ -1289,7 +1132,7 @@ class StampingPartResource extends Resource
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('hr_steel_usd')
-                    ->label('HR Dolar/MT')
+                    ->label('HR $ / MT')
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state, StampingPart $record) => static::formatUsd($state, $record->currency_code))
                     ->weight('bold')
@@ -1297,7 +1140,7 @@ class StampingPartResource extends Resource
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('cr_steel_usd')
-                    ->label('CR Dolar/MT')
+                    ->label('CR $ / MT')
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state, StampingPart $record) => static::formatUsd($state, $record->currency_code))
                     ->weight('bold')
@@ -1305,14 +1148,14 @@ class StampingPartResource extends Resource
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('exchange_rate')
-                    ->label('Perubahan Dolar Rupiah')
+                    ->label('Perubahan $ Rupiah')
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
                     ->alignRight()
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('coil_price')
-                    ->label('Coil (USD)')
+                    ->label('Coil ($)')
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state, StampingPart $record) => static::formatUsd($state, $record->currency_code))
                     ->alignRight()
@@ -1326,7 +1169,7 @@ class StampingPartResource extends Resource
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('sheet_price')
-                    ->label('Sheet (USD)')
+                    ->label('Sheet ($)')
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state, StampingPart $record) => static::formatUsd($state, $record->currency_code))
                     ->alignRight()
@@ -1342,7 +1185,7 @@ class StampingPartResource extends Resource
                 Tables\Columns\TextColumn::make('part_cost')
                     ->label('Total Part Cost')
                     ->wrapHeader()
-                    ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
+                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
                     ->weight('black')
                     ->color('success')
                     ->alignRight()
@@ -1356,6 +1199,67 @@ class StampingPartResource extends Resource
                         'Draft' => 'warning',
                         default => 'gray',
                     }),
+
+                // Kolom rincian Excel opsional (toggleable hidden by default)
+                Tables\Columns\TextColumn::make('gross_material_cost')
+                    ->label('Gross Mat (Rp)')
+                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
+                    ->alignRight()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('scrap_cost')
+                    ->label('Scrap (Rp)')
+                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
+                    ->alignRight()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('material_total')
+                    ->label('(1) Material Total (Rp)')
+                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
+                    ->alignRight()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('process_total')
+                    ->label('(2) Process Total (Rp)')
+                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
+                    ->alignRight()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('subtotal')
+                    ->label('(3) Subtotal (Rp)')
+                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
+                    ->alignRight()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('overhead_supplied_cost')
+                    ->label('(4) O/H Supplied (Rp)')
+                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
+                    ->alignRight()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('overhead_self_cost')
+                    ->label('(5) O/H Self (Rp)')
+                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
+                    ->alignRight()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('wide')
+                    ->label('Wide (mm)')
+                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? number_format((float) $state, 1, ',', '.') : '-')
+                    ->alignRight()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('pitch')
+                    ->label('Pitch (mm)')
+                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? number_format((float) $state, 1, ',', '.') : '-')
+                    ->alignRight()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('yield_rate')
+                    ->label('Yield/Stroke')
+                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (int) $state.' pcs' : '1 pcs')
+                    ->alignCenter()
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 // Kolom tambahan opsional (hidden by default agar tabel fit & rapi seperti MaterialSteel)
                 Tables\Columns\TextColumn::make('drawing_reference')
@@ -1381,20 +1285,20 @@ class StampingPartResource extends Resource
 
                 Tables\Columns\TextColumn::make('berat')
                     ->label('Berat')
-                    ->formatStateUsing(fn ($state) => $state && (float) $state > 0 ? number_format((float) $state, 4, ',', '.').' kg' : '-')
+                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? number_format((float) $state, 4, ',', '.').' kg' : '-')
                     ->placeholder('-')
                     ->alignRight()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('gap_steel_usd')
-                    ->label('Gap/MT (USD)')
+                    ->label('Gap/MT ($)')
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state, StampingPart $record) => static::formatUsd($state, $record->currency_code))
                     ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('gap_steel_kg_usd')
-                    ->label('Gap/Kg (USD)')
+                    ->label('Gap/Kg ($)')
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state, StampingPart $record) => static::formatUsd($state, $record->currency_code))
                     ->toggleable(isToggledHiddenByDefault: true),
@@ -1492,9 +1396,22 @@ class StampingPartResource extends Resource
             )
             ->filtersFormColumns(2)
             ->actions([
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
-            ])
+                Tables\Actions\Action::make('view_sheet')
+                    ->label('Lembar Kalkulasi')
+                    ->tooltip('Tampilkan lembar rincian kalkulasi format resmi Excel')
+                    ->icon('heroicon-o-document-chart-bar')
+                    ->color('info')
+                    ->button()
+                    ->size(ActionSize::Small)
+                    ->slideOver()
+                    ->modalHeading(fn (StampingPart $record) => "Lembar Perhitungan Part Cost: {$record->part_number} - {$record->part_name}")
+                    ->modalWidth(MaxWidth::FiveExtraLarge)
+                    ->modalSubmitAction(false)
+                    ->modalCancelActionLabel('Tutup')
+                    ->modalContent(fn (StampingPart $record) => view('filament.resources.stamping-parts.sheet-modal', ['record' => $record])),
+                Tables\Actions\EditAction::make()->iconButton(),
+                Tables\Actions\DeleteAction::make()->iconButton(),
+            ], position: ActionsPosition::BeforeColumns)
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\DeleteBulkAction::make(),
