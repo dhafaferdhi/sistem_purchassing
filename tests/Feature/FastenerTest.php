@@ -374,9 +374,9 @@ class FastenerTest extends TestCase
             ->assertFormFieldExists('coil_price')
             ->assertFormFieldExists('sheet_price');
 
-        $this->assertEquals('USD 1.1', FastenerResource::formatUsd(1.1));
-        $this->assertEquals('USD -20', FastenerResource::formatUsd(-20));
-        $this->assertEquals('USD 0', FastenerResource::formatUsd(0));
+        $this->assertEquals('$ 1.1', FastenerResource::formatUsd(1.1));
+        $this->assertEquals('$ -20', FastenerResource::formatUsd(-20));
+        $this->assertEquals('$ 0', FastenerResource::formatUsd(0));
         $this->assertEquals('Rp 16.000', FastenerResource::formatIdr(16000));
     }
 

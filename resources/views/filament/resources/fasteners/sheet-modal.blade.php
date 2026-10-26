@@ -85,7 +85,7 @@
                         <th class="p-3 border-b border-gray-300 dark:border-gray-700">Spesifikasi Wire</th>
                         <th class="p-3 border-b border-gray-300 dark:border-gray-700 text-right">Nett Weight</th>
                         <th class="p-3 border-b border-gray-300 dark:border-gray-700 text-right">Gross Weight</th>
-                        <th class="p-3 border-b border-gray-300 dark:border-gray-700 text-right">Wire USD/Kg</th>
+                        <th class="p-3 border-b border-gray-300 dark:border-gray-700 text-right">Wire $/Kg</th>
                         <th class="p-3 border-b border-gray-300 dark:border-gray-700 text-right">Wire IDR/Kg</th>
                         <th class="p-3 border-b border-gray-300 dark:border-gray-700 text-right">Wire Cost / pc</th>
                     </tr>
@@ -95,7 +95,7 @@
                         <td class="p-3 font-bold text-gray-950 dark:text-white">{{ $record->wire_spec ?: 'WIRE OF RIVET [SWCH-45K]' }}</td>
                         <td class="p-3 text-right font-mono font-bold">{{ number_format($nettWeight, 2, ',', '.') }} gr</td>
                         <td class="p-3 text-right font-mono font-bold">{{ number_format($grossWeight, 2, ',', '.') }} gr</td>
-                        <td class="p-3 text-right font-mono font-bold">${{ number_format($wirePriceUsd, 4) }}</td>
+                        <td class="p-3 text-right font-mono font-bold">$ {{ number_format($wirePriceUsd, 4) }}</td>
                         <td class="p-3 text-right font-mono font-bold">Rp {{ number_format($wirePriceIdr, 2, ',', '.') }}</td>
                         <td class="p-3 text-right font-mono font-extrabold text-gray-950 dark:text-white">Rp {{ number_format($wireCostPc, 2, ',', '.') }}</td>
                     </tr>

@@ -99,13 +99,13 @@ class CurrencyResource extends Resource
                             }),
 
                         Forms\Components\TextInput::make('kurs_usd')
-                            ->label('Kurs USD')
+                            ->label('Kurs $')
                             ->prefix('Rp')
                             ->numeric()
                             ->step(0.0001)
                             ->required()
                             ->placeholder('Contoh: 16000')
-                            ->helperText('Nilai tukar 1 USD ke Rupiah'),
+                            ->helperText('Nilai tukar 1 $ ke Rupiah'),
 
                         Forms\Components\TextInput::make('kurs_jpy')
                             ->label('Kurs JPY')

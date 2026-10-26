@@ -265,9 +265,9 @@ class CreateStampingPart extends CreateRecord
                                             <div class='font-bold text-primary-900 dark:text-primary-100'>[Material Steel] {$rec->steel_spec} ({$rec->double_thickness} mm)</div>
                                             <div class='text-gray-600 dark:text-gray-300'><strong>Vendor:</strong> {$rec->supplier_name}</div>
                                             <div class='grid grid-cols-2 gap-2 text-xs pt-2 border-t border-primary-200'>
-                                                <div><strong>Coil Price:</strong> USD {$rec->coil_price}</div>
-                                                <div><strong>Sheet Price:</strong> USD {$rec->sheet_price}</div>
-                                                <div><strong>Kurs USD:</strong> Rp {$rateStr}</div>
+                                                <div><strong>Coil Price:</strong> $ {$rec->coil_price}</div>
+                                                <div><strong>Sheet Price:</strong> $ {$rec->sheet_price}</div>
+                                                <div><strong>Kurs $:</strong> Rp {$rateStr}</div>
                                             </div>
                                         </div>
                                     ");
@@ -294,8 +294,8 @@ class CreateStampingPart extends CreateRecord
                                             <div><strong>Spec Baja:</strong> {$rec->steel_spec} ({$rec->double_thickness} mm)</div>
                                             <div><strong>Berat Bersih:</strong> {$rec->berat} kg</div>
                                             <div><strong>Proses:</strong> {$rec->process_name}</div>
-                                            <div><strong>Harga Coil:</strong> USD {$rec->coil_price}</div>
-                                            <div><strong>Kurs USD:</strong> Rp {$rateStr}</div>
+                                            <div><strong>Harga Coil:</strong> $ {$rec->coil_price}</div>
+                                            <div><strong>Kurs $:</strong> Rp {$rateStr}</div>
                                             <div><strong>Depr. Tooling:</strong> Rp {$rec->tooling_depreciation}</div>
                                         </div>
                                     </div>

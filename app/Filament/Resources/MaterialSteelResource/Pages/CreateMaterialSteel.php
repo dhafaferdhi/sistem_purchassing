@@ -142,7 +142,7 @@ class CreateMaterialSteel extends CreateRecord
                     Forms\Components\Grid::make(2)
                         ->schema([
                             Forms\Components\TextInput::make('hr_steel_usd')
-                                ->label('Penyesuaian HR Dolar / MT')
+                                ->label('Penyesuaian HR $ / MT')
                                 ->numeric()
                                 ->prefix('$')
                                 ->placeholder('Contoh: -20 atau 50')
@@ -150,7 +150,7 @@ class CreateMaterialSteel extends CreateRecord
                                 ->live(),
 
                             Forms\Components\TextInput::make('cr_steel_usd')
-                                ->label('Penyesuaian CR Dolar / MT')
+                                ->label('Penyesuaian CR $ / MT')
                                 ->numeric()
                                 ->prefix('$')
                                 ->placeholder('Contoh: -20 atau 100')
@@ -197,8 +197,8 @@ class CreateMaterialSteel extends CreateRecord
                                     </div>
                                     <div class='text-gray-700 dark:text-gray-300'><strong>Supplier:</strong> {$rec->supplier_name} <span class='text-xs text-gray-500'>({$rec->vendor_code})</span> | <strong>Ketebalan:</strong> ".($rec->double_thickness !== null && $rec->double_thickness !== '' ? "{$rec->double_thickness} mm" : '-')."</div>
                                     <div class='grid grid-cols-2 gap-2 pt-2 border-t border-primary-200 dark:border-primary-800/50 text-xs text-gray-700 dark:text-gray-300'>
-                                        <div><strong>Harga Coil Baru:</strong> <span class='font-bold text-primary-700 dark:text-primary-300'>USD {$newCoil}</span> <span class='text-gray-500'>(Rp {$newCoilIdr})</span></div>
-                                        <div><strong>Harga Sheet Baru:</strong> <span class='font-bold text-primary-700 dark:text-primary-300'>USD {$newSheet}</span> <span class='text-gray-500'>(Rp {$newSheetIdr})</span></div>
+                                        <div><strong>Harga Coil Baru:</strong> <span class='font-bold text-primary-700 dark:text-primary-300'>$ {$newCoil}</span> <span class='text-gray-500'>(Rp {$newCoilIdr})</span></div>
+                                        <div><strong>Harga Sheet Baru:</strong> <span class='font-bold text-primary-700 dark:text-primary-300'>$ {$newSheet}</span> <span class='text-gray-500'>(Rp {$newSheetIdr})</span></div>
                                         <div><strong>Harga Dasar Acuan:</strong> Coil \${$baseCoil} | Sheet \${$baseSheet}</div>
                                         <div><strong>Kurs Acuan:</strong> Rp {$rateStr}</div>
                                     </div>

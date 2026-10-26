@@ -164,7 +164,7 @@ class CreateSubAssemblyPart extends CreateRecord
                                         <div class='grid grid-cols-2 gap-2 pt-2 border-t border-primary-200 dark:border-primary-800/50 text-xs text-gray-700 dark:text-gray-300'>
                                             <div><strong>Komponen Anak:</strong> {$matCount} items</div>
                                             <div><strong>Proses Perakitan:</strong> {$procCount} tahapan</div>
-                                            <div><strong>Kurs USD:</strong> Rp {$rateStr}</div>
+                                            <div><strong>Kurs $:</strong> Rp {$rateStr}</div>
                                             <div><strong>Overhead Supplied:</strong> {$rec->overhead_supplied_percent}%</div>
                                             <div><strong>Biaya Packing:</strong> Rp {$rec->packing_cost}</div>
                                             <div><strong>Depr. Tooling:</strong> Rp {$rec->tooling_depreciation}</div>

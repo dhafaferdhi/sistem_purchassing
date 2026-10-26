@@ -242,9 +242,9 @@ class CreateFastener extends CreateRecord
                                             <div class='font-bold text-primary-900 dark:text-primary-100'>[Material Steel] {$rec->steel_spec} ({$rec->double_thickness} mm)</div>
                                             <div class='text-gray-600 dark:text-gray-300'><strong>Vendor:</strong> {$rec->supplier_name}</div>
                                             <div class='grid grid-cols-2 gap-2 text-xs pt-2 border-t border-primary-200'>
-                                                <div><strong>Coil Price:</strong> USD {$rec->coil_price}</div>
-                                                <div><strong>Sheet Price:</strong> USD {$rec->sheet_price}</div>
-                                                <div><strong>Kurs USD:</strong> Rp {$rateStr}</div>
+                                                <div><strong>Coil Price:</strong> $ {$rec->coil_price}</div>
+                                                <div><strong>Sheet Price:</strong> $ {$rec->sheet_price}</div>
+                                                <div><strong>Kurs $:</strong> Rp {$rateStr}</div>
                                             </div>
                                         </div>
                                     ");
@@ -270,9 +270,9 @@ class CreateFastener extends CreateRecord
                                         <div class='grid grid-cols-2 gap-2 pt-2 border-t border-primary-200 dark:border-primary-800/50 text-xs text-gray-700 dark:text-gray-300'>
                                             <div><strong>Spec Kawat:</strong> {$rec->wire_spec} ({$rec->double_thickness} mm)</div>
                                             <div><strong>Gross Weight:</strong> {$rec->gross_weight_gr} gr</div>
-                                            <div><strong>Harga Kawat:</strong> USD {$rec->wire_price_usd_kg} /kg</div>
+                                            <div><strong>Harga Kawat:</strong> $ {$rec->wire_price_usd_kg} /kg</div>
                                             <div><strong>Harga Washer:</strong> Rp {$rec->washer_price}</div>
-                                            <div><strong>Kurs USD:</strong> Rp {$rateStr}</div>
+                                            <div><strong>Kurs $:</strong> Rp {$rateStr}</div>
                                             <div><strong>Depr. Tooling:</strong> Rp {$rec->tooling_depreciation}</div>
                                         </div>
                                     </div>

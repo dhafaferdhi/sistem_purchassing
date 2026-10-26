@@ -36,10 +36,14 @@ class FastenerResource extends Resource
     /**
      * Format angka mata uang USD tanpa trailing zero yang tidak perlu (contoh: 1.1 alih-alih 1.1000, -20 alih-alih -20.00).
      */
-    public static function formatUsd(mixed $value, ?string $currency = 'USD'): string
+    public static function formatUsd(mixed $value, ?string $currency = '$'): string
     {
         if ($value === null || $value === '') {
             return '-';
+        }
+
+        if ($currency === 'USD') {
+            $currency = '$';
         }
 
         $f = (float) $value;
@@ -151,7 +155,7 @@ class FastenerResource extends Resource
             if ($notify) {
                 Notification::make()
                     ->title("Data Material Steel {$quarter} {$year} Ditemukan!")
-                    ->body("Harga Coil USD {$steel->coil_price}, Sheet USD {$steel->sheet_price}, Kurs Rp ".number_format($steel->exchange_rate, 0, ',', '.').' berhasil diisi otomatis.')
+                    ->body("Harga Coil $ {$steel->coil_price}, Sheet $ {$steel->sheet_price}, Kurs Rp ".number_format($steel->exchange_rate, 0, ',', '.').' berhasil diisi otomatis.')
                     ->success()
                     ->send();
             }
@@ -778,7 +782,7 @@ class FastenerResource extends Resource
                             ->icon('heroicon-o-currency-dollar')
                             ->schema([
                                 Forms\Components\TextInput::make('hr_steel_usd')
-                                    ->label('HR Dolar / MT')
+                                    ->label('HR $ / MT')
                                     ->numeric()
                                     ->step(0.0001)
                                     ->prefix('$')
@@ -790,7 +794,7 @@ class FastenerResource extends Resource
                                     ->columnSpan(1),
 
                                 Forms\Components\TextInput::make('cr_steel_usd')
-                                    ->label('CR Dolar / MT')
+                                    ->label('CR $ / MT')
                                     ->numeric()
                                     ->step(0.0001)
                                     ->prefix('$')
@@ -804,7 +808,7 @@ class FastenerResource extends Resource
                                 Forms\Components\Hidden::make('gap_steel_usd')->default(0),
 
                                 Forms\Components\TextInput::make('exchange_rate')
-                                    ->label('Perubahan Dolar Rupiah (Kurs IDR)')
+                                    ->label('Perubahan $ Rupiah (Kurs IDR)')
                                     ->numeric()
                                     ->prefix('Rp')
                                     ->placeholder('Contoh: 16000')
@@ -1195,7 +1199,7 @@ class FastenerResource extends Resource
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('hr_steel_usd')
-                    ->label('HR Dolar / MT')
+                    ->label('HR $ / MT')
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state, Fastener $record) => static::formatUsd($state, $record->currency_code))
                     ->weight('bold')
@@ -1203,7 +1207,7 @@ class FastenerResource extends Resource
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('cr_steel_usd')
-                    ->label('CR Dolar / MT')
+                    ->label('CR $ / MT')
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state, Fastener $record) => static::formatUsd($state, $record->currency_code))
                     ->weight('bold')
@@ -1211,7 +1215,7 @@ class FastenerResource extends Resource
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('exchange_rate')
-                    ->label('Perubahan Dolar Rupiah')
+                    ->label('Perubahan $ Rupiah')
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
                     ->alignRight()
@@ -1225,7 +1229,7 @@ class FastenerResource extends Resource
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('coil_price')
-                    ->label('Coil (USD)')
+                    ->label('Coil ($)')
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state, Fastener $record) => static::formatUsd($state, $record->currency_code))
                     ->alignRight()
@@ -1239,7 +1243,7 @@ class FastenerResource extends Resource
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('sheet_price')
-                    ->label('Sheet (USD)')
+                    ->label('Sheet ($)')
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state, Fastener $record) => static::formatUsd($state, $record->currency_code))
                     ->alignRight()
@@ -1339,13 +1343,13 @@ class FastenerResource extends Resource
 
                 // Kolom gap untuk kompatibilitas test (toggleable hidden by default)
                 Tables\Columns\TextColumn::make('gap_steel_usd')
-                    ->label('Gap/MT (USD)')
+                    ->label('Gap/MT ($)')
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state, Fastener $record) => static::formatUsd($state, $record->currency_code))
                     ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('gap_steel_kg_usd')
-                    ->label('Gap/Kg (USD)')
+                    ->label('Gap/Kg ($)')
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state, Fastener $record) => static::formatUsd($state, $record->currency_code))
                     ->toggleable(isToggledHiddenByDefault: true),

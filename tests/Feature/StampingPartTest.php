@@ -526,9 +526,9 @@ class StampingPartTest extends TestCase
             ->assertFormFieldExists('sheet_price');
 
         // Uji helper format mata uang tanpa desimal nol tak perlu
-        $this->assertEquals('USD 1.1', StampingPartResource::formatUsd(1.1));
-        $this->assertEquals('USD -20', StampingPartResource::formatUsd(-20));
-        $this->assertEquals('USD 0', StampingPartResource::formatUsd(0));
+        $this->assertEquals('$ 1.1', StampingPartResource::formatUsd(1.1));
+        $this->assertEquals('$ -20', StampingPartResource::formatUsd(-20));
+        $this->assertEquals('$ 0', StampingPartResource::formatUsd(0));
         $this->assertEquals('Rp 16.000', StampingPartResource::formatIdr(16000));
     }
 

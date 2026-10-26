@@ -118,7 +118,7 @@ class SubAssemblyPartResource extends Resource
                                             ->suffix('pcs/bln'),
 
                                         Forms\Components\TextInput::make('exchange_rate')
-                                            ->label('Kurs Dolar (IDR)')
+                                            ->label('Kurs $ (IDR)')
                                             ->numeric()
                                             ->prefix('Rp')
                                             ->default(16000)

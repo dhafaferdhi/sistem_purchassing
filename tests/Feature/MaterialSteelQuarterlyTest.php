@@ -956,14 +956,14 @@ class MaterialSteelQuarterlyTest extends TestCase
     public function test_format_usd_and_format_idr_removes_trailing_zeros(): void
     {
         // USD: no useless trailing zeros (1.1 instead of 1.1000, -20 instead of -20.00)
-        $this->assertEquals('USD 1.1', MaterialSteelResource::formatUsd(1.1000));
-        $this->assertEquals('USD 1.1', MaterialSteelResource::formatUsd('1.1000'));
-        $this->assertEquals('USD 1.1206', MaterialSteelResource::formatUsd(1.1206));
-        $this->assertEquals('USD -20', MaterialSteelResource::formatUsd(-20.0000));
-        $this->assertEquals('USD -20', MaterialSteelResource::formatUsd('-20.00'));
-        $this->assertEquals('USD 0.974', MaterialSteelResource::formatUsd('0.9740'));
+        $this->assertEquals('$ 1.1', MaterialSteelResource::formatUsd(1.1000));
+        $this->assertEquals('$ 1.1', MaterialSteelResource::formatUsd('1.1000'));
+        $this->assertEquals('$ 1.1206', MaterialSteelResource::formatUsd(1.1206));
+        $this->assertEquals('$ -20', MaterialSteelResource::formatUsd(-20.0000));
+        $this->assertEquals('$ -20', MaterialSteelResource::formatUsd('-20.00'));
+        $this->assertEquals('$ 0.974', MaterialSteelResource::formatUsd('0.9740'));
         $this->assertEquals('1.1', MaterialSteelResource::formatUsd(1.1000, null));
-        $this->assertEquals('USD 0', MaterialSteelResource::formatUsd(0));
+        $this->assertEquals('$ 0', MaterialSteelResource::formatUsd(0));
         $this->assertEquals('-', MaterialSteelResource::formatUsd(null));
 
         // IDR: no trailing decimal zero sen (Rp 16.000 instead of Rp 16.000,00 or 16000.00)

@@ -673,7 +673,7 @@ class MaterialSteelResource extends Resource
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('hr_steel_usd')
-                    ->label('HR Dolar / MT')
+                    ->label('HR $ / MT')
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state, MaterialSteel $record) => static::formatUsd($state, $record->currency_code))
                     ->weight('bold')
@@ -681,7 +681,7 @@ class MaterialSteelResource extends Resource
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('cr_steel_usd')
-                    ->label('CR Dolar / MT')
+                    ->label('CR $ / MT')
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state, MaterialSteel $record) => static::formatUsd($state, $record->currency_code))
                     ->weight('bold')
@@ -689,14 +689,14 @@ class MaterialSteelResource extends Resource
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('exchange_rate')
-                    ->label('Perubahan Dolar Rupiah')
+                    ->label('Perubahan $ Rupiah')
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
                     ->alignRight()
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('coil_price')
-                    ->label('Coil (USD)')
+                    ->label('Coil ($)')
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state, MaterialSteel $record) => static::formatUsd($state, $record->currency_code))
                     ->alignRight()
@@ -710,7 +710,7 @@ class MaterialSteelResource extends Resource
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('sheet_price')
-                    ->label('Sheet (USD)')
+                    ->label('Sheet ($)')
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state, MaterialSteel $record) => static::formatUsd($state, $record->currency_code))
                     ->alignRight()

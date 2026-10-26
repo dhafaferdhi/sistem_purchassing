@@ -11,7 +11,7 @@
                         Menu Salin & Update Bulanan (Monthly Rollover & Copy Data)
                     </h3>
                     <p class="text-xs text-gray-600 dark:text-gray-300">
-                        Fitur ini digunakan setiap 1 bulan sekali (atau kuartalan) untuk menduplikasi seluruh data <strong>Kurs Mata Uang (Currency)</strong>, <strong>Material Steel</strong>, dan <strong>Stamping Part</strong> dari periode acuan ke periode baru, serta memperbarui nilai tukar (kurs dolar) dan rumus harga secara serentak tanpa perlu input manual satu per satu.
+                        Fitur ini digunakan setiap 1 bulan sekali (atau kuartalan) untuk menduplikasi seluruh data <strong>Kurs Mata Uang (Currency)</strong>, <strong>Material Steel</strong>, dan <strong>Stamping Part</strong> dari periode acuan ke periode baru, serta memperbarui nilai tukar (kurs $) dan rumus harga secara serentak tanpa perlu input manual satu per satu.
                     </p>
                 </div>
             </div>
@@ -95,7 +95,7 @@
                     </div>
 
                     <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-                        <span class="text-xs font-medium text-gray-500 dark:text-gray-400">Kurs Target (USD ke IDR)</span>
+                        <span class="text-xs font-medium text-gray-500 dark:text-gray-400">Kurs Target ($ ke IDR)</span>
                         <div class="mt-1 flex items-baseline justify-between">
                             <span class="text-xl font-black text-success-600 dark:text-success-400">Rp {{ number_format((float) ($usdRate ?? 0), 0, ',', '.') }}</span>
                         </div>
@@ -106,7 +106,7 @@
                 <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
                     <div class="border-b border-gray-100 pb-4 dark:border-gray-800">
                         <h4 class="text-base font-bold text-gray-900 dark:text-white">Pengaturan Salin Semua Sekaligus</h4>
-                        <p class="text-xs text-gray-500 dark:text-gray-400">Pilih periode acuan dan periode target. Sistem akan membuat / memperbarui kurs dolar, menyalin semua spesifikasi material steel dan stamping part secara otomatis.</p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">Pilih periode acuan dan periode target. Sistem akan membuat / memperbarui kurs $, menyalin semua spesifikasi material steel dan stamping part secara otomatis.</p>
                     </div>
 
                     <div class="mt-5 grid grid-cols-1 gap-6 md:grid-cols-2">
@@ -164,7 +164,7 @@
                         <span class="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">3. Parameter Nilai Tukar & Penyesuaian Harga</span>
                         <div class="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
                             <div>
-                                <label class="text-xs font-semibold text-gray-700 dark:text-gray-300">Kurs Dolar Baru (USD ke IDR)</label>
+                                <label class="text-xs font-semibold text-gray-700 dark:text-gray-300">Kurs $ Baru ($ ke IDR)</label>
                                 <div class="relative mt-1">
                                     <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-xs text-gray-500">Rp</span>
                                     <input
@@ -268,7 +268,7 @@
                 <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
                     <div class="border-b border-gray-100 pb-4 dark:border-gray-800">
                         <h4 class="text-base font-bold text-gray-900 dark:text-white">Salin & Update Kurs Mata Uang</h4>
-                        <p class="text-xs text-gray-500 dark:text-gray-400">Salin daftar mata uang dari tahun acuan ke tahun target atau perbarui kurs dolar secara instan.</p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">Salin daftar mata uang dari tahun acuan ke tahun target atau perbarui kurs $ secara instan.</p>
                     </div>
 
                     <div class="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -291,7 +291,7 @@
                         </div>
 
                         <div>
-                            <label class="text-xs font-semibold text-gray-700 dark:text-gray-300">Nilai Kurs USD Baru (ke IDR)</label>
+                            <label class="text-xs font-semibold text-gray-700 dark:text-gray-300">Nilai Kurs $ Baru (ke IDR)</label>
                             <div class="relative mt-1">
                                 <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-xs text-gray-500">Rp</span>
                                 <input
@@ -372,7 +372,7 @@
 
                     <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
                         <div>
-                            <label class="text-xs font-semibold text-gray-700 dark:text-gray-300">Kurs Dolar Baru (Rp)</label>
+                            <label class="text-xs font-semibold text-gray-700 dark:text-gray-300">Kurs $ Baru (Rp)</label>
                             <input
                                 type="number"
                                 step="0.0001"
@@ -471,7 +471,7 @@
 
                     <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <div>
-                            <label class="text-xs font-semibold text-gray-700 dark:text-gray-300">Kurs Dolar Baru (Rp)</label>
+                            <label class="text-xs font-semibold text-gray-700 dark:text-gray-300">Kurs $ Baru (Rp)</label>
                             <input
                                 type="number"
                                 step="0.0001"
@@ -532,7 +532,7 @@
                                     <th class="px-4 py-3">Modul</th>
                                     <th class="px-4 py-3">Periode Sumber</th>
                                     <th class="px-4 py-3">Periode Target</th>
-                                    <th class="px-4 py-3 text-right">Kurs Dolar</th>
+                                    <th class="px-4 py-3 text-right">Kurs $</th>
                                     <th class="px-4 py-3 text-center">Baja Disalin</th>
                                     <th class="px-4 py-3 text-center">Stamping Disalin</th>
                                     <th class="px-4 py-3">Pelaksana</th>
