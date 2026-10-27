@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\MaterialSteelResource\Pages;
 
 use App\Filament\Resources\MaterialSteelResource;
+use App\Models\Currency;
 use App\Models\Material;
 use App\Models\MaterialSteel;
 use App\Models\Supplier;
@@ -137,23 +138,51 @@ class CreateMaterialSteel extends CreateRecord
                                     return [$item->id => $label];
                                 })
                                 ->toArray();
+                        })
+                        ->afterStateUpdated(function ($state, Forms\Set $set, Forms\Get $get) {
+                            if ($state && empty($get('exchange_rate'))) {
+                                $rec = MaterialSteel::find($state);
+                                if ($rec && $rec->exchange_rate) {
+                                    $set('exchange_rate', (int) round((float) $rec->exchange_rate));
+                                }
+                            }
                         }),
+
+                    Forms\Components\TextInput::make('exchange_rate')
+                        ->label('Kurs USD')
+                        ->numeric()
+                        ->prefix('Rp')
+                        ->placeholder('Contoh: 16500')
+                        ->helperText('Kurs yang akan diterapkan untuk kuartal target')
+                        ->default(function (Forms\Get $get) {
+                            $targetY = (int) ($get('target_year') ?: date('Y'));
+                            $targetQ = $get('target_quarter') ?: 'Q1';
+
+                            $rate = Currency::where('code', 'USD')->where('year', $targetY)->where('quarter', $targetQ)->value('exchange_rate_to_idr')
+                                ?? Currency::where('code', 'USD')->latest('year')->value('exchange_rate_to_idr')
+                                ?? 16500;
+
+                            return (int) round((float) $rate);
+                        })
+                        ->live(onBlur: true),
 
                     Forms\Components\Grid::make(2)
                         ->schema([
                             Forms\Components\TextInput::make('hr_steel_usd')
-                                ->label('Penyesuaian HR $ / MT')
+                                ->label('Gap HRC ($/MT)')
                                 ->numeric()
                                 ->prefix('$')
-                                ->placeholder('Contoh: -20 atau 50')
+                                ->placeholder('Contoh: -57 atau 50')
+                                ->helperText('Gunakan minus (-) jika harga turun (contoh: -57), positif jika naik')
                                 ->default(0)
                                 ->live(),
 
                             Forms\Components\TextInput::make('cr_steel_usd')
-                                ->label('Penyesuaian CR $ / MT')
+                                ->label('Gap CRC ($/MT)')
                                 ->numeric()
                                 ->prefix('$')
-                                ->placeholder('Contoh: -20 atau 100')
+                                ->placeholder('Contoh: -57 atau 100')
+                                ->helperText('Gunakan minus (-) jika harga turun (contoh: -57), positif jika naik')
                                 ->default(0)
                                 ->live(),
                         ]),
@@ -181,7 +210,7 @@ class CreateMaterialSteel extends CreateRecord
                             $newCoil = round($baseCoil + $appliedKg, 4);
                             $newSheet = round($baseSheet + $appliedKg, 4);
 
-                            $rate = (float) $rec->exchange_rate;
+                            $rate = (float) ($get('exchange_rate') ?: ($rec->exchange_rate ?: 16000));
                             $rateStr = number_format($rate, 0, ',', '.');
                             $newCoilIdr = number_format(round($newCoil * $rate), 0, ',', '.');
                             $newSheetIdr = number_format(round($newSheet * $rate), 0, ',', '.');
@@ -200,7 +229,7 @@ class CreateMaterialSteel extends CreateRecord
                                         <div><strong>Harga Coil Baru:</strong> <span class='font-bold text-primary-700 dark:text-primary-300'>$ {$newCoil}</span> <span class='text-gray-500'>(Rp {$newCoilIdr})</span></div>
                                         <div><strong>Harga Sheet Baru:</strong> <span class='font-bold text-primary-700 dark:text-primary-300'>$ {$newSheet}</span> <span class='text-gray-500'>(Rp {$newSheetIdr})</span></div>
                                         <div><strong>Harga Dasar Acuan:</strong> Coil \${$baseCoil} | Sheet \${$baseSheet}</div>
-                                        <div><strong>Kurs Acuan:</strong> Rp {$rateStr}</div>
+                                        <div><strong>Kurs Diterapkan:</strong> Rp {$rateStr}</div>
                                     </div>
                                 </div>
                             ");
@@ -273,10 +302,19 @@ class CreateMaterialSteel extends CreateRecord
                             $raw['supplier_name'] = $record->supplier_name;
                         }
 
-                        $rate = (float) ($record->exchange_rate ?: ($raw['exchange_rate'] ?? 16000));
+                        $rate = isset($data['exchange_rate']) && (float) $data['exchange_rate'] > 0
+                            ? (float) $data['exchange_rate']
+                            : (float) ($record->exchange_rate ?: ($raw['exchange_rate'] ?? 16000));
                         $raw['exchange_rate'] = $rate;
-                        $raw['coil_price_idr'] = round((float) $raw['coil_price'] * $rate);
-                        $raw['sheet_price_idr'] = round((float) $raw['sheet_price'] * $rate);
+                        $raw['coil_price_idr'] = round((float) $raw['coil_price'] * $rate, 2);
+                        $raw['sheet_price_idr'] = round((float) $raw['sheet_price'] * $rate, 2);
+
+                        $baseApCoil = (float) ($record->ap_coil_price ?: $record->coil_price);
+                        $baseApSheet = (float) ($record->ap_sheet_price ?: $record->sheet_price);
+                        $raw['ap_coil_price'] = round($baseApCoil + $appliedKg, 4);
+                        $raw['ap_sheet_price'] = round($baseApSheet + $appliedKg, 4);
+                        $raw['ap_coil_price_idr'] = round((float) $raw['ap_coil_price'] * $rate, 2);
+                        $raw['ap_sheet_price_idr'] = round((float) $raw['ap_sheet_price'] * $rate, 2);
 
                         $this->form->fill($raw);
 

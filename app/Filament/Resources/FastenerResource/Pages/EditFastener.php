@@ -22,7 +22,7 @@ class EditFastener extends EditRecord
                 ->color('info')
                 ->slideOver()
                 ->modalHeading(fn () => "Lembar Perhitungan Fastener Cost: {$this->record->part_number} - {$this->record->part_name}")
-                ->modalWidth(MaxWidth::FiveExtraLarge)
+                ->modalWidth(MaxWidth::SevenExtraLarge)
                 ->modalSubmitAction(false)
                 ->modalCancelActionLabel('Tutup')
                 ->modalContent(fn () => view('filament.resources.fasteners.sheet-modal', ['record' => $this->record])),

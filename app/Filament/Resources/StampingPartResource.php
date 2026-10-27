@@ -117,18 +117,32 @@ class StampingPartResource extends Resource
             $query->where('supplier_id', $supplierId);
         }
 
-        $steel = $query->latest('id')->first();
+        $thickness = $get('double_thickness');
+        $steel = null;
+        if (! empty($thickness)) {
+            $exactQuery = clone $query;
+            $steel = $exactQuery->where('double_thickness', $thickness)->latest('id')->first();
+        }
+
+        if (! $steel) {
+            $steel = $query->latest('id')->first();
+        }
 
         if (! $steel && $cleanSpec && $supplierId) {
-            $steel = MaterialSteel::where('year', $year)
+            $fallbackQuery = MaterialSteel::where('year', $year)
                 ->where('quarter', $quarter)
                 ->where(function ($q) use ($spec, $cleanSpec) {
                     $q->where('steel_spec', $cleanSpec)
                         ->orWhere('steel_spec', $spec)
                         ->orWhere('steel_spec', 'like', $cleanSpec.'%');
-                })
-                ->latest('id')
-                ->first();
+                });
+            if (! empty($thickness)) {
+                $exactFallback = clone $fallbackQuery;
+                $steel = $exactFallback->where('double_thickness', $thickness)->latest('id')->first();
+            }
+            if (! $steel) {
+                $steel = $fallbackQuery->latest('id')->first();
+            }
         }
 
         if ($steel) {
@@ -676,7 +690,16 @@ class StampingPartResource extends Resource
                                 Forms\Components\TextInput::make('steel_spec')
                                     ->label('Spesifikasi Baja (Spec)')
                                     ->placeholder('Contoh: SPH270C-OD, SPC270C, SPH440-OD')
-                                    ->datalist(fn () => MaterialSteel::distinct()->pluck('steel_spec')->filter()->toArray())
+                                    ->datalist(function () {
+                                        $standardSpecs = [
+                                            'SPH270C-OD', 'SPH440-OD', 'SPH590-OD',
+                                            'SPC270C', 'SPC440', 'SPC590',
+                                            'SPC440HR', 'SPC590DU', 'NSC590B', 'SPC980',
+                                        ];
+                                        $dbSpecs = MaterialSteel::distinct()->pluck('steel_spec')->filter()->toArray();
+
+                                        return array_values(array_unique(array_merge($standardSpecs, $dbSpecs)));
+                                    })
                                     ->required()
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(function (Get $get, Set $set, ?string $state) {
@@ -697,12 +720,40 @@ class StampingPartResource extends Resource
                                 Forms\Components\TextInput::make('double_thickness')
                                     ->label('Thickness (mm)')
                                     ->placeholder('Contoh: 1.2 atau 2.0')
+                                    ->datalist(function (Get $get) {
+                                        $spec = $get('steel_spec');
+                                        $specMap = [
+                                            'SPH270C-OD' => ['1.6', '1.8', '2.0', '2.3', '2.6', '3.2', '4.0', '5.0'],
+                                            'SPH440-OD' => ['1.6', '1.8', '2.0', '2.3', '2.6', '3.2', '4.0'],
+                                            'SPH590-OD' => ['1.6', '1.8', '2.0', '2.3', '2.6', '2.9', '3.2', '4.0'],
+                                            'SPC270C' => ['0.5', '0.6', '0.8', '0.9', '1.0', '1.2', '1.4'],
+                                            'SPC440' => ['0.6', '0.8', '1.0', '1.2', '1.4'],
+                                            'SPC440HR' => ['0.6'],
+                                            'SPC590' => ['0.6', '0.8', '0.9', '1.0', '1.2', '1.4', '1.6', '1.8'],
+                                            'SPC590DU' => ['1.2'],
+                                            'NSC590B' => ['1.4'],
+                                            'SPC980' => ['1.4', '1.6', '1.8', '2.0'],
+                                        ];
+
+                                        if ($spec && isset($specMap[$spec])) {
+                                            return $specMap[$spec];
+                                        }
+
+                                        return ['0.5', '0.6', '0.8', '0.9', '1.0', '1.2', '1.4', '1.6', '1.8', '2.0', '2.3', '2.6', '2.9', '3.2', '4.0', '5.0'];
+                                    })
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(function ($state, Set $set, Get $get) {
                                         if ($state) {
                                             $clean = trim(preg_replace('/[a-zA-Z\s]+/', '', $state));
                                             $set('double_thickness', $clean);
+
+                                            if (empty($get('size'))) {
+                                                $spec = (string) ($get('steel_spec') ?? '');
+                                                $width = (str_starts_with($spec, 'SPC') || str_starts_with($spec, 'NSC')) ? 1251 : 1219;
+                                                $set('size', "{$clean} x {$width} x C");
+                                            }
                                         }
+                                        static::lookupCurrentQuarterSteel($get, $set);
                                         static::lookupPreviousQuarterRecord($get, $set);
                                         static::calculateWeightFromDimensions($get, $set);
                                     })
@@ -711,12 +762,24 @@ class StampingPartResource extends Resource
                                 Forms\Components\TextInput::make('size')
                                     ->label('Size / Dimensi (Opsional)')
                                     ->placeholder('Contoh: 1.6 x 1219 x C')
+                                    ->datalist(function (Get $get) {
+                                        $thk = $get('double_thickness');
+                                        $spec = (string) ($get('steel_spec') ?? '');
+                                        $width = (str_starts_with($spec, 'SPC') || str_starts_with($spec, 'NSC')) ? 1251 : 1219;
+                                        if ($thk) {
+                                            return ["{$thk} x {$width} x C"];
+                                        }
+
+                                        return ['1.6 x 1219 x C', '2.6 x 1219 x C', '0.8 x 1251 x C', '1.2 x 1251 x C'];
+                                    })
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(function ($state, Set $set, Get $get) {
                                         if ($state && empty($get('double_thickness'))) {
                                             if (preg_match('/^([0-9]+(?:\.[0-9]+)?)/', trim($state), $matches)) {
                                                 $set('double_thickness', $matches[1]);
+                                                static::lookupCurrentQuarterSteel($get, $set);
                                                 static::lookupPreviousQuarterRecord($get, $set);
+                                                static::calculateWeightFromDimensions($get, $set);
                                             }
                                         }
                                     })
@@ -1307,92 +1370,41 @@ class StampingPartResource extends Resource
             ->filters([
                 Tables\Filters\SelectFilter::make('quarter')
                     ->label('Filter Kuartal')
-                    ->options(function () {
-                        $counts = StampingPart::query()
-                            ->selectRaw('quarter, count(*) as total')
-                            ->groupBy('quarter')
-                            ->pluck('total', 'quarter');
-
-                        return [
-                            'Q1' => 'Q1 (Januari - Maret) ('.($counts['Q1'] ?? 0).' data)',
-                            'Q2' => 'Q2 (April - Juni) ('.($counts['Q2'] ?? 0).' data)',
-                            'Q3' => 'Q3 (Juli - September) ('.($counts['Q3'] ?? 0).' data)',
-                            'Q4' => 'Q4 (Oktober - Desember) ('.($counts['Q4'] ?? 0).' data)',
-                        ];
-                    })
+                    ->options([
+                        'Q1' => 'Q1 (Januari - Maret)',
+                        'Q2' => 'Q2 (April - Juni)',
+                        'Q3' => 'Q3 (Juli - September)',
+                        'Q4' => 'Q4 (Oktober - Desember)',
+                    ])
                     ->multiple(),
 
-                Tables\Filters\SelectFilter::make('supplier_name')
+                Tables\Filters\SelectFilter::make('supplier_id')
                     ->label('Filter Supplier')
-                    ->options(function () {
-                        $counts = StampingPart::query()
-                            ->whereNotNull('supplier_name')
-                            ->selectRaw('supplier_name, count(*) as total')
-                            ->groupBy('supplier_name')
-                            ->pluck('total', 'supplier_name');
-
-                        $supplierMap = Supplier::query()
-                            ->orderBy('name')
-                            ->pluck('name', 'name')
-                            ->toArray();
-
-                        $options = [];
-                        foreach ($counts as $name => $total) {
-                            $options[$name] = "{$name} ({$total} data)";
-                        }
-
-                        foreach ($supplierMap as $name) {
-                            if (! isset($options[$name])) {
-                                $options[$name] = "{$name} (0 data)";
-                            }
-                        }
-
-                        return $options;
-                    })
+                    ->relationship('supplier', 'name')
                     ->searchable()
-                    ->multiple(),
+                    ->preload(),
 
                 Tables\Filters\SelectFilter::make('year')
                     ->label('Filter Tahun')
                     ->options(function () {
-                        $counts = StampingPart::query()
-                            ->selectRaw('year, count(*) as total')
-                            ->groupBy('year')
-                            ->pluck('total', 'year');
-
                         $current = (int) date('Y');
-                        $dbYears = StampingPart::distinct()->pluck('year')->filter()->toArray();
-                        $rangeYears = range($current + 2, $current - 2);
-                        $allYears = array_unique(array_merge($dbYears, $rangeYears));
-                        rsort($allYears);
+                        $years = range($current + 2, $current - 2);
 
-                        $options = [];
-                        foreach ($allYears as $y) {
-                            $total = $counts[$y] ?? 0;
-                            $options[$y] = "Tahun {$y} ({$total} data)";
-                        }
-
-                        return $options;
+                        return array_combine($years, array_map(fn ($y) => "Tahun {$y}", $years));
                     }),
 
                 Tables\Filters\SelectFilter::make('status')
                     ->label('Filter Status')
-                    ->options(function () {
-                        $counts = StampingPart::query()
-                            ->selectRaw('status, count(*) as total')
-                            ->groupBy('status')
-                            ->pluck('total', 'status');
-
-                        return [
-                            'Active' => 'Active ('.($counts['Active'] ?? 0).' data)',
-                            'Draft' => 'Draft ('.($counts['Draft'] ?? 0).' data)',
-                        ];
-                    }),
+                    ->options([
+                        'Active' => 'Active',
+                        'Draft' => 'Draft',
+                        'Archived' => 'Archived',
+                    ]),
             ])
             ->filtersTriggerAction(
                 fn (Tables\Actions\Action $action) => $action
                     ->button()
-                    ->label(fn () => 'Filter Data ('.StampingPart::count().' Data)')
+                    ->label('Filter Data')
             )
             ->filtersFormColumns(2)
             ->actions([
@@ -1405,7 +1417,7 @@ class StampingPartResource extends Resource
                     ->size(ActionSize::Small)
                     ->slideOver()
                     ->modalHeading(fn (StampingPart $record) => "Lembar Perhitungan Part Cost: {$record->part_number} - {$record->part_name}")
-                    ->modalWidth(MaxWidth::FiveExtraLarge)
+                    ->modalWidth(MaxWidth::SevenExtraLarge)
                     ->modalSubmitAction(false)
                     ->modalCancelActionLabel('Tutup')
                     ->modalContent(fn (StampingPart $record) => view('filament.resources.stamping-parts.sheet-modal', ['record' => $record])),

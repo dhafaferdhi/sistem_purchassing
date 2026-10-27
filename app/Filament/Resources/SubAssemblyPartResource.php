@@ -709,7 +709,7 @@ class SubAssemblyPartResource extends Resource
             ->filtersTriggerAction(
                 fn (Tables\Actions\Action $action) => $action
                     ->button()
-                    ->label(fn () => 'Filter Data ('.SubAssemblyPart::count().' Data)')
+                    ->label('Filter Data')
             )
             ->filtersFormColumns(2)
             ->actions([
@@ -722,7 +722,7 @@ class SubAssemblyPartResource extends Resource
                     ->size(ActionSize::Small)
                     ->slideOver()
                     ->modalHeading(fn (SubAssemblyPart $record) => "Lembar Perhitungan Sub-Assembly: {$record->part_number} - {$record->part_name}")
-                    ->modalWidth(MaxWidth::FiveExtraLarge)
+                    ->modalWidth(MaxWidth::SevenExtraLarge)
                     ->modalSubmitAction(false)
                     ->modalCancelActionLabel('Tutup')
                     ->modalContent(fn (SubAssemblyPart $record) => view('filament.resources.sub-assembly-parts.sheet-modal', ['record' => $record])),

@@ -15,6 +15,7 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\HtmlString;
 
 class MaterialSteelResource extends Resource
 {
@@ -180,20 +181,29 @@ class MaterialSteelResource extends Resource
             $set('prev_record_found', true);
             $set('prev_coil_price', (float) $prev->coil_price);
             $set('prev_sheet_price', (float) $prev->sheet_price);
+            $set('prev_ap_coil_price', (float) ($prev->ap_coil_price ?? 0));
+            $set('prev_ap_sheet_price', (float) ($prev->ap_sheet_price ?? 0));
             $set('prev_rate', (float) $prev->exchange_rate);
 
-            if ($prev->exchange_rate && (float) $prev->exchange_rate > 0) {
-                $set('exchange_rate', (float) $prev->exchange_rate);
+            // Periksa kurs target quarter dari database Currency terlebih dahulu
+            $targetRate = Currency::where('code', 'USD')->where('year', $year)->where('quarter', $quarter)->value('exchange_rate_to_idr');
+            if ($targetRate && (float) $targetRate > 0) {
+                $set('exchange_rate', (int) round((float) $targetRate));
+            } elseif ($prev->exchange_rate && (float) $prev->exchange_rate > 0) {
+                $set('exchange_rate', (int) round((float) $prev->exchange_rate));
             }
 
             $spec = $get('steel_spec');
             $steelType = MaterialSteel::determineSteelType($spec);
 
+            $gapMt = $get('gap_steel_usd');
             $hrMt = $get('hr_steel_usd');
             $crMt = $get('cr_steel_usd');
 
             $newAdj = 0.0;
-            if ($steelType === 'HR') {
+            if ($gapMt !== null && $gapMt !== '' && (float) $gapMt != 0.0) {
+                $newAdj = (float) $gapMt;
+            } elseif ($steelType === 'HR') {
                 if ($hrMt !== null && $hrMt !== '' && (float) $hrMt != 0.0) {
                     $newAdj = (float) $hrMt;
                 }
@@ -205,18 +215,33 @@ class MaterialSteelResource extends Resource
 
             $prevCoil = (float) $prev->coil_price;
             $prevSheet = (float) $prev->sheet_price;
+            $prevApCoil = (float) ($prev->ap_coil_price ?? 0);
+            $prevApSheet = (float) ($prev->ap_sheet_price ?? 0);
 
+            $appliedKg = round($newAdj / 1000, 4);
+            $set('gap_steel_usd', $newAdj);
+            $set('gap_steel_kg_usd', $appliedKg);
+
+            if ($steelType === 'HR') {
+                $set('hr_steel_usd', $newAdj);
+            } else {
+                $set('cr_steel_usd', $newAdj);
+            }
+
+            // Rumus: Harga Baru ($) = Harga Kuartal Sebelumnya ($) + (Gap ÷ 1.000)
             if ($newAdj != 0.0) {
-                $appliedKg = round($newAdj / 1000, 4);
                 $set('coil_price', round($prevCoil + $appliedKg, 4));
                 $set('sheet_price', round($prevSheet + $appliedKg, 4));
-                $set('gap_steel_usd', $newAdj);
-                $set('gap_steel_kg_usd', $appliedKg);
+
+                $baseApCoil = $prevApCoil > 0 ? $prevApCoil : $prevCoil;
+                $baseApSheet = $prevApSheet > 0 ? $prevApSheet : $prevSheet;
+                $set('ap_coil_price', round($baseApCoil + $appliedKg, 4));
+                $set('ap_sheet_price', round($baseApSheet + $appliedKg, 4));
             } else {
                 $set('coil_price', $prevCoil);
                 $set('sheet_price', $prevSheet);
-                $set('gap_steel_usd', 0);
-                $set('gap_steel_kg_usd', 0);
+                $set('ap_coil_price', $prevApCoil > 0 ? $prevApCoil : $prevCoil);
+                $set('ap_sheet_price', $prevApSheet > 0 ? $prevApSheet : $prevSheet);
             }
 
             static::recalculateFormPrices($get, $set);
@@ -224,6 +249,8 @@ class MaterialSteelResource extends Resource
             $set('prev_record_found', false);
             $set('prev_coil_price', null);
             $set('prev_sheet_price', null);
+            $set('prev_ap_coil_price', null);
+            $set('prev_ap_sheet_price', null);
             $set('prev_rate', null);
         }
     }
@@ -234,15 +261,36 @@ class MaterialSteelResource extends Resource
         $sheet = (float) ($get('sheet_price') ?? 0);
         $rate = (float) ($get('exchange_rate') ?? 1);
 
-        $coilIdr = round($coil * $rate);
-        $sheetIdr = round($sheet * $rate);
+        // Rumus: Total IDR = Harga Baru ($) x Kurs
+        $coilIdr = round($coil * $rate, 2);
+        $sheetIdr = round($sheet * $rate, 2);
 
         $set('coil_price_idr', $coilIdr);
         $set('sheet_price_idr', $sheetIdr);
 
+        $apCoil = (float) ($get('ap_coil_price') ?? 0);
+        $apSheet = (float) ($get('ap_sheet_price') ?? 0);
+
+        // Otomatis terisi samakan dengan rumus material steel jika belum diisi khusus
+        if ($apCoil <= 0 && $coil > 0) {
+            $apCoil = $coil;
+            $set('ap_coil_price', $apCoil);
+        }
+        if ($apSheet <= 0 && $sheet > 0) {
+            $apSheet = $sheet;
+            $set('ap_sheet_price', $apSheet);
+        }
+
+        if ($apCoil > 0) {
+            $set('ap_coil_price_idr', round($apCoil * $rate, 2));
+        }
+        if ($apSheet > 0) {
+            $set('ap_sheet_price_idr', round($apSheet * $rate, 2));
+        }
+
         $steelPrice = $coil > 0 ? $coil : $sheet;
         $set('steel_price', $steelPrice);
-        $set('steel_price_idr', round($steelPrice * $rate));
+        $set('steel_price_idr', round($steelPrice * $rate, 2));
     }
 
     public static function updatePricesFromCoil(Get $get, Set $set): void
@@ -250,11 +298,17 @@ class MaterialSteelResource extends Resource
         $coil = (float) ($get('coil_price') ?? 0);
         $rate = (float) ($get('exchange_rate') ?? 1);
 
-        $set('coil_price_idr', round($coil * $rate));
+        $set('coil_price_idr', round($coil * $rate, 2));
+
+        $apCoil = (float) ($get('ap_coil_price') ?? 0);
+        if ($apCoil <= 0 && $coil > 0) {
+            $set('ap_coil_price', $coil);
+            $set('ap_coil_price_idr', round($coil * $rate, 2));
+        }
 
         $steelPrice = $coil > 0 ? $coil : ($get('sheet_price') ?? 0);
         $set('steel_price', $steelPrice);
-        $set('steel_price_idr', round($steelPrice * $rate));
+        $set('steel_price_idr', round($steelPrice * $rate, 2));
     }
 
     public static function updatePricesFromSheet(Get $get, Set $set): void
@@ -263,11 +317,17 @@ class MaterialSteelResource extends Resource
         $coil = (float) ($get('coil_price') ?? 0);
         $rate = (float) ($get('exchange_rate') ?? 1);
 
-        $set('sheet_price_idr', round($sheet * $rate));
+        $set('sheet_price_idr', round($sheet * $rate, 2));
+
+        $apSheet = (float) ($get('ap_sheet_price') ?? 0);
+        if ($apSheet <= 0 && $sheet > 0) {
+            $set('ap_sheet_price', $sheet);
+            $set('ap_sheet_price_idr', round($sheet * $rate, 2));
+        }
 
         $steelPrice = $coil > 0 ? $coil : $sheet;
         $set('steel_price', $steelPrice);
-        $set('steel_price_idr', round($steelPrice * $rate));
+        $set('steel_price_idr', round($steelPrice * $rate, 2));
     }
 
     public static function updatePricesFromHrCr(Get $get, Set $set, ?string $source = null): void
@@ -277,17 +337,34 @@ class MaterialSteelResource extends Resource
 
         $hrMt = $get('hr_steel_usd');
         $crMt = $get('cr_steel_usd');
+        $gapMt = $get('gap_steel_usd');
 
-        // Tentukan nilai MT yang diterapkan berdasarkan input spesifik user & tipe baja
-        if ($source === 'HR' && $hrMt !== null && $hrMt !== '') {
+        if ($source === 'GAP' && $gapMt !== null && $gapMt !== '') {
+            $appliedMt = (float) $gapMt;
+            if ($steelType === 'HR') {
+                $set('hr_steel_usd', $appliedMt);
+            } else {
+                $set('cr_steel_usd', $appliedMt);
+            }
+        } elseif ($source === 'HR' && $hrMt !== null && $hrMt !== '') {
             $appliedMt = (float) $hrMt;
+            $set('gap_steel_usd', $appliedMt);
         } elseif ($source === 'CR' && $crMt !== null && $crMt !== '') {
             $appliedMt = (float) $crMt;
+            $set('gap_steel_usd', $appliedMt);
         } else {
+            $hasGap = $gapMt !== null && $gapMt !== '';
             $hasHr = $hrMt !== null && $hrMt !== '';
             $hasCr = $crMt !== null && $crMt !== '';
 
-            if ($steelType === 'HR') {
+            if ($hasGap && (float) $gapMt != 0.0) {
+                $appliedMt = (float) $gapMt;
+                if ($steelType === 'HR') {
+                    $set('hr_steel_usd', $appliedMt);
+                } else {
+                    $set('cr_steel_usd', $appliedMt);
+                }
+            } elseif ($steelType === 'HR') {
                 if ($hasHr && (float) $hrMt != 0.0) {
                     $appliedMt = (float) $hrMt;
                 } elseif ($hasCr && (float) $crMt != 0.0) {
@@ -295,6 +372,7 @@ class MaterialSteelResource extends Resource
                 } else {
                     $appliedMt = $hasHr ? (float) $hrMt : ($hasCr ? (float) $crMt : 0.0);
                 }
+                $set('gap_steel_usd', $appliedMt);
             } else {
                 if ($hasCr && (float) $crMt != 0.0) {
                     $appliedMt = (float) $crMt;
@@ -303,23 +381,29 @@ class MaterialSteelResource extends Resource
                 } else {
                     $appliedMt = $hasCr ? (float) $crMt : ($hasHr ? (float) $hrMt : 0.0);
                 }
+                $set('gap_steel_usd', $appliedMt);
             }
         }
 
-        $set('gap_steel_usd', $appliedMt);
         $appliedKg = round($appliedMt / 1000, 4);
+        $set('gap_steel_usd', $appliedMt);
         $set('gap_steel_kg_usd', $appliedKg);
         $set('fluktuasi_jfe', $appliedKg);
 
         $prevCoil = $get('prev_coil_price');
         $prevSheet = $get('prev_sheet_price');
+        $prevApCoil = $get('prev_ap_coil_price');
+        $prevApSheet = $get('prev_ap_sheet_price');
 
         if ($prevCoil === null && $prevSheet === null) {
             static::lookupPreviousQuarterRecord($get, $set);
             $prevCoil = $get('prev_coil_price');
             $prevSheet = $get('prev_sheet_price');
+            $prevApCoil = $get('prev_ap_coil_price');
+            $prevApSheet = $get('prev_ap_sheet_price');
         }
 
+        // Rumus: Harga Baru ($) = Harga Kuartal Sebelumnya ($) + (Gap ÷ 1.000)
         if ($prevCoil !== null && (float) $prevCoil > 0) {
             $newCoil = round((float) $prevCoil + $appliedKg, 4);
             $set('coil_price', $newCoil);
@@ -330,12 +414,25 @@ class MaterialSteelResource extends Resource
             $set('sheet_price', $newSheet);
         }
 
+        $baseApCoil = ($prevApCoil !== null && (float) $prevApCoil > 0) ? (float) $prevApCoil : (float) ($prevCoil ?? 0);
+        if ($baseApCoil > 0) {
+            $newApCoil = round($baseApCoil + $appliedKg, 4);
+            $set('ap_coil_price', $newApCoil);
+        }
+
+        $baseApSheet = ($prevApSheet !== null && (float) $prevApSheet > 0) ? (float) $prevApSheet : (float) ($prevSheet ?? 0);
+        if ($baseApSheet > 0) {
+            $newApSheet = round($baseApSheet + $appliedKg, 4);
+            $set('ap_sheet_price', $newApSheet);
+        }
+
+        // Rumus: Total IDR = Harga Baru ($) x Kurs
         static::recalculateFormPrices($get, $set);
     }
 
     public static function updatePricesFromGap(Get $get, Set $set): void
     {
-        static::updatePricesFromHrCr($get, $set);
+        static::updatePricesFromHrCr($get, $set, 'GAP');
     }
 
     public static function form(Form $form): Form
@@ -445,6 +542,16 @@ class MaterialSteelResource extends Resource
                                 Forms\Components\TextInput::make('steel_spec')
                                     ->label('Spesifikasi Baja (Spec)')
                                     ->placeholder('Contoh: SPH270C-OD, SPC270C, SPH440-OD')
+                                    ->datalist(function () {
+                                        $standardSpecs = [
+                                            'SPH270C-OD', 'SPH440-OD', 'SPH590-OD',
+                                            'SPC270C', 'SPC440', 'SPC590',
+                                            'SPC440HR', 'SPC590DU', 'NSC590B', 'SPC980',
+                                        ];
+                                        $dbSpecs = MaterialSteel::distinct()->pluck('steel_spec')->filter()->toArray();
+
+                                        return array_values(array_unique(array_merge($standardSpecs, $dbSpecs)));
+                                    })
                                     ->required()
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(function (Get $get, Set $set, ?string $state) {
@@ -458,36 +565,48 @@ class MaterialSteelResource extends Resource
                                         static::lookupPreviousQuarterRecord($get, $set);
                                     })
                                     ->dehydrateStateUsing(fn (?string $state) => MaterialSteel::cleanSteelSpec($state))
-                                    ->columnSpan(1),
-
-                                Forms\Components\TextInput::make('size')
-                                    ->label('Size / Dimensi (Opsional)')
-                                    ->placeholder('Contoh: 1.6 x 1219 x C')
-                                    ->live(onBlur: true)
-                                    ->afterStateUpdated(function ($state, Set $set, Get $get) {
-                                        if ($state && empty($get('double_thickness'))) {
-                                            if (preg_match('/^([0-9]+(?:\.[0-9]+)?)/', trim($state), $matches)) {
-                                                $set('double_thickness', $matches[1]);
-                                                static::lookupPreviousQuarterRecord($get, $set);
-                                            }
-                                        }
-                                    })
-                                    ->columnSpan(1),
+                                    ->columnSpan(2),
 
                                 Forms\Components\TextInput::make('double_thickness')
                                     ->label('Thickness (mm)')
-                                    ->placeholder('Contoh: 1.6 atau 2.0')
+                                    ->placeholder('Contoh: 1.6')
+                                    ->datalist(function (Get $get) {
+                                        $spec = $get('steel_spec');
+                                        $specMap = [
+                                            'SPH270C-OD' => ['1.6', '1.8', '2.0', '2.3', '2.6', '3.2', '4.0', '5.0'],
+                                            'SPH440-OD' => ['1.6', '1.8', '2.0', '2.3', '2.6', '3.2', '4.0'],
+                                            'SPH590-OD' => ['1.6', '1.8', '2.0', '2.3', '2.6', '2.9', '3.2', '4.0'],
+                                            'SPC270C' => ['0.5', '0.6', '0.8', '0.9', '1.0', '1.2', '1.4'],
+                                            'SPC440' => ['0.6', '0.8', '1.0', '1.2', '1.4'],
+                                            'SPC440HR' => ['0.6'],
+                                            'SPC590' => ['0.6', '0.8', '0.9', '1.0', '1.2', '1.4', '1.6', '1.8'],
+                                            'SPC590DU' => ['1.2'],
+                                            'NSC590B' => ['1.4'],
+                                            'SPC980' => ['1.4', '1.6', '1.8', '2.0'],
+                                        ];
+
+                                        if ($spec && isset($specMap[$spec])) {
+                                            return $specMap[$spec];
+                                        }
+
+                                        return ['0.5', '0.6', '0.8', '0.9', '1.0', '1.2', '1.4', '1.6', '1.8', '2.0', '2.3', '2.6', '2.9', '3.2', '4.0', '5.0'];
+                                    })
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(function ($state, Set $set, Get $get) {
                                         if ($state) {
                                             $clean = trim(preg_replace('/[a-zA-Z\s]+/', '', $state));
                                             $set('double_thickness', $clean);
+
+                                            $spec = (string) ($get('steel_spec') ?? '');
+                                            $width = (str_starts_with($spec, 'SPC') || str_starts_with($spec, 'NSC')) ? 1251 : 1219;
+                                            $set('size', "{$clean} x {$width} x C");
                                         }
                                         static::lookupPreviousQuarterRecord($get, $set);
                                     })
                                     ->columnSpan(1),
 
                                 // Hidden fields untuk menjamin integritas data tanpa membingungkan user
+                                Forms\Components\Hidden::make('size'),
                                 Forms\Components\Hidden::make('vendor_code'),
                                 Forms\Components\Hidden::make('supplier_name'),
                                 Forms\Components\Hidden::make('material_id'),
@@ -503,19 +622,24 @@ class MaterialSteelResource extends Resource
                                 Forms\Components\Hidden::make('prev_record_found')->default(false),
                                 Forms\Components\Hidden::make('prev_coil_price'),
                                 Forms\Components\Hidden::make('prev_sheet_price'),
+                                Forms\Components\Hidden::make('prev_ap_coil_price'),
+                                Forms\Components\Hidden::make('prev_ap_sheet_price'),
                                 Forms\Components\Hidden::make('prev_rate'),
                             ])->columns(3),
 
-                        // SECTION 2: Penetapan Harga Bahan Baku
-                        Forms\Components\Section::make('2. Harga Bahan Baku')
+                        // SECTION 2: Penetapan Harga Bahan Baku & Penyesuaian Gap
+                        Forms\Components\Section::make('2. Harga Bahan Baku & Penyesuaian Gap')
                             ->icon('heroicon-o-currency-dollar')
                             ->schema([
+                                Forms\Components\Hidden::make('gap_steel_usd')->default(0),
+
                                 Forms\Components\TextInput::make('hr_steel_usd')
-                                    ->label('HR $ / MT')
+                                    ->label(new HtmlString('Gap HRC<br><span class="text-xs font-normal text-gray-500">$/MT</span>'))
                                     ->numeric()
                                     ->step(0.0001)
                                     ->prefix('$')
-                                    ->placeholder('Contoh: -20 atau 50 (Hot Rolled: SPH, SAPH)')
+                                    ->placeholder('Contoh: -57 atau 50')
+                                    ->helperText('Gunakan minus (-) jika harga turun (contoh: -57), atau positif jika naik')
                                     ->default(0)
                                     ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) $state : null)
                                     ->live(onBlur: true)
@@ -523,24 +647,24 @@ class MaterialSteelResource extends Resource
                                     ->columnSpan(1),
 
                                 Forms\Components\TextInput::make('cr_steel_usd')
-                                    ->label('CR $ / MT')
+                                    ->label(new HtmlString('Gap CRC<br><span class="text-xs font-normal text-gray-500">$/MT</span>'))
                                     ->numeric()
                                     ->step(0.0001)
                                     ->prefix('$')
-                                    ->placeholder('Contoh: -20 atau 100 (Cold Rolled: SPC, NSC)')
+                                    ->placeholder('Contoh: -57 atau 100')
+                                    ->helperText('Gunakan minus (-) jika harga turun (contoh: -57), atau positif jika naik')
                                     ->default(0)
                                     ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) $state : null)
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromHrCr($get, $set, 'CR'))
                                     ->columnSpan(1),
 
-                                Forms\Components\Hidden::make('gap_steel_usd')->default(0),
-
                                 Forms\Components\TextInput::make('exchange_rate')
-                                    ->label('Perubahan $ Rupiah (Kurs IDR)')
+                                    ->label('Kurs USD')
                                     ->numeric()
                                     ->prefix('Rp')
                                     ->placeholder('Contoh: 16000')
+                                    ->helperText('Harga IDR = Harga ($) x Kurs')
                                     ->default(function (Get $get) {
                                         $prevRate = $get('prev_rate');
                                         if ($prevRate !== null && (float) $prevRate > 0) {
@@ -568,23 +692,12 @@ class MaterialSteelResource extends Resource
                                     ->numeric()
                                     ->step(0.0001)
                                     ->prefix('$')
-                                    ->placeholder('Contoh: 1.1206')
+                                    ->placeholder('Contoh: 1.2766')
+                                    ->helperText('Gunakan 4 digit desimal (contoh: 1.2766) agar kalkulasi IDR akurat sesuai Excel')
                                     ->required(fn (Get $get) => empty($get('sheet_price')))
                                     ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) $state : null)
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromCoil($get, $set))
-                                    ->columnSpan(1),
-
-                                Forms\Components\TextInput::make('sheet_price')
-                                    ->label('Harga Sheet ($/Kg)')
-                                    ->numeric()
-                                    ->step(0.0001)
-                                    ->prefix('$')
-                                    ->placeholder('Contoh: 1.1456')
-                                    ->required(fn (Get $get) => empty($get('coil_price')))
-                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) $state : null)
-                                    ->live(onBlur: true)
-                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromSheet($get, $set))
                                     ->columnSpan(1),
 
                                 Forms\Components\TextInput::make('coil_price_idr')
@@ -592,7 +705,21 @@ class MaterialSteelResource extends Resource
                                     ->prefix('Rp')
                                     ->readOnly()
                                     ->dehydrated()
-                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (int) round((float) $state) : null)
+                                    ->helperText('Otomatis: Coil ($) x Kurs')
+                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? number_format(round((float) $state, 2), 2, ',', '.') : null)
+                                    ->columnSpan(1),
+
+                                Forms\Components\TextInput::make('sheet_price')
+                                    ->label('Harga Sheet ($/Kg)')
+                                    ->numeric()
+                                    ->step(0.0001)
+                                    ->prefix('$')
+                                    ->placeholder('Contoh: 1.3016')
+                                    ->helperText('Gunakan 4 digit desimal (contoh: 1.3016) agar kalkulasi IDR akurat sesuai Excel')
+                                    ->required(fn (Get $get) => empty($get('coil_price')))
+                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) $state : null)
+                                    ->live(onBlur: true)
+                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromSheet($get, $set))
                                     ->columnSpan(1),
 
                                 Forms\Components\TextInput::make('sheet_price_idr')
@@ -600,9 +727,54 @@ class MaterialSteelResource extends Resource
                                     ->prefix('Rp')
                                     ->readOnly()
                                     ->dehydrated()
-                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (int) round((float) $state) : null)
+                                    ->helperText('Otomatis: Sheet ($) x Kurs')
+                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? number_format(round((float) $state, 2), 2, ',', '.') : null)
                                     ->columnSpan(1),
-                            ])->columns(2),
+
+                                // Subsection: Harga AP / Pembelian (Otomatis Terisi Sesuai Rumus Material Steel)
+                                Forms\Components\Fieldset::make('Harga AP / Pembelian (Otomatis Terisi Sesuai Rumus Material Steel)')
+                                    ->schema([
+                                        Forms\Components\TextInput::make('ap_coil_price')
+                                            ->label('AP Coil ($/Kg)')
+                                            ->numeric()
+                                            ->step(0.0001)
+                                            ->prefix('$')
+                                            ->placeholder('Contoh: 1.2766')
+                                            ->helperText('Gunakan 4 digit desimal (contoh: 1.2766)')
+                                            ->live(onBlur: true)
+                                            ->afterStateUpdated(fn (Get $get, Set $set) => static::recalculateFormPrices($get, $set))
+                                            ->columnSpan(1),
+
+                                        Forms\Components\TextInput::make('ap_coil_price_idr')
+                                            ->label('AP Coil (IDR/Kg)')
+                                            ->prefix('Rp')
+                                            ->readOnly()
+                                            ->dehydrated()
+                                            ->helperText('Otomatis: AP Coil ($) x Kurs')
+                                            ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? number_format(round((float) $state, 2), 2, ',', '.') : null)
+                                            ->columnSpan(1),
+
+                                        Forms\Components\TextInput::make('ap_sheet_price')
+                                            ->label('AP Sheet ($/Kg)')
+                                            ->numeric()
+                                            ->step(0.0001)
+                                            ->prefix('$')
+                                            ->placeholder('Contoh: 1.3016')
+                                            ->helperText('Gunakan 4 digit desimal (contoh: 1.3016)')
+                                            ->live(onBlur: true)
+                                            ->afterStateUpdated(fn (Get $get, Set $set) => static::recalculateFormPrices($get, $set))
+                                            ->columnSpan(1),
+
+                                        Forms\Components\TextInput::make('ap_sheet_price_idr')
+                                            ->label('AP Sheet (IDR/Kg)')
+                                            ->prefix('Rp')
+                                            ->readOnly()
+                                            ->dehydrated()
+                                            ->helperText('Otomatis: AP Sheet ($) x Kurs')
+                                            ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? number_format(round((float) $state, 2), 2, ',', '.') : null)
+                                            ->columnSpan(1),
+                                    ])->columns(4)->columnSpanFull(),
+                            ])->columns(4),
 
                         // SECTION 3: Catatan & Status (Collapsible)
                         Forms\Components\Section::make('3. Catatan & Status (Opsional)')
@@ -658,7 +830,7 @@ class MaterialSteelResource extends Resource
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('double_thickness')
-                    ->label('Thickness(mm)')
+                    ->label(new HtmlString('<div>Thickness</div><div class="text-[11px] font-normal text-gray-500 dark:text-gray-400">(mm)</div>'))
                     ->wrapHeader()
                     ->formatStateUsing(function ($state) {
                         if ($state === null || $state === '') {
@@ -667,13 +839,12 @@ class MaterialSteelResource extends Resource
 
                         return trim(preg_replace('/[a-zA-Z\s]+/', '', (string) $state));
                     })
-                    ->description(fn (MaterialSteel $record) => $record->size ?: null)
                     ->placeholder('-')
                     ->searchable()
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('hr_steel_usd')
-                    ->label('HR $ / MT')
+                    ->label(new HtmlString('<div>Gap HRC</div><div class="text-[11px] font-normal text-gray-500 dark:text-gray-400">$/MT</div>'))
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state, MaterialSteel $record) => static::formatUsd($state, $record->currency_code))
                     ->weight('bold')
@@ -681,7 +852,7 @@ class MaterialSteelResource extends Resource
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('cr_steel_usd')
-                    ->label('CR $ / MT')
+                    ->label(new HtmlString('<div>Gap CRC</div><div class="text-[11px] font-normal text-gray-500 dark:text-gray-400">$/MT</div>'))
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state, MaterialSteel $record) => static::formatUsd($state, $record->currency_code))
                     ->weight('bold')
@@ -689,11 +860,19 @@ class MaterialSteelResource extends Resource
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('exchange_rate')
-                    ->label('Perubahan $ Rupiah')
+                    ->label('Kurs USD')
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
                     ->alignRight()
                     ->sortable(),
+
+                Tables\Columns\TextColumn::make('gap_steel_usd')
+                    ->label(new HtmlString('<div>Gap</div><div class="text-[11px] font-normal text-gray-500 dark:text-gray-400">$/MT</div>'))
+                    ->wrapHeader()
+                    ->formatStateUsing(fn ($state, MaterialSteel $record) => static::formatUsd($state, $record->currency_code))
+                    ->weight('bold')
+                    ->alignRight()
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('coil_price')
                     ->label('Coil ($)')
@@ -722,6 +901,35 @@ class MaterialSteelResource extends Resource
                     ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
                     ->alignRight()
                     ->sortable(),
+
+                // Kolom AP Opsional (Toggleable)
+                Tables\Columns\TextColumn::make('ap_coil_price')
+                    ->label('AP Coil ($)')
+                    ->wrapHeader()
+                    ->formatStateUsing(fn ($state, MaterialSteel $record) => static::formatUsd($state, $record->currency_code))
+                    ->alignRight()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('ap_coil_price_idr')
+                    ->label('AP Coil (IDR)')
+                    ->wrapHeader()
+                    ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
+                    ->alignRight()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('ap_sheet_price')
+                    ->label('AP Sheet ($)')
+                    ->wrapHeader()
+                    ->formatStateUsing(fn ($state, MaterialSteel $record) => static::formatUsd($state, $record->currency_code))
+                    ->alignRight()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('ap_sheet_price_idr')
+                    ->label('AP Sheet (IDR)')
+                    ->wrapHeader()
+                    ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
+                    ->alignRight()
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('status')
                     ->label('Status')
@@ -804,27 +1012,6 @@ class MaterialSteelResource extends Resource
                         return $options;
                     }),
 
-                Tables\Filters\SelectFilter::make('supplier_id')
-                    ->label('Filter Supplier Name')
-                    ->options(function () {
-                        $counts = MaterialSteel::query()
-                            ->whereNotNull('supplier_id')
-                            ->selectRaw('supplier_id, count(*) as total')
-                            ->groupBy('supplier_id')
-                            ->pluck('total', 'supplier_id');
-
-                        return Supplier::query()
-                            ->orderBy('name')
-                            ->get()
-                            ->mapWithKeys(function ($s) use ($counts) {
-                                $total = $counts[$s->id] ?? 0;
-
-                                return [$s->id => "{$s->name} ({$total} data)"];
-                            })
-                            ->toArray();
-                    })
-                    ->searchable(),
-
                 Tables\Filters\SelectFilter::make('status')
                     ->label('Filter Status')
                     ->options(function () {
@@ -842,7 +1029,7 @@ class MaterialSteelResource extends Resource
             ->filtersTriggerAction(
                 fn (Tables\Actions\Action $action) => $action
                     ->button()
-                    ->label(fn () => 'Filter Data ('.MaterialSteel::count().' Data)')
+                    ->label('Filter Data')
             )
             ->filtersFormColumns(2)
             ->actions([

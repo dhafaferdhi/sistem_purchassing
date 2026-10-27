@@ -22,7 +22,7 @@ class EditStampingPart extends EditRecord
                 ->color('info')
                 ->slideOver()
                 ->modalHeading(fn () => "Lembar Perhitungan Part Cost: {$this->record->part_number} - {$this->record->part_name}")
-                ->modalWidth(MaxWidth::FiveExtraLarge)
+                ->modalWidth(MaxWidth::SevenExtraLarge)
                 ->modalSubmitAction(false)
                 ->modalCancelActionLabel('Tutup')
                 ->modalContent(fn () => view('filament.resources.stamping-parts.sheet-modal', ['record' => $this->record])),

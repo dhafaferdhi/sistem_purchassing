@@ -20,7 +20,7 @@ class EditSubAssemblyPart extends EditRecord
                 ->color('info')
                 ->slideOver()
                 ->modalHeading(fn () => "Lembar Perhitungan Sub-Assembly: {$this->record->part_number} - {$this->record->part_name}")
-                ->modalWidth(MaxWidth::FiveExtraLarge)
+                ->modalWidth(MaxWidth::SevenExtraLarge)
                 ->modalSubmitAction(false)
                 ->modalCancelActionLabel('Tutup')
                 ->modalContent(fn () => view('filament.resources.sub-assembly-parts.sheet-modal', ['record' => $this->record])),

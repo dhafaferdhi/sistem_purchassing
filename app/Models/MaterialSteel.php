@@ -178,6 +178,35 @@ class MaterialSteel extends Model
                 $model->gap_steel_kg_usd = 0;
             }
 
+            // Jika harga coil/sheet kosong (misal create dengan Gap saja), tarik dari kuartal sebelumnya:
+            // Rumus: Harga Baru ($) = Harga Kuartal Lalu ($) + (Gap ÷ 1.000)
+            if (($coilPrice == 0.0 && $sheetPrice == 0.0) && $model->quarter && $model->year) {
+                $prev = static::findPreviousQuarterData(
+                    $model->quarter,
+                    $model->year,
+                    $model->supplier_id,
+                    $model->steel_spec,
+                    $model->double_thickness
+                );
+                if ($prev) {
+                    $appliedKg = (float) $model->gap_steel_kg_usd;
+                    if (! empty($prev['coil_price']) && (float) $prev['coil_price'] > 0) {
+                        $coilPrice = round((float) $prev['coil_price'] + $appliedKg, 4);
+                        $model->coil_price = $coilPrice;
+                    }
+                    if (! empty($prev['sheet_price']) && (float) $prev['sheet_price'] > 0) {
+                        $sheetPrice = round((float) $prev['sheet_price'] + $appliedKg, 4);
+                        $model->sheet_price = $sheetPrice;
+                    }
+                    if (! empty($prev['ap_coil_price']) && (float) $prev['ap_coil_price'] > 0) {
+                        $model->ap_coil_price = round((float) $prev['ap_coil_price'] + $appliedKg, 4);
+                    }
+                    if (! empty($prev['ap_sheet_price']) && (float) $prev['ap_sheet_price'] > 0) {
+                        $model->ap_sheet_price = round((float) $prev['ap_sheet_price'] + $appliedKg, 4);
+                    }
+                }
+            }
+
             $model->gap_steel_idr = round((float) $model->gap_steel_usd * $rate, 2);
 
             // Sinkronkan fluktuasi_jfe jika kosong
@@ -185,16 +214,20 @@ class MaterialSteel extends Model
                 $model->fluktuasi_jfe = $model->gap_steel_kg_usd;
             }
 
-            // Kalkulasi harga Coil & Sheet IDR
+            // Kalkulasi harga Coil & Sheet IDR (Rumus: Harga Baru ($) x Kurs IDR)
             $model->coil_price_idr = round($coilPrice * $rate, 2);
             $model->sheet_price_idr = round($sheetPrice * $rate, 2);
 
-            if ($model->ap_coil_price !== null && (float) $model->ap_coil_price > 0) {
-                $model->ap_coil_price_idr = round((float) $model->ap_coil_price * $rate, 2);
+            // Kalkulasi harga AP Coil & Sheet (Otomatis terisi samakan dengan rumus Material Steel)
+            if (empty($model->ap_coil_price) || (float) $model->ap_coil_price <= 0.0) {
+                $model->ap_coil_price = $coilPrice;
             }
-            if ($model->ap_sheet_price !== null && (float) $model->ap_sheet_price > 0) {
-                $model->ap_sheet_price_idr = round((float) $model->ap_sheet_price * $rate, 2);
+            if (empty($model->ap_sheet_price) || (float) $model->ap_sheet_price <= 0.0) {
+                $model->ap_sheet_price = $sheetPrice;
             }
+
+            $model->ap_coil_price_idr = round((float) $model->ap_coil_price * $rate, 2);
+            $model->ap_sheet_price_idr = round((float) $model->ap_sheet_price * $rate, 2);
 
             // Fallback steel_price agar kompatibilitas modul lain tetap sinkron
             if (empty($model->steel_price) || (float) $model->steel_price === 0.0) {

@@ -11,6 +11,7 @@ use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Support\HtmlString;
 
 class MaterialSteelsRelationManager extends RelationManager
 {
@@ -68,11 +69,10 @@ class MaterialSteelsRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('steel_spec')
                     ->label('Spec')
                     ->formatStateUsing(fn ($state) => MaterialSteel::cleanSteelSpec($state))
-                    ->formatStateUsing(fn ($state) => MaterialSteel::cleanSteelSpec($state))
                     ->searchable(),
 
                 Tables\Columns\TextColumn::make('double_thickness')
-                    ->label('Thickness(mm)')
+                    ->label(new HtmlString('<div>Thickness</div><div class="text-[11px] font-normal text-gray-500 dark:text-gray-400">(mm)</div>'))
                     ->formatStateUsing(function ($state) {
                         if ($state === null || $state === '') {
                             return '-';
@@ -84,13 +84,13 @@ class MaterialSteelsRelationManager extends RelationManager
                     ->searchable(),
 
                 Tables\Columns\TextColumn::make('gap_steel_usd')
-                    ->label('Gap/MT ($)')
+                    ->label(new HtmlString('<div>Gap</div><div class="text-[11px] font-normal text-gray-500 dark:text-gray-400">$/MT</div>'))
                     ->formatStateUsing(fn ($record) => MaterialSteelResource::formatUsd($record->gap_steel_usd, $record->currency_code ?? 'USD'))
                     ->weight('bold')
                     ->alignRight(),
 
                 Tables\Columns\TextColumn::make('exchange_rate')
-                    ->label('Kurs')
+                    ->label('Kurs USD')
                     ->formatStateUsing(fn ($state) => MaterialSteelResource::formatIdr($state, true))
                     ->alignRight(),
 

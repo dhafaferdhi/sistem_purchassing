@@ -1384,92 +1384,41 @@ class FastenerResource extends Resource
             ->filters([
                 Tables\Filters\SelectFilter::make('quarter')
                     ->label('Filter Kuartal')
-                    ->options(function () {
-                        $counts = Fastener::query()
-                            ->selectRaw('quarter, count(*) as total')
-                            ->groupBy('quarter')
-                            ->pluck('total', 'quarter');
-
-                        return [
-                            'Q1' => 'Q1 (Januari - Maret) ('.($counts['Q1'] ?? 0).' data)',
-                            'Q2' => 'Q2 (April - Juni) ('.($counts['Q2'] ?? 0).' data)',
-                            'Q3' => 'Q3 (Juli - September) ('.($counts['Q3'] ?? 0).' data)',
-                            'Q4' => 'Q4 (Oktober - Desember) ('.($counts['Q4'] ?? 0).' data)',
-                        ];
-                    })
+                    ->options([
+                        'Q1' => 'Q1 (Januari - Maret)',
+                        'Q2' => 'Q2 (April - Juni)',
+                        'Q3' => 'Q3 (Juli - September)',
+                        'Q4' => 'Q4 (Oktober - Desember)',
+                    ])
                     ->multiple(),
 
-                Tables\Filters\SelectFilter::make('supplier_name')
+                Tables\Filters\SelectFilter::make('supplier_id')
                     ->label('Filter Supplier')
-                    ->options(function () {
-                        $counts = Fastener::query()
-                            ->whereNotNull('supplier_name')
-                            ->selectRaw('supplier_name, count(*) as total')
-                            ->groupBy('supplier_name')
-                            ->pluck('total', 'supplier_name');
-
-                        $supplierMap = Supplier::query()
-                            ->orderBy('name')
-                            ->pluck('name', 'name')
-                            ->toArray();
-
-                        $options = [];
-                        foreach ($counts as $name => $total) {
-                            $options[$name] = "{$name} ({$total} data)";
-                        }
-
-                        foreach ($supplierMap as $name) {
-                            if (! isset($options[$name])) {
-                                $options[$name] = "{$name} (0 data)";
-                            }
-                        }
-
-                        return $options;
-                    })
+                    ->relationship('supplier', 'name')
                     ->searchable()
-                    ->multiple(),
+                    ->preload(),
 
                 Tables\Filters\SelectFilter::make('year')
                     ->label('Filter Tahun')
                     ->options(function () {
-                        $counts = Fastener::query()
-                            ->selectRaw('year, count(*) as total')
-                            ->groupBy('year')
-                            ->pluck('total', 'year');
-
                         $current = (int) date('Y');
-                        $dbYears = Fastener::distinct()->pluck('year')->filter()->toArray();
-                        $rangeYears = range($current + 2, $current - 2);
-                        $allYears = array_unique(array_merge($dbYears, $rangeYears));
-                        rsort($allYears);
+                        $years = range($current + 2, $current - 2);
 
-                        $options = [];
-                        foreach ($allYears as $y) {
-                            $total = $counts[$y] ?? 0;
-                            $options[$y] = "Tahun {$y} ({$total} data)";
-                        }
-
-                        return $options;
+                        return array_combine($years, array_map(fn ($y) => "Tahun {$y}", $years));
                     }),
 
                 Tables\Filters\SelectFilter::make('status')
                     ->label('Filter Status')
-                    ->options(function () {
-                        $counts = Fastener::query()
-                            ->selectRaw('status, count(*) as total')
-                            ->groupBy('status')
-                            ->pluck('total', 'status');
-
-                        return [
-                            'Active' => 'Active ('.($counts['Active'] ?? 0).' data)',
-                            'Draft' => 'Draft ('.($counts['Draft'] ?? 0).' data)',
-                        ];
-                    }),
+                    ->options([
+                        'Active' => 'Active',
+                        'Draft' => 'Draft',
+                        'Archived' => 'Archived',
+                    ]),
             ])
             ->filtersTriggerAction(
                 fn (Tables\Actions\Action $action) => $action
                     ->button()
-                    ->label(fn () => 'Filter Data ('.Fastener::count().' Data)')
+                    ->label('Filter Data')
             )
             ->filtersFormColumns(2)
             ->actions([
@@ -1482,7 +1431,7 @@ class FastenerResource extends Resource
                     ->size(ActionSize::Small)
                     ->slideOver()
                     ->modalHeading(fn (Fastener $record) => "Lembar Perhitungan Fastener Cost: {$record->part_number} - {$record->part_name}")
-                    ->modalWidth(MaxWidth::FiveExtraLarge)
+                    ->modalWidth(MaxWidth::SevenExtraLarge)
                     ->modalSubmitAction(false)
                     ->modalCancelActionLabel('Tutup')
                     ->modalContent(fn (Fastener $record) => view('filament.resources.fasteners.sheet-modal', ['record' => $record])),

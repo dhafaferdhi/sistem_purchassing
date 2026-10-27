@@ -109,11 +109,28 @@ class MonthlyDataRolloverService
             $sheetPrice = (float) ($source->sheet_price ?? 0);
             $gapUsd = $newGapSteelUsd !== null ? $newGapSteelUsd : (float) ($source->gap_steel_usd ?? 0);
 
-            if ($priceAdjustmentPercent !== null && $priceAdjustmentPercent != 0.0) {
+            $apCoil = (float) ($source->ap_coil_price ?: $source->coil_price);
+            $apSheet = (float) ($source->ap_sheet_price ?: $source->sheet_price);
+
+            if ($newGapSteelUsd !== null && $newGapSteelUsd != 0.0) {
+                $gapKg = round($newGapSteelUsd / 1000, 4);
+                $coilPrice = round($coilPrice + $gapKg, 4);
+                if ($sheetPrice > 0) {
+                    $sheetPrice = round($sheetPrice + $gapKg, 4);
+                }
+                $apCoil = round($apCoil + $gapKg, 4);
+                if ($apSheet > 0) {
+                    $apSheet = round($apSheet + $gapKg, 4);
+                }
+            } elseif ($priceAdjustmentPercent !== null && $priceAdjustmentPercent != 0.0) {
                 $multiplier = 1 + ($priceAdjustmentPercent / 100);
                 $coilPrice = round($coilPrice * $multiplier, 4);
                 if ($sheetPrice > 0) {
                     $sheetPrice = round($sheetPrice * $multiplier, 4);
+                }
+                $apCoil = round($apCoil * $multiplier, 4);
+                if ($apSheet > 0) {
+                    $apSheet = round($apSheet * $multiplier, 4);
                 }
             }
 
@@ -123,6 +140,10 @@ class MonthlyDataRolloverService
                 $existing->currency_code = 'USD';
                 $existing->coil_price = $coilPrice;
                 $existing->sheet_price = $sheetPrice;
+                $existing->ap_coil_price = $apCoil;
+                $existing->ap_sheet_price = $apSheet;
+                $existing->ap_coil_price_idr = round($apCoil * $rateToUse, 2);
+                $existing->ap_sheet_price_idr = round($apSheet * $rateToUse, 2);
                 $existing->gap_steel_usd = $gapUsd;
                 $existing->gap_steel_kg_usd = round($gapUsd / 1000, 4);
                 $existing->status = $status;
@@ -138,6 +159,10 @@ class MonthlyDataRolloverService
                 $newSteel->currency_code = 'USD';
                 $newSteel->coil_price = $coilPrice;
                 $newSteel->sheet_price = $sheetPrice;
+                $newSteel->ap_coil_price = $apCoil;
+                $newSteel->ap_sheet_price = $apSheet;
+                $newSteel->ap_coil_price_idr = round($apCoil * $rateToUse, 2);
+                $newSteel->ap_sheet_price_idr = round($apSheet * $rateToUse, 2);
                 $newSteel->gap_steel_usd = $gapUsd;
                 $newSteel->gap_steel_kg_usd = round($gapUsd / 1000, 4);
                 $newSteel->status = $status;
@@ -187,12 +212,18 @@ class MonthlyDataRolloverService
         $skipped = 0;
 
         foreach ($sources as $source) {
-            $existing = StampingPart::where('year', $targetYear)
-                ->where('quarter', $targetQuarter)
-                ->where('supplier_id', $source->supplier_id)
-                ->where('steel_spec', $source->steel_spec)
-                ->where('double_thickness', $source->double_thickness)
-                ->first();
+            $existingQuery = StampingPart::where('year', $targetYear)
+                ->where('quarter', $targetQuarter);
+
+            if (! empty($source->part_number)) {
+                $existing = $existingQuery->where('part_number', $source->part_number)->first();
+            } else {
+                $existing = $existingQuery
+                    ->where('supplier_id', $source->supplier_id)
+                    ->where('steel_spec', $source->steel_spec)
+                    ->where('double_thickness', $source->double_thickness)
+                    ->first();
+            }
 
             if ($existing && $duplicateHandling === 'skip') {
                 $skipped++;
@@ -206,12 +237,17 @@ class MonthlyDataRolloverService
 
             // Jika sinkronisasi dari Material Steel target diaktifkan, cari data harga acuan terbaru
             if ($syncFromMaterialSteel) {
-                $matchedSteel = MaterialSteel::where('year', $targetYear)
+                $matchedSteelQuery = MaterialSteel::where('year', $targetYear)
                     ->where('quarter', $targetQuarter)
                     ->where('steel_spec', $source->steel_spec)
-                    ->when($source->supplier_id, fn ($q) => $q->where('supplier_id', $source->supplier_id))
-                    ->latest('id')
-                    ->first();
+                    ->when($source->supplier_id, fn ($q) => $q->where('supplier_id', $source->supplier_id));
+
+                if (! empty($source->double_thickness)) {
+                    $exactSteel = (clone $matchedSteelQuery)->where('double_thickness', $source->double_thickness)->latest('id')->first();
+                    $matchedSteel = $exactSteel ?: $matchedSteelQuery->latest('id')->first();
+                } else {
+                    $matchedSteel = $matchedSteelQuery->latest('id')->first();
+                }
 
                 if ($matchedSteel) {
                     $coilPrice = (float) ($matchedSteel->coil_price ?? $coilPrice);

@@ -371,7 +371,11 @@ class MaterialSteelQuarterlyTest extends TestCase
             ->assertTableActionExists('edit')
             ->assertTableActionExists('delete')
             ->assertSee('SPCC-Custom-Spec')
-            ->assertSee('1.2');
+            ->assertSee('1.2')
+            ->assertDontSee('1.2 x 1219 x C')
+            ->assertSeeHtml('Gap HRC')
+            ->assertSeeHtml('Gap CRC')
+            ->assertSeeHtml('Kurs USD');
     }
 
     public function test_material_steel_calculates_gap_steel_mt_usd_and_idr_formula(): void
@@ -1006,12 +1010,14 @@ class MaterialSteelQuarterlyTest extends TestCase
             ])
             ->callAction('pull_previous', [
                 'hr_steel_usd' => -20,
+                'exchange_rate' => 16500,
             ])
             ->assertFormSet([
                 'size' => '2.6 x 1219 x C',
                 'coil_price' => '1.23',
                 'sheet_price' => '1.26',
                 'hr_steel_usd' => '-20',
+                'exchange_rate' => 16500,
             ])
             ->call('create')
             ->assertHasNoFormErrors();
@@ -1024,5 +1030,199 @@ class MaterialSteelQuarterlyTest extends TestCase
             'sheet_price' => 1.2600,
             'hr_steel_usd' => -20.0,
         ]);
+    }
+
+    public function test_material_steel_gap_formula_and_idr_rate_calculation(): void
+    {
+        $this->actingAs($this->admin);
+
+        // 1. Buat Q1 Baseline
+        $q1 = MaterialSteel::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'supplier_name' => $this->supplier->name,
+            'vendor_code' => $this->supplier->code,
+            'steel_spec' => 'SPC270C',
+            'double_thickness' => '1.2',
+            'coil_price' => 1.0500,
+            'sheet_price' => 1.1500,
+            'exchange_rate' => 16200.0,
+        ]);
+
+        $this->assertEquals(17010.00, (float) $q1->coil_price_idr);
+        $this->assertEquals(18630.00, (float) $q1->sheet_price_idr);
+
+        // 2. Buat Q2 dengan Gap CRC +50 $/MT melalui Form
+        Livewire::test(CreateMaterialSteel::class)
+            ->fillForm([
+                'year' => 2026,
+                'quarter' => 'Q2',
+                'supplier_id' => $this->supplier->id,
+                'steel_spec' => 'SPC270C',
+                'double_thickness' => '1.2',
+                'cr_steel_usd' => 50.0,
+                'exchange_rate' => 16500.0,
+            ])
+            ->assertFormSet([
+                // coil_price = 1.0500 + (50 / 1000) = 1.1000
+                'coil_price' => 1.1,
+                // sheet_price = 1.1500 + (50 / 1000) = 1.2000
+                'sheet_price' => 1.2,
+                // coil_price_idr = 1.1000 * 16500 = 18150
+                'coil_price_idr' => 18150,
+                // sheet_price_idr = 1.2000 * 16500 = 19800
+                'sheet_price_idr' => 19800,
+            ])
+            ->call('create')
+            ->assertHasNoFormErrors();
+
+        $q2 = MaterialSteel::where('year', 2026)->where('quarter', 'Q2')->where('steel_spec', 'SPC270C')->first();
+        $this->assertNotNull($q2);
+        // Coil & Sheet USD = Harga Kuartal Lalu + (Gap / 1000)
+        $this->assertEquals(1.1000, (float) $q2->coil_price);
+        $this->assertEquals(1.2000, (float) $q2->sheet_price);
+        $this->assertEquals(0.0500, (float) $q2->gap_steel_kg_usd);
+        // Coil & Sheet IDR = Harga Baru ($) * Rate
+        $this->assertEquals(18150.00, (float) $q2->coil_price_idr);
+        $this->assertEquals(19800.00, (float) $q2->sheet_price_idr);
+
+        // AP Coil & Sheet juga otomatis terisi dan mengikuti rumus Material Steel
+        $this->assertEquals(1.1000, (float) $q2->ap_coil_price);
+        $this->assertEquals(1.2000, (float) $q2->ap_sheet_price);
+        $this->assertEquals(18150.00, (float) $q2->ap_coil_price_idr);
+        $this->assertEquals(19800.00, (float) $q2->ap_sheet_price_idr);
+    }
+
+    public function test_ap_prices_auto_calculated_and_follow_material_steel_gap_formula(): void
+    {
+        $this->actingAs($this->admin);
+
+        // Kasus 1: Record baseline tanpa isi AP manual -> AP otomatis disamakan dengan Coil & Sheet
+        $steel1 = MaterialSteel::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'supplier_name' => $this->supplier->name,
+            'vendor_code' => $this->supplier->code,
+            'steel_spec' => 'SPH270C-AUTO-AP',
+            'double_thickness' => '1.6',
+            'coil_price' => 1.2000,
+            'sheet_price' => 1.2500,
+            'exchange_rate' => 16000.0,
+        ]);
+
+        $this->assertEquals(1.2000, (float) $steel1->ap_coil_price);
+        $this->assertEquals(1.2500, (float) $steel1->ap_sheet_price);
+        $this->assertEquals(19200.00, (float) $steel1->ap_coil_price_idr);
+        $this->assertEquals(20000.00, (float) $steel1->ap_sheet_price_idr);
+
+        // Kasus 2: Record baseline dengan AP pembelian khusus (lebih murah dari AR quotation)
+        $steelCustomAp = MaterialSteel::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'supplier_name' => $this->supplier->name,
+            'vendor_code' => $this->supplier->code,
+            'steel_spec' => 'SPH440-CUSTOM-AP',
+            'double_thickness' => '2.0',
+            'coil_price' => 0.7970,
+            'sheet_price' => 0.8220,
+            'ap_coil_price' => 0.7420,
+            'ap_sheet_price' => 0.7670,
+            'exchange_rate' => 16000.0,
+        ]);
+
+        $this->assertEquals(0.7420, (float) $steelCustomAp->ap_coil_price);
+        $this->assertEquals(11872.00, (float) $steelCustomAp->ap_coil_price_idr); // 0.7420 * 16000
+
+        // Kuartal Q2: Penyesuaian Gap HRC -20 $/MT (-0.0200 $/kg)
+        Livewire::test(CreateMaterialSteel::class)
+            ->fillForm([
+                'year' => 2026,
+                'quarter' => 'Q2',
+                'supplier_id' => $this->supplier->id,
+                'steel_spec' => 'SPH440-CUSTOM-AP',
+                'double_thickness' => '2.0',
+                'hr_steel_usd' => -20.0,
+                'exchange_rate' => 16500.0,
+            ])
+            ->assertFormSet([
+                // AR Coil = 0.7970 - 0.0200 = 0.7770
+                'coil_price' => 0.777,
+                // AP Coil = 0.7420 - 0.0200 = 0.7220
+                'ap_coil_price' => 0.722,
+                // AP Coil IDR = 0.7220 * 16500 = 11913
+                'ap_coil_price_idr' => 11913,
+            ])
+            ->call('create')
+            ->assertHasNoFormErrors();
+
+        $q2 = MaterialSteel::where('year', 2026)->where('quarter', 'Q2')->where('steel_spec', 'SPH440-CUSTOM-AP')->first();
+        $this->assertNotNull($q2);
+        $this->assertEquals(0.7770, (float) $q2->coil_price);
+        $this->assertEquals(0.7220, (float) $q2->ap_coil_price);
+        $this->assertEquals(11913.00, (float) $q2->ap_coil_price_idr);
+    }
+
+    public function test_four_decimal_precision_gap_calculation_matches_exact_excel_value(): void
+    {
+        $this->actingAs($this->admin);
+
+        // 1. Buat Q2 Baseline sesuai data Excel VtoV (SPC270C T0.5)
+        // Harga dasar Q2: Coil = 1.3336, Sheet = 1.3586
+        $q2 = MaterialSteel::create([
+            'year' => 2026,
+            'quarter' => 'Q2',
+            'supplier_id' => $this->supplier->id,
+            'supplier_name' => $this->supplier->name,
+            'vendor_code' => $this->supplier->code,
+            'steel_spec' => 'SPC270C',
+            'double_thickness' => '0.5',
+            'coil_price' => 1.3336,
+            'sheet_price' => 1.3586,
+            'exchange_rate' => 16022.0,
+        ]);
+
+        $this->assertEquals(1.3336, (float) $q2->coil_price);
+        $this->assertEquals(21366.94, (float) $q2->coil_price_idr); // 1.3336 * 16022 = 21366.9392
+
+        // 2. Buat Q3 dengan Gap CRC -57 $/MT (-0.0570 $/kg) dan Kurs 16022
+        // Harga baru ($) = 1.3336 + (-57 / 1000) = 1.2766
+        // Total IDR = 1.2766 * 16022 = 20453.6852 -> dibulatkan 20453.69 (tampilan bulat: Rp 20.454)
+        Livewire::test(CreateMaterialSteel::class)
+            ->fillForm([
+                'year' => 2026,
+                'quarter' => 'Q3',
+                'supplier_id' => $this->supplier->id,
+                'steel_spec' => 'SPC270C',
+                'double_thickness' => '0.5',
+                'cr_steel_usd' => -57.0,
+                'exchange_rate' => 16022.0,
+            ])
+            ->assertFormSet([
+                'coil_price' => 1.2766,
+                'sheet_price' => 1.3016,
+                'coil_price_idr' => 20453.69,
+                'sheet_price_idr' => 20854.24,
+                'ap_coil_price' => 1.2766,
+                'ap_sheet_price' => 1.3016,
+                'ap_coil_price_idr' => 20453.69,
+                'ap_sheet_price_idr' => 20854.24,
+            ])
+            ->call('create')
+            ->assertHasNoFormErrors();
+
+        $q3 = MaterialSteel::where('year', 2026)->where('quarter', 'Q3')->where('steel_spec', 'SPC270C')->first();
+        $this->assertNotNull($q3);
+        $this->assertEquals(1.2766, (float) $q3->coil_price);
+        $this->assertEquals(1.3016, (float) $q3->sheet_price);
+        $this->assertEquals(20453.69, (float) $q3->coil_price_idr);
+        $this->assertEquals(20854.24, (float) $q3->sheet_price_idr);
+
+        // Verifikasi format tampilan IDR sama persis dengan angka Excel (Rp 20.454, BUKAN Rp 20.460)
+        $this->assertEquals('Rp 20.454', MaterialSteelResource::formatIdr($q3->coil_price_idr));
+        $this->assertEquals('Rp 20.854', MaterialSteelResource::formatIdr($q3->sheet_price_idr));
+        $this->assertEquals('$ 1.2766', MaterialSteelResource::formatUsd($q3->coil_price));
     }
 }

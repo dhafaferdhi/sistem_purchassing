@@ -309,12 +309,12 @@ class PudRequestFeatureTest extends TestCase
 
         $labels = $kalkulatorGroup->getItems()->map(fn ($item) => $item->getLabel())->toArray();
 
-        // Memuat: Request User, PUD Monitoring, Purchase Order (PO)
+        // Memuat: Request User, PUD Monitoring
         $this->assertContains('Request User', $labels);
         $this->assertContains('PUD Monitoring', $labels);
-        $this->assertContains('Purchase Order (PO)', $labels);
 
-        // Hapus: Komparasi Harga Supplier, Estimasi Biaya (Quotation), Tren Harga Part, Penerimaan Barang (GRN)
+        // Hapus: Purchase Order, Komparasi Harga Supplier, Estimasi Biaya (Quotation), Tren Harga Part, Penerimaan Barang (GRN)
+        $this->assertNotContains('Purchase Order (PO)', $labels);
         $this->assertNotContains('Komparasi Harga Supplier', $labels);
         $this->assertNotContains('Estimasi Biaya (Quotation)', $labels);
         $this->assertNotContains('Tren Harga Part (Price Trend)', $labels);
