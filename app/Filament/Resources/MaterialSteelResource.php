@@ -704,7 +704,6 @@ class MaterialSteelResource extends Resource
                                     ->step(0.0001)
                                     ->prefix('$')
                                     ->placeholder('Contoh: -57 atau 50')
-                                    ->helperText('Gunakan minus (-) jika harga turun (contoh: -57), atau positif jika naik')
                                     ->default(0)
                                     ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) $state : null)
                                     ->live(onBlur: true)
@@ -717,7 +716,6 @@ class MaterialSteelResource extends Resource
                                     ->step(0.0001)
                                     ->prefix('$')
                                     ->placeholder('Contoh: -57 atau 100')
-                                    ->helperText('Gunakan minus (-) jika harga turun (contoh: -57), atau positif jika naik')
                                     ->default(0)
                                     ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) $state : null)
                                     ->live(onBlur: true)
@@ -729,7 +727,6 @@ class MaterialSteelResource extends Resource
                                     ->numeric()
                                     ->prefix('Rp')
                                     ->placeholder('Contoh: 16000')
-                                    ->helperText('Harga IDR = Harga ($) x Kurs')
                                     ->default(function (Get $get) {
                                         $prevRate = $get('prev_rate');
                                         if ($prevRate !== null && (float) $prevRate > 0) {
@@ -758,7 +755,6 @@ class MaterialSteelResource extends Resource
                                     ->step(0.0001)
                                     ->prefix('$')
                                     ->placeholder('Contoh: 1.2766')
-                                    ->helperText('Gunakan 4 digit desimal (contoh: 1.2766) agar kalkulasi IDR akurat sesuai Excel')
                                     ->required(fn (Get $get) => empty($get('sheet_price')))
                                     ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) $state : null)
                                     ->live(onBlur: true)
@@ -771,7 +767,6 @@ class MaterialSteelResource extends Resource
                                     ->prefix('Rp')
                                     ->placeholder('Contoh: 19380')
                                     ->dehydrated()
-                                    ->helperText('Bisa diisi IDR langsung sesuai Excel / otomatis: Coil ($) x Kurs')
                                     ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) round((float) $state, 2) : null)
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromCoilIdr($get, $set))
@@ -783,7 +778,6 @@ class MaterialSteelResource extends Resource
                                     ->step(0.0001)
                                     ->prefix('$')
                                     ->placeholder('Contoh: 1.3016')
-                                    ->helperText('Gunakan 4 digit desimal (contoh: 1.3016) agar kalkulasi IDR akurat sesuai Excel')
                                     ->required(fn (Get $get) => empty($get('coil_price')))
                                     ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) $state : null)
                                     ->live(onBlur: true)
@@ -796,7 +790,6 @@ class MaterialSteelResource extends Resource
                                     ->prefix('Rp')
                                     ->placeholder('Contoh: 19781')
                                     ->dehydrated()
-                                    ->helperText('Bisa diisi IDR langsung sesuai Excel / otomatis: Sheet ($) x Kurs')
                                     ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) round((float) $state, 2) : null)
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromSheetIdr($get, $set))
@@ -811,7 +804,6 @@ class MaterialSteelResource extends Resource
                                             ->step(0.0001)
                                             ->prefix('$')
                                             ->placeholder('Contoh: 1.2766')
-                                            ->helperText('Gunakan 4 digit desimal (contoh: 1.2766)')
                                             ->live(onBlur: true)
                                             ->afterStateUpdated(fn (Get $get, Set $set) => static::recalculateFormPrices($get, $set))
                                             ->columnSpan(1),
@@ -822,7 +814,6 @@ class MaterialSteelResource extends Resource
                                             ->prefix('Rp')
                                             ->placeholder('Contoh: 19380')
                                             ->dehydrated()
-                                            ->helperText('Otomatis: AP Coil ($) x Kurs')
                                             ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) round((float) $state, 2) : null)
                                             ->live(onBlur: true)
                                             ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromApCoilIdr($get, $set))
@@ -834,7 +825,6 @@ class MaterialSteelResource extends Resource
                                             ->step(0.0001)
                                             ->prefix('$')
                                             ->placeholder('Contoh: 1.3016')
-                                            ->helperText('Gunakan 4 digit desimal (contoh: 1.3016)')
                                             ->live(onBlur: true)
                                             ->afterStateUpdated(fn (Get $get, Set $set) => static::recalculateFormPrices($get, $set))
                                             ->columnSpan(1),
@@ -845,7 +835,6 @@ class MaterialSteelResource extends Resource
                                             ->prefix('Rp')
                                             ->placeholder('Contoh: 19781')
                                             ->dehydrated()
-                                            ->helperText('Otomatis: AP Sheet ($) x Kurs')
                                             ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) round((float) $state, 2) : null)
                                             ->live(onBlur: true)
                                             ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromApSheetIdr($get, $set))
@@ -1007,15 +996,6 @@ class MaterialSteelResource extends Resource
                     ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
                     ->alignRight()
                     ->toggleable(isToggledHiddenByDefault: true),
-
-                Tables\Columns\TextColumn::make('status')
-                    ->label('Status')
-                    ->badge()
-                    ->color(fn (string $state): string => match ($state) {
-                        'Active' => 'success',
-                        'Draft' => 'warning',
-                        default => 'gray',
-                    }),
             ])
             ->defaultSort('year', 'desc')
             ->toggleColumnsTriggerAction(fn (Tables\Actions\Action $action) => $action->hidden())

@@ -103,16 +103,6 @@ class MaterialSteelsRelationManager extends RelationManager
                     ->label('Sheet ($)')
                     ->formatStateUsing(fn ($record) => MaterialSteelResource::formatUsd($record->sheet_price, $record->currency_code ?? 'USD'))
                     ->alignRight(),
-
-                Tables\Columns\TextColumn::make('status')
-                    ->label('Status')
-                    ->badge()
-                    ->color(fn (string $state): string => match ($state) {
-                        'Active' => 'success',
-                        'Draft' => 'gray',
-                        'Expired' => 'danger',
-                        default => 'secondary',
-                    }),
             ])
             ->headerActions([
                 Tables\Actions\Action::make('sync_all_steels')

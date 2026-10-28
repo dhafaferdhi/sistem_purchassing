@@ -123,15 +123,6 @@ class StampingPartsRelationManager extends RelationManager
                     ->label('Sheet (Rp)')
                     ->formatStateUsing(fn ($record) => $record->sheet_price_idr !== null && $record->sheet_price_idr !== '' ? 'Rp '.number_format((float) $record->sheet_price_idr, 0, ',', '.') : '-')
                     ->alignRight(),
-
-                Tables\Columns\TextColumn::make('status')
-                    ->label('Status')
-                    ->badge()
-                    ->color(fn (string $state): string => match ($state) {
-                        'Active' => 'success',
-                        'Draft' => 'warning',
-                        default => 'gray',
-                    }),
             ])
             ->headerActions([
                 Tables\Actions\Action::make('sync_stamping_parts')

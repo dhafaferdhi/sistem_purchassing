@@ -119,10 +119,6 @@ class SupplierResource extends Resource
 
                 Tables\Columns\TextColumn::make('phone')
                     ->label('Telepon'),
-
-                Tables\Columns\IconColumn::make('is_active')
-                    ->label('Aktif')
-                    ->boolean(),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('category')

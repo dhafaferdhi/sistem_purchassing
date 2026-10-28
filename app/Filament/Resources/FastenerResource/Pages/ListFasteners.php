@@ -162,21 +162,11 @@ class ListFasteners extends ListRecords
                     return ExcelExportService::exportFastener($records, $data['format'] ?? 'xlsx');
                 }),
 
-            Actions\ActionGroup::make([
-                Actions\Action::make('download_template_xlsx')
-                    ->label('Template Excel (.xlsx)')
-                    ->icon('heroicon-o-document-arrow-down')
-                    ->action(fn () => ExcelExportService::downloadFastenerTemplate('xlsx')),
-
-                Actions\Action::make('download_template_csv')
-                    ->label('Template CSV (.csv)')
-                    ->icon('heroicon-o-document-text')
-                    ->action(fn () => ExcelExportService::downloadFastenerTemplate('csv')),
-            ])
-                ->label('Unduh Template')
-                ->icon('heroicon-o-document-duplicate')
+            Actions\Action::make('download_template_xlsx')
+                ->label('Unduh Template Excel')
+                ->icon('heroicon-o-document-arrow-down')
                 ->color('gray')
-                ->button(),
+                ->action(fn () => ExcelExportService::downloadFastenerTemplate('xlsx')),
         ];
     }
 }

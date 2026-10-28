@@ -228,14 +228,10 @@ class ExcelExportService
             'Sheet ($)',
             'AP Coil ($)',
             'AP Sheet ($)',
-            'Status',
         ];
 
         $samples = [
-            ['Q2', 2025, 'PT HSSI', 'SPH270C-OD', '1.6', -57, -57, 16022, 1.2096, 1.2346, 1.2096, 1.2346, 'Active'],
-            ['Q2', 2025, 'PT HSSI', 'SPH270C-OD', '1.8', -57, -57, 16022, 1.2036, 1.2286, 1.2036, 1.2286, 'Active'],
-            ['Q2', 2025, 'PT HSSI', 'SPC270C', '0.5', -57, -57, 16022, 1.2766, 1.3016, 1.2766, 1.3016, 'Active'],
-            ['Q3', 2025, 'PT HSSI', 'SPH270C-OD', '1.6', 0, 0, 16517, 1.2096, 1.2346, 1.2096, 1.2346, 'Active'],
+            ['Q2', 2025, 'PT HSSI', 'SPH270C-OD', '1.6', -57, -57, 16022, 1.2096, 1.2346, 1.2096, 1.2346],
         ];
 
         return static::streamDownloadTable('Template_Import_Material_Steel', $headers, $samples, $format);
@@ -445,7 +441,6 @@ class ExcelExportService
 
         $samples = [
             ['89911-X7095', 'BOLT', 'D26A', 'Q2', 2025, 'PT. TRI CENTRUM FORTUNA', 'S10C', 'BOLT', 10, 1.25, 0.035, 0.005],
-            ['89911-X1F05', 'BOLT PWR SEAT WELD', 'D26A', 'Q2', 2025, 'PT. TRI CENTRUM FORTUNA', 'S10C', 'BOLT', 10, 1.25, 0.042, 0.006],
         ];
 
         return static::streamDownloadTable('Template_Import_Fastener', $headers, $samples, $format);

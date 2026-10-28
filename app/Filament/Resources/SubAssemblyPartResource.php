@@ -421,7 +421,6 @@ class SubAssemblyPartResource extends Resource
                                             ->numeric()
                                             ->default(11)
                                             ->suffix('%')
-                                            ->helperText('Dihitung dari Total Biaya Proses')
                                             ->live(onBlur: true),
 
                                         Forms\Components\TextInput::make('profit_percent')
@@ -429,7 +428,6 @@ class SubAssemblyPartResource extends Resource
                                             ->numeric()
                                             ->default(0)
                                             ->suffix('%')
-                                            ->helperText('Dihitung dari Subtotal Biaya')
                                             ->live(onBlur: true),
 
                                         Forms\Components\TextInput::make('packing_cost')
@@ -444,7 +442,6 @@ class SubAssemblyPartResource extends Resource
                                             ->numeric()
                                             ->default(0)
                                             ->prefix('Rp')
-                                            ->helperText('Biaya depresiasi alat/jig jika ada')
                                             ->live(onBlur: true),
                                     ]),
 
@@ -488,28 +485,23 @@ class SubAssemblyPartResource extends Resource
                                                     <h3 class='text-sm font-semibold text-primary-950 dark:text-primary-100 flex items-center gap-2'>
                                                         <span>📊</span> Rincian Kalkulasi Harga Sub-Assembly (PT. Tri Centrum Fortuna)
                                                     </h3>
-                                                    <span class='text-xs font-medium text-gray-500'>Auto-calculated</span>
                                                 </div>
                                                 <div class='grid grid-cols-2 md:grid-cols-4 gap-4 text-xs'>
                                                     <div class='rounded-lg bg-blue-50 p-2.5 dark:bg-blue-950/30'>
                                                         <div class='text-blue-800 dark:text-blue-300'>(1) Material Total</div>
                                                         <div class='mt-1 text-sm font-bold text-blue-700 dark:text-blue-400'>Rp ".number_format($matTotal, 2, ',', '.')."</div>
-                                                        <div class='text-[10px] text-blue-600'>Total child parts</div>
                                                     </div>
                                                     <div class='rounded-lg bg-purple-50 p-2.5 dark:bg-purple-950/30'>
                                                         <div class='text-purple-800 dark:text-purple-300'>(2) Process Total</div>
                                                         <div class='mt-1 text-sm font-bold text-purple-700 dark:text-purple-400'>Rp ".number_format($procTotal, 2, ',', '.')."</div>
-                                                        <div class='text-[10px] text-purple-600'>Las CO + Cat CED</div>
                                                     </div>
                                                     <div class='rounded-lg bg-gray-50 p-2.5 dark:bg-gray-800/60'>
                                                         <div class='text-gray-500 dark:text-gray-400'>(3) Subtotal = (1) + (2)</div>
                                                         <div class='mt-1 text-sm font-bold text-gray-800 dark:text-gray-200'>Rp ".number_format($subtotal, 2, ',', '.')."</div>
-                                                        <div class='text-[10px] text-gray-400'>Material + Proses</div>
                                                     </div>
                                                     <div class='rounded-lg bg-amber-50 p-2.5 dark:bg-amber-950/30'>
                                                         <div class='text-amber-800 dark:text-amber-300'>(4) O/H Supplied ({$ohPct}%)</div>
                                                         <div class='mt-1 text-sm font-bold text-amber-700 dark:text-amber-400'>Rp ".number_format($ohCost, 2, ',', '.')."</div>
-                                                        <div class='text-[10px] text-amber-600'>Dari Total Proses</div>
                                                     </div>
                                                 </div>
                                                 <div class='mt-3 grid grid-cols-3 gap-4 text-xs pt-3 border-t border-gray-100 dark:border-gray-800'>
@@ -529,7 +521,6 @@ class SubAssemblyPartResource extends Resource
                                                 <div class='mt-3 flex items-center justify-between rounded-lg bg-emerald-50 px-4 py-3 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800'>
                                                     <div>
                                                         <span class='text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300'>Total Part Cost Sub-Assembly</span>
-                                                        <div class='text-[11px] text-emerald-600 dark:text-emerald-400'>Subtotal + Overhead + Profit + Packing + Tooling</div>
                                                     </div>
                                                     <div class='text-2xl font-black text-emerald-700 dark:text-emerald-300'>
                                                         Rp ".number_format($partCost, 2, ',', '.').'
@@ -652,15 +643,6 @@ class SubAssemblyPartResource extends Resource
                     ->color('success')
                     ->alignRight()
                     ->sortable(),
-
-                Tables\Columns\TextColumn::make('status')
-                    ->label('Status')
-                    ->badge()
-                    ->color(fn (string $state): string => match ($state) {
-                        'Active' => 'success',
-                        'Draft' => 'warning',
-                        default => 'gray',
-                    }),
 
                 Tables\Columns\TextColumn::make('drawing_reference')
                     ->label('Drawing Ref')

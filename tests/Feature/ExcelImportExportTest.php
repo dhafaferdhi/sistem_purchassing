@@ -103,7 +103,7 @@ class ExcelImportExportTest extends TestCase
             ->assertActionExists('import_excel')
             ->assertActionExists('export_excel')
             ->assertActionExists('download_template_xlsx')
-            ->assertActionExists('download_template_csv');
+            ->assertActionDoesNotExist('download_template_csv');
     }
 
     public function test_roundtrip_export_and_import_material_steel(): void

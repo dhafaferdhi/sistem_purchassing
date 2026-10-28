@@ -160,10 +160,6 @@ class ProcessResource extends Resource
                     ->label('Biaya Standar')
                     ->formatStateUsing(fn ($state) => 'Rp '.number_format($state, 2, ',', '.'))
                     ->sortable(),
-
-                Tables\Columns\IconColumn::make('is_active')
-                    ->label('Aktif')
-                    ->boolean(),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('stage_type')

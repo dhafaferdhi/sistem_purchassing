@@ -71,6 +71,11 @@ class AdminPanelProvider extends PanelProvider
                             width: 100% !important;
                             min-width: 100% !important;
                         }
+
+                        /* Sembunyikan tulisan informasi kecil helper text pada form create/edit */
+                        .fi-fo-field-wrp-helper-text {
+                            display: none !important;
+                        }
                     </style>
                 ')
             )

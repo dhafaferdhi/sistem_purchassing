@@ -845,7 +845,6 @@ class FastenerResource extends Resource
                                     ->numeric()
                                     ->step(0.000001)
                                     ->placeholder('Contoh: 1.013535')
-                                    ->helperText('Perbandingan kurs baru / kurs lama (Exchg fluctuation)')
                                     ->columnSpan(1),
 
                                 Forms\Components\TextInput::make('wire_price_usd_kg')
@@ -986,7 +985,6 @@ class FastenerResource extends Resource
                                     ->default(0)
                                     ->prefix('Rp')
                                     ->placeholder('0')
-                                    ->helperText('Biaya depresiasi cetakan/jig per pcs jika ada')
                                     ->live(onBlur: true)
                                     ->columnSpan(1),
 
@@ -1036,28 +1034,23 @@ class FastenerResource extends Resource
                                                     <h3 class='text-sm font-semibold text-primary-950 dark:text-primary-100 flex items-center gap-2'>
                                                         <span>📊</span> Rincian Komponen Biaya Fastener (PT Nitto Alam)
                                                     </h3>
-                                                    <span class='text-xs font-medium text-gray-500'>Auto-calculated</span>
                                                 </div>
                                                 <div class='grid grid-cols-2 md:grid-cols-4 gap-4 text-xs'>
                                                     <div class='rounded-lg bg-gray-50 p-2.5 dark:bg-gray-800/60'>
                                                         <div class='text-gray-500 dark:text-gray-400'>Wire Cost / pc</div>
                                                         <div class='mt-1 text-sm font-bold text-gray-800 dark:text-gray-200'>Rp ".number_format($wirePc, 2, ',', '.')."</div>
-                                                        <div class='text-[10px] text-gray-400'>{$grossGr} gr × Rp ".number_format($wireIdrKg, 0, ',', '.')."/kg</div>
                                                     </div>
                                                     <div class='rounded-lg bg-amber-50 p-2.5 dark:bg-amber-950/30'>
                                                         <div class='text-amber-800 dark:text-amber-300'>Washer & Material Control</div>
                                                         <div class='mt-1 text-sm font-bold text-amber-700 dark:text-amber-400'>Rp ".number_format($ctrlCost + $washerPrice, 2, ',', '.')."</div>
-                                                        <div class='text-[10px] text-amber-600'>Washer: Rp {$washerPrice} + Ctrl: Rp ".number_format($ctrlCost, 2)."</div>
                                                     </div>
                                                     <div class='rounded-lg bg-blue-50 p-2.5 dark:bg-blue-950/30'>
                                                         <div class='text-blue-800 dark:text-blue-300'>Total Biaya Material</div>
                                                         <div class='mt-1 text-sm font-bold text-blue-700 dark:text-blue-400'>Rp ".number_format($matTotal, 2, ',', '.')."</div>
-                                                        <div class='text-[10px] text-blue-600'>Wire + Washer + Ctrl</div>
                                                     </div>
                                                     <div class='rounded-lg bg-purple-50 p-2.5 dark:bg-purple-950/30'>
                                                         <div class='text-purple-800 dark:text-purple-300'>Total Biaya Proses</div>
                                                         <div class='mt-1 text-sm font-bold text-purple-700 dark:text-purple-400'>Rp ".number_format($procTotal, 2, ',', '.')."</div>
-                                                        <div class='text-[10px] text-purple-600'>Heading + Roll + Wash + Plate</div>
                                                     </div>
                                                 </div>
                                                 <div class='mt-3 grid grid-cols-2 md:grid-cols-2 gap-4 text-xs pt-3 border-t border-gray-100 dark:border-gray-800'>
@@ -1159,7 +1152,6 @@ class FastenerResource extends Resource
             Tables\Columns\TextColumn::make('part_name')
                 ->label('Part Name')
                 ->placeholder('-')
-                ->wrap()
                 ->searchable()
                 ->sortable(),
 
@@ -1206,15 +1198,6 @@ class FastenerResource extends Resource
                 ->color('success')
                 ->alignRight()
                 ->sortable(),
-
-            Tables\Columns\TextColumn::make('status')
-                ->label('Status')
-                ->badge()
-                ->color(fn (string $state): string => match ($state) {
-                    'Active' => 'success',
-                    'Draft' => 'warning',
-                    default => 'gray',
-                }),
 
             // Kolom rincian Excel opsional (toggleable hidden by default)
             Tables\Columns\TextColumn::make('old_part_number')

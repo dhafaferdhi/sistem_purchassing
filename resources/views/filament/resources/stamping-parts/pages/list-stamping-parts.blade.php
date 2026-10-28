@@ -58,14 +58,12 @@
             font-variant-numeric: tabular-nums !important;
         }
 
-        /* Hanya nama part dan supplier yang boleh dibungkus (wrap) jika teks panjang */
+        /* Part name ke samping saja (nowrap) sesuai request */
         .fi-resource-stamping-parts td[class*="col-part_name"] .fi-ta-text-item {
-            max-width: 155px !important;
-            white-space: normal !important;
-            word-break: break-word !important;
+            white-space: nowrap !important;
         }
         .fi-resource-stamping-parts td[class*="col-supplier_name"] .fi-ta-text-item {
-            max-width: 110px !important;
+            max-width: 130px !important;
             white-space: normal !important;
             word-break: break-word !important;
         }

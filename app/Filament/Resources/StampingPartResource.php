@@ -920,7 +920,6 @@ class StampingPartResource extends Resource
                                 Forms\Components\TextInput::make('berat')
                                     ->label('Berat Material Gross (Kg)')
                                     ->placeholder('Contoh: 0.5890')
-                                    ->helperText('Otomatis dihitung: (Tebal x Wide x Pitch x 7.85) / (1.000.000 x Yield), atau diisi manual')
                                     ->numeric()
                                     ->step(0.0001)
                                     ->suffix('kg')
@@ -933,7 +932,6 @@ class StampingPartResource extends Resource
                                     ->step(0.0001)
                                     ->placeholder('Contoh: 0.2780')
                                     ->default(0)
-                                    ->helperText('Sisa potongan scrap (pengurang biaya material)')
                                     ->suffix('kg')
                                     ->live(onBlur: true)
                                     ->columnSpan(1),
@@ -944,7 +942,6 @@ class StampingPartResource extends Resource
                                     ->placeholder('Contoh: -1500')
                                     ->default(-1500)
                                     ->prefix('Rp')
-                                    ->helperText('Bernilai negatif sebagai pengurang biaya material')
                                     ->live(onBlur: true)
                                     ->columnSpan(1),
 
@@ -975,7 +972,6 @@ class StampingPartResource extends Resource
                                     ->numeric()
                                     ->default(11)
                                     ->suffix('%')
-                                    ->helperText('Dihitung dari Total Biaya Proses')
                                     ->live(onBlur: true)
                                     ->columnSpan(1),
 
@@ -984,7 +980,6 @@ class StampingPartResource extends Resource
                                     ->numeric()
                                     ->default(4)
                                     ->suffix('%')
-                                    ->helperText('Dihitung dari Total Biaya Material')
                                     ->live(onBlur: true)
                                     ->columnSpan(1),
 
@@ -994,7 +989,6 @@ class StampingPartResource extends Resource
                                     ->default(0)
                                     ->prefix('Rp')
                                     ->placeholder('0')
-                                    ->helperText('Biaya depresiasi cetakan/jig per pcs jika ada')
                                     ->live(onBlur: true)
                                     ->columnSpan(1),
 
@@ -1043,28 +1037,23 @@ class StampingPartResource extends Resource
                                                     <h3 class='text-sm font-semibold text-primary-950 dark:text-primary-100 flex items-center gap-2'>
                                                         <span>📊</span> Rincian Komponen Biaya Part (PT Posmi Steel)
                                                     </h3>
-                                                    <span class='text-xs font-medium text-gray-500'>Auto-calculated</span>
                                                 </div>
                                                 <div class='grid grid-cols-2 md:grid-cols-4 gap-4 text-xs'>
                                                     <div class='rounded-lg bg-gray-50 p-2.5 dark:bg-gray-800/60'>
                                                         <div class='text-gray-500 dark:text-gray-400'>Gross Material Cost</div>
                                                         <div class='mt-1 text-sm font-bold text-gray-800 dark:text-gray-200'>Rp ".number_format($grossMatCost, 0, ',', '.')."</div>
-                                                        <div class='text-[10px] text-gray-400'>{$berat} kg × Rp ".number_format($steelRate, 0, ',', '.')."</div>
                                                     </div>
                                                     <div class='rounded-lg bg-amber-50 p-2.5 dark:bg-amber-950/30'>
                                                         <div class='text-amber-800 dark:text-amber-300'>Scrap Recovery Cost</div>
                                                         <div class='mt-1 text-sm font-bold text-amber-700 dark:text-amber-400'>Rp ".number_format($scrapCost, 0, ',', '.')."</div>
-                                                        <div class='text-[10px] text-amber-600'>{$scrapWeight} kg × Rp ".number_format($scrapPrice, 0, ',', '.')."</div>
                                                     </div>
                                                     <div class='rounded-lg bg-blue-50 p-2.5 dark:bg-blue-950/30'>
                                                         <div class='text-blue-800 dark:text-blue-300'>Total Biaya Material</div>
                                                         <div class='mt-1 text-sm font-bold text-blue-700 dark:text-blue-400'>Rp ".number_format($matTotal, 0, ',', '.')."</div>
-                                                        <div class='text-[10px] text-blue-600'>Gross + Scrap</div>
                                                     </div>
                                                     <div class='rounded-lg bg-purple-50 p-2.5 dark:bg-purple-950/30'>
                                                         <div class='text-purple-800 dark:text-purple-300'>Total Biaya Proses</div>
                                                         <div class='mt-1 text-sm font-bold text-purple-700 dark:text-purple-400'>Rp ".number_format($procTotal, 0, ',', '.')."</div>
-                                                        <div class='text-[10px] text-purple-600'>{$manHour} SPH × Rp {$charge}</div>
                                                     </div>
                                                 </div>
                                                 <div class='mt-3 grid grid-cols-2 md:grid-cols-3 gap-4 text-xs pt-3 border-t border-gray-100 dark:border-gray-800'>
@@ -1178,7 +1167,6 @@ class StampingPartResource extends Resource
             Tables\Columns\TextColumn::make('part_name')
                 ->label('Part Name')
                 ->placeholder('-')
-                ->wrap()
                 ->searchable()
                 ->sortable(),
 
@@ -1245,15 +1233,6 @@ class StampingPartResource extends Resource
                 ->color('success')
                 ->alignRight()
                 ->sortable(),
-
-            Tables\Columns\TextColumn::make('status')
-                ->label('Status')
-                ->badge()
-                ->color(fn (string $state): string => match ($state) {
-                    'Active' => 'success',
-                    'Draft' => 'warning',
-                    default => 'gray',
-                }),
 
             // Kolom rincian Excel opsional (toggleable hidden by default)
             Tables\Columns\TextColumn::make('gross_material_cost')

@@ -165,10 +165,6 @@ class MaterialResource extends Resource
                     ->badge()
                     ->color('success')
                     ->sortable(),
-
-                Tables\Columns\IconColumn::make('is_active')
-                    ->label('Aktif')
-                    ->boolean(),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('main_category')

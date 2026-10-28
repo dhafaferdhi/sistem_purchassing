@@ -133,10 +133,6 @@ class MachineResource extends Resource
                     ->label('Kapasitas Output')
                     ->formatStateUsing(fn ($state) => $state.' pcs/jam')
                     ->sortable(),
-
-                Tables\Columns\IconColumn::make('is_active')
-                    ->label('Aktif')
-                    ->boolean(),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('stamping_type')
