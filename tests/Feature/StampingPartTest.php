@@ -509,8 +509,8 @@ class StampingPartTest extends TestCase
 
         Livewire::test(ListStampingParts::class)
             ->assertCanSeeTableRecords([$part])
-            ->assertTableColumnExists('hr_steel_usd')
-            ->assertTableColumnExists('cr_steel_usd')
+            ->assertTableColumnDoesNotExist('hr_steel_usd')
+            ->assertTableColumnDoesNotExist('cr_steel_usd')
             ->assertTableColumnExists('exchange_rate')
             ->assertTableColumnExists('coil_price')
             ->assertTableColumnExists('coil_price_idr')

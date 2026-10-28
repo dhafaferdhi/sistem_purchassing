@@ -7,6 +7,7 @@ use App\Models\Currency;
 use App\Models\Material;
 use App\Models\MaterialSteel;
 use App\Models\Supplier;
+use App\Services\ExcelExportService;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
@@ -15,6 +16,7 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\HtmlString;
 
 class MaterialSteelResource extends Resource
@@ -328,6 +330,69 @@ class MaterialSteelResource extends Resource
         $steelPrice = $coil > 0 ? $coil : $sheet;
         $set('steel_price', $steelPrice);
         $set('steel_price_idr', round($steelPrice * $rate, 2));
+    }
+
+    public static function updatePricesFromCoilIdr(Get $get, Set $set): void
+    {
+        $coilIdr = (float) ($get('coil_price_idr') ?? 0);
+        $rate = (float) ($get('exchange_rate') ?? 1);
+
+        if ($rate > 0 && $coilIdr > 0) {
+            $coil = round($coilIdr / $rate, 4);
+            $set('coil_price', $coil);
+
+            $apCoil = (float) ($get('ap_coil_price') ?? 0);
+            if ($apCoil <= 0) {
+                $set('ap_coil_price', $coil);
+                $set('ap_coil_price_idr', $coilIdr);
+            }
+
+            $steelPrice = $coil;
+            $set('steel_price', $steelPrice);
+            $set('steel_price_idr', $coilIdr);
+        }
+    }
+
+    public static function updatePricesFromSheetIdr(Get $get, Set $set): void
+    {
+        $sheetIdr = (float) ($get('sheet_price_idr') ?? 0);
+        $rate = (float) ($get('exchange_rate') ?? 1);
+
+        if ($rate > 0 && $sheetIdr > 0) {
+            $sheet = round($sheetIdr / $rate, 4);
+            $set('sheet_price', $sheet);
+
+            $apSheet = (float) ($get('ap_sheet_price') ?? 0);
+            if ($apSheet <= 0) {
+                $set('ap_sheet_price', $sheet);
+                $set('ap_sheet_price_idr', $sheetIdr);
+            }
+
+            if (empty($get('coil_price'))) {
+                $set('steel_price', $sheet);
+                $set('steel_price_idr', $sheetIdr);
+            }
+        }
+    }
+
+    public static function updatePricesFromApCoilIdr(Get $get, Set $set): void
+    {
+        $apCoilIdr = (float) ($get('ap_coil_price_idr') ?? 0);
+        $rate = (float) ($get('exchange_rate') ?? 1);
+
+        if ($rate > 0 && $apCoilIdr > 0) {
+            $set('ap_coil_price', round($apCoilIdr / $rate, 4));
+        }
+    }
+
+    public static function updatePricesFromApSheetIdr(Get $get, Set $set): void
+    {
+        $apSheetIdr = (float) ($get('ap_sheet_price_idr') ?? 0);
+        $rate = (float) ($get('exchange_rate') ?? 1);
+
+        if ($rate > 0 && $apSheetIdr > 0) {
+            $set('ap_sheet_price', round($apSheetIdr / $rate, 4));
+        }
     }
 
     public static function updatePricesFromHrCr(Get $get, Set $set, ?string $source = null): void
@@ -702,11 +767,14 @@ class MaterialSteelResource extends Resource
 
                                 Forms\Components\TextInput::make('coil_price_idr')
                                     ->label('Total Coil (IDR/Kg)')
+                                    ->numeric()
                                     ->prefix('Rp')
-                                    ->readOnly()
+                                    ->placeholder('Contoh: 19380')
                                     ->dehydrated()
-                                    ->helperText('Otomatis: Coil ($) x Kurs')
-                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? number_format(round((float) $state, 2), 2, ',', '.') : null)
+                                    ->helperText('Bisa diisi IDR langsung sesuai Excel / otomatis: Coil ($) x Kurs')
+                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) round((float) $state, 2) : null)
+                                    ->live(onBlur: true)
+                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromCoilIdr($get, $set))
                                     ->columnSpan(1),
 
                                 Forms\Components\TextInput::make('sheet_price')
@@ -724,11 +792,14 @@ class MaterialSteelResource extends Resource
 
                                 Forms\Components\TextInput::make('sheet_price_idr')
                                     ->label('Total Sheet (IDR/Kg)')
+                                    ->numeric()
                                     ->prefix('Rp')
-                                    ->readOnly()
+                                    ->placeholder('Contoh: 19781')
                                     ->dehydrated()
-                                    ->helperText('Otomatis: Sheet ($) x Kurs')
-                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? number_format(round((float) $state, 2), 2, ',', '.') : null)
+                                    ->helperText('Bisa diisi IDR langsung sesuai Excel / otomatis: Sheet ($) x Kurs')
+                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) round((float) $state, 2) : null)
+                                    ->live(onBlur: true)
+                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromSheetIdr($get, $set))
                                     ->columnSpan(1),
 
                                 // Subsection: Harga AP / Pembelian (Otomatis Terisi Sesuai Rumus Material Steel)
@@ -747,11 +818,14 @@ class MaterialSteelResource extends Resource
 
                                         Forms\Components\TextInput::make('ap_coil_price_idr')
                                             ->label('AP Coil (IDR/Kg)')
+                                            ->numeric()
                                             ->prefix('Rp')
-                                            ->readOnly()
+                                            ->placeholder('Contoh: 19380')
                                             ->dehydrated()
                                             ->helperText('Otomatis: AP Coil ($) x Kurs')
-                                            ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? number_format(round((float) $state, 2), 2, ',', '.') : null)
+                                            ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) round((float) $state, 2) : null)
+                                            ->live(onBlur: true)
+                                            ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromApCoilIdr($get, $set))
                                             ->columnSpan(1),
 
                                         Forms\Components\TextInput::make('ap_sheet_price')
@@ -767,11 +841,14 @@ class MaterialSteelResource extends Resource
 
                                         Forms\Components\TextInput::make('ap_sheet_price_idr')
                                             ->label('AP Sheet (IDR/Kg)')
+                                            ->numeric()
                                             ->prefix('Rp')
-                                            ->readOnly()
+                                            ->placeholder('Contoh: 19781')
                                             ->dehydrated()
                                             ->helperText('Otomatis: AP Sheet ($) x Kurs')
-                                            ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? number_format(round((float) $state, 2), 2, ',', '.') : null)
+                                            ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) round((float) $state, 2) : null)
+                                            ->live(onBlur: true)
+                                            ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromApSheetIdr($get, $set))
                                             ->columnSpan(1),
                                     ])->columns(4)->columnSpanFull(),
                             ])->columns(4),
@@ -1038,6 +1115,30 @@ class MaterialSteelResource extends Resource
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
+                    Tables\Actions\BulkAction::make('export_selected_xlsx')
+                        ->label('Export Terpilih (Excel .xlsx)')
+                        ->icon('heroicon-o-arrow-down-tray')
+                        ->color('success')
+                        ->action(fn (Collection $records) => ExcelExportService::exportMaterialSteel($records, 'xlsx')),
+
+                    Tables\Actions\BulkAction::make('export_selected_csv')
+                        ->label('Export Terpilih (CSV .csv)')
+                        ->icon('heroicon-o-document-text')
+                        ->color('info')
+                        ->action(fn (Collection $records) => ExcelExportService::exportMaterialSteel($records, 'csv')),
+
+                    Tables\Actions\BulkAction::make('export_selected_xlsx')
+                        ->label('Export Terpilih (Excel .xlsx)')
+                        ->icon('heroicon-o-arrow-down-tray')
+                        ->color('success')
+                        ->action(fn (\Illuminate\Database\Eloquent\Collection $records) => ExcelExportService::exportMaterialSteel($records, 'xlsx')),
+
+                    Tables\Actions\BulkAction::make('export_selected_csv')
+                        ->label('Export Terpilih (CSV .csv)')
+                        ->icon('heroicon-o-document-text')
+                        ->color('info')
+                        ->action(fn (\Illuminate\Database\Eloquent\Collection $records) => ExcelExportService::exportMaterialSteel($records, 'csv')),
+
                     Tables\Actions\DeleteBulkAction::make(),
                 ]),
             ]);

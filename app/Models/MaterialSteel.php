@@ -2,11 +2,16 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class MaterialSteel extends Model
 {
+    public static bool $disableQuarterlyCascade = false;
+
+    public int $lastCascadedCount = 0;
+
     protected $fillable = [
         'year',
         'quarter',
@@ -106,6 +111,25 @@ class MaterialSteel extends Model
 
     protected static function booted(): void
     {
+        static::saved(function (MaterialSteel $model) {
+            if (static::$disableQuarterlyCascade) {
+                return;
+            }
+
+            if ($model->wasChanged([
+                'coil_price',
+                'sheet_price',
+                'ap_coil_price',
+                'ap_sheet_price',
+                'gap_steel_usd',
+                'gap_steel_kg_usd',
+                'hr_steel_usd',
+                'cr_steel_usd',
+            ])) {
+                $model->cascadeToNextQuarters();
+            }
+        });
+
         static::saving(function (MaterialSteel $model) {
             // Pastikan currency_id selalu sinkron dengan year, quarter, dan currency_code
             $curr = $model->currency_id ? Currency::find($model->currency_id) : null;
@@ -127,6 +151,15 @@ class MaterialSteel extends Model
 
                 if ($matched) {
                     $model->currency_id = $matched->id;
+                }
+            }
+
+            // Otomatis sinkronkan vendor_code dan supplier_name dari supplier_id jika belum terisi
+            if ($model->supplier_id && (empty($model->vendor_code) || empty($model->supplier_name))) {
+                $supp = Supplier::find($model->supplier_id);
+                if ($supp) {
+                    $model->vendor_code = $model->vendor_code ?: $supp->code;
+                    $model->supplier_name = $model->supplier_name ?: $supp->name;
                 }
             }
 
@@ -419,6 +452,179 @@ class MaterialSteel extends Model
                 'label' => 'Q4 '.($year - 1),
             ],
         };
+    }
+
+    public static function getNextQuarterInfo(string $quarter, int $year): array
+    {
+        $q = strtoupper(trim($quarter));
+
+        return match ($q) {
+            'Q1' => [
+                'next_quarter' => 'Q2',
+                'next_year' => $year,
+                'label' => 'Q2 '.$year,
+            ],
+            'Q2' => [
+                'next_quarter' => 'Q3',
+                'next_year' => $year,
+                'label' => 'Q3 '.$year,
+            ],
+            'Q3' => [
+                'next_quarter' => 'Q4',
+                'next_year' => $year,
+                'label' => 'Q4 '.$year,
+            ],
+            default => [
+                'next_quarter' => 'Q1',
+                'next_year' => $year + 1,
+                'label' => 'Q1 '.($year + 1),
+            ],
+        };
+    }
+
+    /**
+     * Cari record material steel kuartal berikutnya yang spesifikasi, ketebalan, dan supplier-nya cocok.
+     *
+     * @return Collection<int, MaterialSteel>
+     */
+    public static function getNextQuarterRecords(MaterialSteel $source): Collection
+    {
+        if (empty($source->quarter) || empty($source->year)) {
+            return new Collection;
+        }
+
+        $nextInfo = static::getNextQuarterInfo($source->quarter, (int) $source->year);
+        $nextQuarter = $nextInfo['next_quarter'];
+        $nextYear = $nextInfo['next_year'];
+
+        $cleanSpec = static::cleanSteelSpec($source->steel_spec);
+        $cleanThickness = ! empty($source->double_thickness)
+            ? trim(preg_replace('/[a-zA-Z\s]+/', '', (string) $source->double_thickness))
+            : null;
+
+        $query = static::where('year', $nextYear)->where('quarter', $nextQuarter);
+
+        if ($source->supplier_id) {
+            $query->where(function ($q) use ($source) {
+                $q->where('supplier_id', $source->supplier_id);
+                if ($source->supplier_name) {
+                    $q->orWhere('supplier_name', $source->supplier_name);
+                }
+                if ($source->vendor_code) {
+                    $q->orWhere('vendor_code', $source->vendor_code);
+                }
+            });
+        }
+
+        if ($cleanSpec) {
+            $query->where(function ($q) use ($source, $cleanSpec) {
+                $q->where('steel_spec', $cleanSpec)
+                    ->orWhere('steel_spec', $source->steel_spec)
+                    ->orWhere('steel_spec', 'like', $cleanSpec.'%');
+            });
+        }
+
+        if ($cleanThickness) {
+            $query->where(function ($q) use ($cleanThickness) {
+                $q->where('double_thickness', $cleanThickness)
+                    ->orWhere('double_thickness', 'like', $cleanThickness.'%');
+            });
+        }
+
+        return $query->get();
+    }
+
+    /**
+     * Teruskan perubahan harga kuartal ini ke kuartal-kuartal berikutnya yang bergantung (Q2, Q3, dst.)
+     *
+     * @param  array<int>  $visitedIds
+     * @return int Jumlah record kuartal berikutnya yang berhasil diperbarui
+     */
+    public function cascadeToNextQuarters(array &$visitedIds = []): int
+    {
+        if (in_array($this->id, $visitedIds, true)) {
+            return 0;
+        }
+        $visitedIds[] = $this->id;
+
+        $updatedCount = 0;
+        $nextRecords = static::getNextQuarterRecords($this);
+
+        foreach ($nextRecords as $next) {
+            if (in_array($next->id, $visitedIds, true)) {
+                continue;
+            }
+
+            // Hitung Gap kg USD kuartal berikutnya
+            $gapKg = (float) ($next->gap_steel_kg_usd ?? 0);
+            if ($gapKg == 0.0 && ! empty($next->gap_steel_usd)) {
+                $gapKg = round(((float) $next->gap_steel_usd) / 1000, 4);
+            }
+            if ($gapKg == 0.0) {
+                $steelType = static::determineSteelType($next->steel_spec);
+                $gapMt = $steelType === 'HR' ? (float) ($next->hr_steel_usd ?? 0) : (float) ($next->cr_steel_usd ?? 0);
+                if ($gapMt != 0.0) {
+                    $gapKg = round($gapMt / 1000, 4);
+                }
+            }
+
+            // Rumus: Harga Baru ($) = Harga Kuartal Lalu ($) + (Gap ÷ 1000)
+            $newCoil = (float) $this->coil_price > 0 ? round((float) $this->coil_price + $gapKg, 4) : (float) $next->coil_price;
+            $newSheet = (float) $this->sheet_price > 0 ? round((float) $this->sheet_price + $gapKg, 4) : (float) $next->sheet_price;
+
+            $baseApCoil = (float) ($this->ap_coil_price ?: $this->coil_price);
+            $newApCoil = $baseApCoil > 0 ? round($baseApCoil + $gapKg, 4) : (float) $next->ap_coil_price;
+
+            $baseApSheet = (float) ($this->ap_sheet_price ?: $this->sheet_price);
+            $newApSheet = $baseApSheet > 0 ? round($baseApSheet + $gapKg, 4) : (float) $next->ap_sheet_price;
+
+            $rate = (float) ($next->exchange_rate ?: 1);
+
+            $changed = false;
+            if (abs((float) $next->coil_price - $newCoil) > 0.00001) {
+                $next->coil_price = $newCoil;
+                $next->coil_price_idr = round($newCoil * $rate, 2);
+                $changed = true;
+            }
+            if (abs((float) $next->sheet_price - $newSheet) > 0.00001) {
+                $next->sheet_price = $newSheet;
+                $next->sheet_price_idr = round($newSheet * $rate, 2);
+                $changed = true;
+            }
+            if (abs((float) $next->ap_coil_price - $newApCoil) > 0.00001) {
+                $next->ap_coil_price = $newApCoil;
+                $next->ap_coil_price_idr = round($newApCoil * $rate, 2);
+                $changed = true;
+            }
+            if (abs((float) $next->ap_sheet_price - $newApSheet) > 0.00001) {
+                $next->ap_sheet_price = $newApSheet;
+                $next->ap_sheet_price_idr = round($newApSheet * $rate, 2);
+                $changed = true;
+            }
+
+            if ($changed) {
+                $next->steel_price = $next->coil_price ?: $next->sheet_price ?: 0;
+                $next->steel_price_idr = round((float) $next->steel_price * $rate, 2);
+
+                if ($next->material_id) {
+                    $mat = Material::find($next->material_id);
+                    if ($mat) {
+                        $mat->basic_rate = $next->steel_price;
+                        $mat->save();
+                    }
+                }
+
+                $next->saveQuietly();
+                $updatedCount++;
+
+                // Rekursif teruskan cascade ke kuartal setelahnya (Q2 -> Q3 -> Q4 ...)
+                $updatedCount += $next->cascadeToNextQuarters($visitedIds);
+            }
+        }
+
+        $this->lastCascadedCount = $updatedCount;
+
+        return $updatedCount;
     }
 
     public static function findPreviousQuarterData(string $quarter, int $year, ?int $supplierId = null, ?string $spec = null, ?string $thickness = null): ?array

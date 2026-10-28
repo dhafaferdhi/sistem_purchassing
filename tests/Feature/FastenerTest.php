@@ -356,8 +356,8 @@ class FastenerTest extends TestCase
 
         Livewire::test(ListFasteners::class)
             ->assertCanSeeTableRecords([$fastener])
-            ->assertTableColumnExists('hr_steel_usd')
-            ->assertTableColumnExists('cr_steel_usd')
+            ->assertTableColumnDoesNotExist('hr_steel_usd')
+            ->assertTableColumnDoesNotExist('cr_steel_usd')
             ->assertTableColumnExists('exchange_rate')
             ->assertTableColumnExists('wire_price_usd_kg')
             ->assertTableColumnExists('coil_price')

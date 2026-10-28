@@ -645,8 +645,8 @@ class MaterialSteelQuarterlyTest extends TestCase
             ->assertActionDoesNotExist('import_excel');
 
         Livewire::test(ListMaterialSteels::class)
-            ->assertActionDoesNotExist('import_excel')
-            ->assertActionDoesNotExist('download_template');
+            ->assertActionExists('import_excel')
+            ->assertActionExists('export_excel');
     }
 
     public function test_create_q2_with_gap_mt_auto_calculates_from_q1_baseline(): void
@@ -1224,5 +1224,165 @@ class MaterialSteelQuarterlyTest extends TestCase
         $this->assertEquals('Rp 20.454', MaterialSteelResource::formatIdr($q3->coil_price_idr));
         $this->assertEquals('Rp 20.854', MaterialSteelResource::formatIdr($q3->sheet_price_idr));
         $this->assertEquals('$ 1.2766', MaterialSteelResource::formatUsd($q3->coil_price));
+    }
+
+    public function test_can_input_coil_idr_directly_to_auto_calculate_exact_usd_matching_excel(): void
+    {
+        $this->actingAs($this->admin);
+
+        // Uji input langsung IDR dari angka Excel (19.380 IDR untuk Coil, 19.781 IDR untuk Sheet pada Kurs 16022)
+        // Sistem otomatis melakukan reverse-calculation menjadi presisi 4 desimal USD ($ 1.2096 dan $ 1.2346)
+        Livewire::test(CreateMaterialSteel::class)
+            ->fillForm([
+                'year' => 2025,
+                'quarter' => 'Q2',
+                'supplier_id' => $this->supplier->id,
+                'steel_spec' => 'SPH270C-OD',
+                'double_thickness' => '1.6',
+                'exchange_rate' => 16022.0,
+            ])
+            ->set('data.coil_price_idr', 19380.0)
+            ->assertFormSet([
+                'coil_price' => 1.2096,
+                'coil_price_idr' => 19380.0,
+            ])
+            ->set('data.sheet_price_idr', 19781.0)
+            ->assertFormSet([
+                'sheet_price' => 1.2346,
+                'sheet_price_idr' => 19781.0,
+            ])
+            ->call('create')
+            ->assertHasNoFormErrors();
+
+        $saved = MaterialSteel::where('year', 2025)->where('quarter', 'Q2')->where('steel_spec', 'SPH270C-OD')->first();
+        $this->assertNotNull($saved);
+        $this->assertEquals(1.2096, (float) $saved->coil_price);
+        $this->assertEquals(1.2346, (float) $saved->sheet_price);
+        $this->assertEquals(19380.21, (float) $saved->coil_price_idr);
+        $this->assertEquals(19780.76, (float) $saved->sheet_price_idr);
+        $this->assertEquals('Rp 19.380', MaterialSteelResource::formatIdr($saved->coil_price_idr));
+        $this->assertEquals('Rp 19.781', MaterialSteelResource::formatIdr($saved->sheet_price_idr));
+    }
+
+    public function test_updating_q1_cascades_to_q2_and_q3_according_to_gap_and_exchange_rate(): void
+    {
+        // 1. Buat data Q1 2025 sebagai base
+        $q1 = MaterialSteel::create([
+            'year' => 2025,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'steel_spec' => 'SPH270C-OD',
+            'double_thickness' => '1.6',
+            'exchange_rate' => 15550.0,
+            'coil_price' => 1.2666,
+            'sheet_price' => 1.2916,
+        ]);
+
+        // 2. Buat data Q2 2025 dengan Gap -57 $/MT (-0.057 $/kg) dan Kurs 16022
+        $q2 = MaterialSteel::create([
+            'year' => 2025,
+            'quarter' => 'Q2',
+            'supplier_id' => $this->supplier->id,
+            'steel_spec' => 'SPH270C-OD',
+            'double_thickness' => '1.6',
+            'gap_steel_usd' => -57.0,
+            'gap_steel_kg_usd' => -0.057,
+            'exchange_rate' => 16022.0,
+            'coil_price' => 1.2096,
+            'sheet_price' => 1.2346,
+        ]);
+
+        // 3. Buat data Q3 2025 dengan Gap 0 $/MT dan Kurs 16517
+        $q3 = MaterialSteel::create([
+            'year' => 2025,
+            'quarter' => 'Q3',
+            'supplier_id' => $this->supplier->id,
+            'steel_spec' => 'SPH270C-OD',
+            'double_thickness' => '1.6',
+            'gap_steel_usd' => 0.0,
+            'gap_steel_kg_usd' => 0.0,
+            'exchange_rate' => 16517.0,
+            'coil_price' => 1.2096,
+            'sheet_price' => 1.2346,
+        ]);
+
+        // Verifikasi harga awal
+        $this->assertEquals(1.2096, (float) $q2->coil_price);
+        $this->assertEquals(19380.21, (float) $q2->coil_price_idr);
+        $this->assertEquals(1.2096, (float) $q3->coil_price);
+        $this->assertEquals(19978.96, (float) $q3->coil_price_idr);
+
+        // 4. Update harga Q1: coil_price naik menjadi 1.2700, sheet_price menjadi 1.3000
+        $q1->coil_price = 1.2700;
+        $q1->sheet_price = 1.3000;
+        $q1->save();
+
+        // 5. Muat ulang Q2 dan Q3 dari database
+        $q2->refresh();
+        $q3->refresh();
+
+        // Verifikasi Q2 otomatis berubah mengikuti logika: 1.2700 + (-0.057) = 1.2130
+        $this->assertEquals(1.2130, (float) $q2->coil_price);
+        $this->assertEquals(round(1.2130 * 16022, 2), (float) $q2->coil_price_idr);
+        $this->assertEquals(19434.69, (float) $q2->coil_price_idr);
+
+        // Sheet Q2: 1.3000 + (-0.057) = 1.2430
+        $this->assertEquals(1.2430, (float) $q2->sheet_price);
+        $this->assertEquals(round(1.2430 * 16022, 2), (float) $q2->sheet_price_idr);
+
+        // Verifikasi Q3 otomatis cascade dari Q2: 1.2130 + 0 = 1.2130
+        $this->assertEquals(1.2130, (float) $q3->coil_price);
+        $this->assertEquals(round(1.2130 * 16517, 2), (float) $q3->coil_price_idr);
+        $this->assertEquals(20035.12, (float) $q3->coil_price_idr);
+
+        // Sheet Q3: 1.2430 + 0 = 1.2430
+        $this->assertEquals(1.2430, (float) $q3->sheet_price);
+        $this->assertEquals(round(1.2430 * 16517, 2), (float) $q3->sheet_price_idr);
+    }
+
+    public function test_editing_q1_via_filament_form_cascades_to_downstream_quarter(): void
+    {
+        $this->actingAs($this->admin);
+
+        $q1 = MaterialSteel::create([
+            'year' => 2025,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'steel_spec' => 'SPC270C',
+            'double_thickness' => '0.5',
+            'exchange_rate' => 15550.0,
+            'coil_price' => 1.3786,
+            'sheet_price' => 1.4036,
+        ]);
+
+        $q2 = MaterialSteel::create([
+            'year' => 2025,
+            'quarter' => 'Q2',
+            'supplier_id' => $this->supplier->id,
+            'steel_spec' => 'SPC270C',
+            'double_thickness' => '0.5',
+            'gap_steel_usd' => -57.0,
+            'gap_steel_kg_usd' => -0.057,
+            'exchange_rate' => 16022.0,
+            'coil_price' => 1.3216,
+            'sheet_price' => 1.3466,
+        ]);
+
+        // Edit Q1 via Livewire EditMaterialSteel form
+        Livewire::test(EditMaterialSteel::class, ['record' => $q1->id])
+            ->fillForm([
+                'coil_price' => 1.3900,
+                'sheet_price' => 1.4150,
+            ])
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        $q2->refresh();
+
+        // Q2 harus otomatis ter-update: 1.3900 + (-0.057) = 1.3330
+        $this->assertEquals(1.3330, (float) $q2->coil_price);
+        $this->assertEquals(1.3580, (float) $q2->sheet_price);
+        $this->assertEquals(round(1.3330 * 16022, 2), (float) $q2->coil_price_idr);
+        $this->assertEquals(round(1.3580 * 16022, 2), (float) $q2->sheet_price_idr);
     }
 }

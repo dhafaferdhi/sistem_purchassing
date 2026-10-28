@@ -7,6 +7,7 @@ use App\Models\Currency;
 use App\Models\Fastener;
 use App\Models\MaterialSteel;
 use App\Models\Supplier;
+use App\Services\ExcelExportService;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
@@ -19,6 +20,7 @@ use Filament\Tables;
 use Filament\Tables\Enums\ActionsPosition;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\HtmlString;
 
 class FastenerResource extends Resource
@@ -781,30 +783,15 @@ class FastenerResource extends Resource
                         Forms\Components\Section::make('2. Harga Bahan Baku & Kurs')
                             ->icon('heroicon-o-currency-dollar')
                             ->schema([
-                                Forms\Components\TextInput::make('hr_steel_usd')
-                                    ->label('HR $ / MT')
-                                    ->numeric()
-                                    ->step(0.0001)
-                                    ->prefix('$')
-                                    ->placeholder('Contoh: -20 atau 50 (Hot Rolled: SPH, SAPH)')
+                                Forms\Components\Hidden::make('hr_steel_usd')
                                     ->default(0)
-                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) $state : null)
-                                    ->live(onBlur: true)
-                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromHrCr($get, $set, 'HR'))
-                                    ->columnSpan(1),
+                                    ->live()
+                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromHrCr($get, $set, 'HR')),
 
-                                Forms\Components\TextInput::make('cr_steel_usd')
-                                    ->label('CR $ / MT')
-                                    ->numeric()
-                                    ->step(0.0001)
-                                    ->prefix('$')
-                                    ->placeholder('Contoh: -20 atau 100 (Cold Rolled: SPC, NSC)')
+                                Forms\Components\Hidden::make('cr_steel_usd')
                                     ->default(0)
-                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) $state : null)
-                                    ->live(onBlur: true)
-                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromHrCr($get, $set, 'CR'))
-                                    ->columnSpan(1),
-
+                                    ->live()
+                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromHrCr($get, $set, 'CR')),
                                 Forms\Components\Hidden::make('gap_steel_usd')->default(0),
 
                                 Forms\Components\TextInput::make('exchange_rate')
@@ -1144,305 +1131,345 @@ class FastenerResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
-            ->columns([
-                Tables\Columns\TextColumn::make('period')
-                    ->label('Kuartal')
-                    ->badge()
-                    ->state(fn (Fastener $record) => "{$record->year} - {$record->quarter}")
-                    ->color(fn (Fastener $record): string => match ($record->quarter) {
-                        'Q1' => 'info',
-                        'Q2' => 'success',
-                        'Q3' => 'warning',
-                        'Q4' => 'primary',
-                        default => 'gray',
-                    })
-                    ->sortable(['year', 'quarter']),
-
-                Tables\Columns\TextColumn::make('supplier_name')
-                    ->label('Supplier')
-                    ->weight('bold')
-                    ->searchable()
-                    ->sortable(),
-
-                Tables\Columns\TextColumn::make('part_number')
-                    ->label('Part Number')
-                    ->weight('bold')
-                    ->placeholder('-')
-                    ->searchable()
-                    ->sortable(),
-
-                Tables\Columns\TextColumn::make('part_name')
-                    ->label('Part Name')
-                    ->placeholder('-')
-                    ->searchable()
-                    ->sortable(),
-
-                Tables\Columns\TextColumn::make('steel_spec')
-                    ->label('Spec')
-                    ->formatStateUsing(fn ($state) => Fastener::cleanSteelSpec($state))
-                    ->searchable()
-                    ->sortable(),
-
-                Tables\Columns\TextColumn::make('double_thickness')
-                    ->label('Thickness / Dia (mm)')
-                    ->wrapHeader()
-                    ->formatStateUsing(function ($state, Fastener $record) {
-                        $val = ($state !== null && $state !== '') ? $state : $record->diameter;
-                        if ($val === null || $val === '') {
-                            return '-';
-                        }
-
-                        return trim(preg_replace('/[a-zA-Z\s]+/', '', (string) $val));
-                    })
-                    ->placeholder('-')
-                    ->searchable()
-                    ->sortable(),
-
-                Tables\Columns\TextColumn::make('hr_steel_usd')
-                    ->label('HR $ / MT')
-                    ->wrapHeader()
-                    ->formatStateUsing(fn ($state, Fastener $record) => static::formatUsd($state, $record->currency_code))
-                    ->weight('bold')
-                    ->alignRight()
-                    ->sortable(),
-
-                Tables\Columns\TextColumn::make('cr_steel_usd')
-                    ->label('CR $ / MT')
-                    ->wrapHeader()
-                    ->formatStateUsing(fn ($state, Fastener $record) => static::formatUsd($state, $record->currency_code))
-                    ->weight('bold')
-                    ->alignRight()
-                    ->sortable(),
-
-                Tables\Columns\TextColumn::make('exchange_rate')
-                    ->label('Perubahan $ Rupiah')
-                    ->wrapHeader()
-                    ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
-                    ->alignRight()
-                    ->sortable(),
-
-                Tables\Columns\TextColumn::make('wire_price_usd_kg')
-                    ->label('Wire ($/Kg)')
-                    ->wrapHeader()
-                    ->formatStateUsing(fn ($state, Fastener $record) => static::formatUsd($state, $record->currency_code))
-                    ->alignRight()
-                    ->sortable(),
-
-                Tables\Columns\TextColumn::make('coil_price')
-                    ->label('Coil ($)')
-                    ->wrapHeader()
-                    ->formatStateUsing(fn ($state, Fastener $record) => static::formatUsd($state, $record->currency_code))
-                    ->alignRight()
-                    ->sortable(),
-
-                Tables\Columns\TextColumn::make('coil_price_idr')
-                    ->label('Coil (IDR)')
-                    ->wrapHeader()
-                    ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
-                    ->alignRight()
-                    ->sortable(),
-
-                Tables\Columns\TextColumn::make('sheet_price')
-                    ->label('Sheet ($)')
-                    ->wrapHeader()
-                    ->formatStateUsing(fn ($state, Fastener $record) => static::formatUsd($state, $record->currency_code))
-                    ->alignRight()
-                    ->sortable(),
-
-                Tables\Columns\TextColumn::make('sheet_price_idr')
-                    ->label('Sheet (IDR)')
-                    ->wrapHeader()
-                    ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
-                    ->alignRight()
-                    ->sortable(),
-
-                Tables\Columns\TextColumn::make('part_cost')
-                    ->label('Total Part Cost')
-                    ->wrapHeader()
-                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
-                    ->weight('black')
-                    ->color('success')
-                    ->alignRight()
-                    ->sortable(),
-
-                Tables\Columns\TextColumn::make('status')
-                    ->label('Status')
-                    ->badge()
-                    ->color(fn (string $state): string => match ($state) {
-                        'Active' => 'success',
-                        'Draft' => 'warning',
-                        default => 'gray',
-                    }),
-
-                // Kolom rincian Excel opsional (toggleable hidden by default)
-                Tables\Columns\TextColumn::make('old_part_number')
-                    ->label('Old Part No')
-                    ->placeholder('-')
-                    ->searchable()
-                    ->toggleable(isToggledHiddenByDefault: true),
-
-                Tables\Columns\TextColumn::make('wire_spec')
-                    ->label('Wire Spec')
-                    ->placeholder('-')
-                    ->searchable()
-                    ->toggleable(isToggledHiddenByDefault: true),
-
-                Tables\Columns\TextColumn::make('gross_weight_gr')
-                    ->label('Gross Wt (gr)')
-                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? number_format((float) $state, 2, ',', '.').' gr' : '-')
-                    ->alignRight()
-                    ->toggleable(isToggledHiddenByDefault: true),
-
-                Tables\Columns\TextColumn::make('nett_weight_gr')
-                    ->label('Nett Wt (gr)')
-                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? number_format((float) $state, 2, ',', '.').' gr' : '-')
-                    ->alignRight()
-                    ->toggleable(isToggledHiddenByDefault: true),
-
-                Tables\Columns\TextColumn::make('wire_price_idr_kg')
-                    ->label('Wire IDR/Kg')
-                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
-                    ->alignRight()
-                    ->toggleable(isToggledHiddenByDefault: true),
-
-                Tables\Columns\TextColumn::make('wire_price_pc')
-                    ->label('Wire Cost/pc')
-                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
-                    ->alignRight()
-                    ->toggleable(isToggledHiddenByDefault: true),
-
-                Tables\Columns\TextColumn::make('washer_price')
-                    ->label('Washer (Rp)')
-                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
-                    ->alignRight()
-                    ->toggleable(isToggledHiddenByDefault: true),
-
-                Tables\Columns\TextColumn::make('material_total')
-                    ->label('(1) Material Total (Rp)')
-                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
-                    ->alignRight()
-                    ->toggleable(isToggledHiddenByDefault: true),
-
-                Tables\Columns\TextColumn::make('process_total')
-                    ->label('(2) Process Total (Rp)')
-                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
-                    ->alignRight()
-                    ->toggleable(isToggledHiddenByDefault: true),
-
-                Tables\Columns\TextColumn::make('subtotal')
-                    ->label('(3) Subtotal (Rp)')
-                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
-                    ->alignRight()
-                    ->toggleable(isToggledHiddenByDefault: true),
-
-                Tables\Columns\TextColumn::make('overhead_self_cost')
-                    ->label('(5) O/H Self (Rp)')
-                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
-                    ->alignRight()
-                    ->toggleable(isToggledHiddenByDefault: true),
-
-                // Kolom gap untuk kompatibilitas test (toggleable hidden by default)
-                Tables\Columns\TextColumn::make('gap_steel_usd')
-                    ->label('Gap/MT ($)')
-                    ->wrapHeader()
-                    ->formatStateUsing(fn ($state, Fastener $record) => static::formatUsd($state, $record->currency_code))
-                    ->toggleable(isToggledHiddenByDefault: true),
-
-                Tables\Columns\TextColumn::make('gap_steel_kg_usd')
-                    ->label('Gap/Kg ($)')
-                    ->wrapHeader()
-                    ->formatStateUsing(fn ($state, Fastener $record) => static::formatUsd($state, $record->currency_code))
-                    ->toggleable(isToggledHiddenByDefault: true),
-
-                Tables\Columns\TextColumn::make('drawing_reference')
-                    ->label('Drawing Ref')
-                    ->toggleable(isToggledHiddenByDefault: true),
-
-                Tables\Columns\TextColumn::make('eci_number')
-                    ->label('ECI No')
-                    ->toggleable(isToggledHiddenByDefault: true),
-
-                Tables\Columns\TextColumn::make('old_exchange_rate')
-                    ->label('Old Rate (Rp)')
-                    ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
-                    ->alignRight()
-                    ->toggleable(isToggledHiddenByDefault: true),
-
-                Tables\Columns\TextColumn::make('exchange_rate_fluctuation')
-                    ->label('Fluktuasi Kurs')
-                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? number_format((float) $state, 4) : '-')
-                    ->alignRight()
-                    ->toggleable(isToggledHiddenByDefault: true),
-
-                Tables\Columns\TextColumn::make('tooling_depreciation')
-                    ->label('Tooling / Jig Depr')
-                    ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
-                    ->alignRight()
-                    ->toggleable(isToggledHiddenByDefault: true),
-            ])
+            ->columns(static::getTableColumns())
             ->defaultSort('year', 'desc')
-            ->filters([
-                Tables\Filters\SelectFilter::make('quarter')
-                    ->label('Filter Kuartal')
-                    ->options([
-                        'Q1' => 'Q1 (Januari - Maret)',
-                        'Q2' => 'Q2 (April - Juni)',
-                        'Q3' => 'Q3 (Juli - September)',
-                        'Q4' => 'Q4 (Oktober - Desember)',
-                    ])
-                    ->multiple(),
-
-                Tables\Filters\SelectFilter::make('supplier_id')
-                    ->label('Filter Supplier')
-                    ->relationship('supplier', 'name')
-                    ->searchable()
-                    ->preload(),
-
-                Tables\Filters\SelectFilter::make('year')
-                    ->label('Filter Tahun')
-                    ->options(function () {
-                        $current = (int) date('Y');
-                        $years = range($current + 2, $current - 2);
-
-                        return array_combine($years, array_map(fn ($y) => "Tahun {$y}", $years));
-                    }),
-
-                Tables\Filters\SelectFilter::make('status')
-                    ->label('Filter Status')
-                    ->options([
-                        'Active' => 'Active',
-                        'Draft' => 'Draft',
-                        'Archived' => 'Archived',
-                    ]),
-            ])
+            ->filters(static::getTableFilters())
             ->filtersTriggerAction(
                 fn (Tables\Actions\Action $action) => $action
                     ->button()
                     ->label('Filter Data')
             )
             ->filtersFormColumns(2)
-            ->actions([
-                Tables\Actions\Action::make('view_sheet')
-                    ->label('Lembar Kalkulasi')
-                    ->tooltip('Tampilkan lembar rincian kalkulasi format resmi Excel')
-                    ->icon('heroicon-o-document-chart-bar')
-                    ->color('info')
-                    ->button()
-                    ->size(ActionSize::Small)
-                    ->slideOver()
-                    ->modalHeading(fn (Fastener $record) => "Lembar Perhitungan Fastener Cost: {$record->part_number} - {$record->part_name}")
-                    ->modalWidth(MaxWidth::SevenExtraLarge)
-                    ->modalSubmitAction(false)
-                    ->modalCancelActionLabel('Tutup')
-                    ->modalContent(fn (Fastener $record) => view('filament.resources.fasteners.sheet-modal', ['record' => $record])),
-                Tables\Actions\EditAction::make()->iconButton(),
-                Tables\Actions\DeleteAction::make()->iconButton(),
-            ], position: ActionsPosition::BeforeColumns)
-            ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+            ->actions(static::getTableActions(), position: ActionsPosition::BeforeColumns)
+            ->bulkActions(static::getTableBulkActions());
+    }
+
+    /**
+     * @return array<int, Tables\Columns\Column>
+     */
+    public static function getTableColumns(): array
+    {
+        return [
+            Tables\Columns\TextColumn::make('period')
+                ->label('Kuartal')
+                ->badge()
+                ->state(fn (Fastener $record) => "{$record->year} - {$record->quarter}")
+                ->color(fn (Fastener $record): string => match ($record->quarter) {
+                    'Q1' => 'info',
+                    'Q2' => 'success',
+                    'Q3' => 'warning',
+                    'Q4' => 'primary',
+                    default => 'gray',
+                })
+                ->sortable(['year', 'quarter']),
+
+            Tables\Columns\TextColumn::make('supplier_name')
+                ->label('Supplier')
+                ->weight('bold')
+                ->searchable()
+                ->sortable(),
+
+            Tables\Columns\TextColumn::make('part_number')
+                ->label('Part Number')
+                ->weight('bold')
+                ->placeholder('-')
+                ->searchable()
+                ->sortable(),
+
+            Tables\Columns\TextColumn::make('part_name')
+                ->label('Part Name')
+                ->placeholder('-')
+                ->searchable()
+                ->sortable(),
+
+            Tables\Columns\TextColumn::make('steel_spec')
+                ->label('Spec')
+                ->formatStateUsing(fn ($state) => Fastener::cleanSteelSpec($state))
+                ->searchable()
+                ->sortable(),
+
+            Tables\Columns\TextColumn::make('double_thickness')
+                ->label('Thickness / Dia (mm)')
+                ->wrapHeader()
+                ->formatStateUsing(function ($state, Fastener $record) {
+                    $val = ($state !== null && $state !== '') ? $state : $record->diameter;
+                    if ($val === null || $val === '') {
+                        return '-';
+                    }
+
+                    return trim(preg_replace('/[a-zA-Z\s]+/', '', (string) $val));
+                })
+                ->placeholder('-')
+                ->searchable()
+                ->sortable(),
+
+            Tables\Columns\TextColumn::make('exchange_rate')
+                ->label('Perubahan $ Rupiah')
+                ->wrapHeader()
+                ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
+                ->alignRight()
+                ->sortable(),
+
+            Tables\Columns\TextColumn::make('wire_price_usd_kg')
+                ->label('Wire ($/Kg)')
+                ->wrapHeader()
+                ->formatStateUsing(fn ($state, Fastener $record) => static::formatUsd($state, $record->currency_code))
+                ->alignRight()
+                ->sortable(),
+
+            Tables\Columns\TextColumn::make('coil_price')
+                ->label('Coil ($)')
+                ->wrapHeader()
+                ->formatStateUsing(fn ($state, Fastener $record) => static::formatUsd($state, $record->currency_code))
+                ->alignRight()
+                ->sortable(),
+
+            Tables\Columns\TextColumn::make('coil_price_idr')
+                ->label('Coil (IDR)')
+                ->wrapHeader()
+                ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
+                ->alignRight()
+                ->sortable(),
+
+            Tables\Columns\TextColumn::make('sheet_price')
+                ->label('Sheet ($)')
+                ->wrapHeader()
+                ->formatStateUsing(fn ($state, Fastener $record) => static::formatUsd($state, $record->currency_code))
+                ->alignRight()
+                ->sortable(),
+
+            Tables\Columns\TextColumn::make('sheet_price_idr')
+                ->label('Sheet (IDR)')
+                ->wrapHeader()
+                ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
+                ->alignRight()
+                ->sortable(),
+
+            Tables\Columns\TextColumn::make('part_cost')
+                ->label('Total Part Cost')
+                ->wrapHeader()
+                ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
+                ->weight('black')
+                ->color('success')
+                ->alignRight()
+                ->sortable(),
+
+            Tables\Columns\TextColumn::make('status')
+                ->label('Status')
+                ->badge()
+                ->color(fn (string $state): string => match ($state) {
+                    'Active' => 'success',
+                    'Draft' => 'warning',
+                    default => 'gray',
+                }),
+
+            // Kolom rincian Excel opsional (toggleable hidden by default)
+            Tables\Columns\TextColumn::make('old_part_number')
+                ->label('Old Part No')
+                ->placeholder('-')
+                ->searchable()
+                ->toggleable(isToggledHiddenByDefault: true),
+
+            Tables\Columns\TextColumn::make('wire_spec')
+                ->label('Wire Spec')
+                ->placeholder('-')
+                ->searchable()
+                ->toggleable(isToggledHiddenByDefault: true),
+
+            Tables\Columns\TextColumn::make('gross_weight_gr')
+                ->label('Gross Wt (gr)')
+                ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? number_format((float) $state, 2, ',', '.').' gr' : '-')
+                ->alignRight()
+                ->toggleable(isToggledHiddenByDefault: true),
+
+            Tables\Columns\TextColumn::make('nett_weight_gr')
+                ->label('Nett Wt (gr)')
+                ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? number_format((float) $state, 2, ',', '.').' gr' : '-')
+                ->alignRight()
+                ->toggleable(isToggledHiddenByDefault: true),
+
+            Tables\Columns\TextColumn::make('wire_price_idr_kg')
+                ->label('Wire IDR/Kg')
+                ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
+                ->alignRight()
+                ->toggleable(isToggledHiddenByDefault: true),
+
+            Tables\Columns\TextColumn::make('wire_price_pc')
+                ->label('Wire Cost/pc')
+                ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
+                ->alignRight()
+                ->toggleable(isToggledHiddenByDefault: true),
+
+            Tables\Columns\TextColumn::make('washer_price')
+                ->label('Washer (Rp)')
+                ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
+                ->alignRight()
+                ->toggleable(isToggledHiddenByDefault: true),
+
+            Tables\Columns\TextColumn::make('material_total')
+                ->label('(1) Material Total (Rp)')
+                ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
+                ->alignRight()
+                ->toggleable(isToggledHiddenByDefault: true),
+
+            Tables\Columns\TextColumn::make('process_total')
+                ->label('(2) Process Total (Rp)')
+                ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
+                ->alignRight()
+                ->toggleable(isToggledHiddenByDefault: true),
+
+            Tables\Columns\TextColumn::make('subtotal')
+                ->label('(3) Subtotal (Rp)')
+                ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
+                ->alignRight()
+                ->toggleable(isToggledHiddenByDefault: true),
+
+            Tables\Columns\TextColumn::make('overhead_self_cost')
+                ->label('(5) O/H Self (Rp)')
+                ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
+                ->alignRight()
+                ->toggleable(isToggledHiddenByDefault: true),
+
+            // Kolom gap untuk kompatibilitas test (toggleable hidden by default)
+            Tables\Columns\TextColumn::make('gap_steel_usd')
+                ->label('Gap/MT ($)')
+                ->wrapHeader()
+                ->formatStateUsing(fn ($state, Fastener $record) => static::formatUsd($state, $record->currency_code))
+                ->toggleable(isToggledHiddenByDefault: true),
+
+            Tables\Columns\TextColumn::make('gap_steel_kg_usd')
+                ->label('Gap/Kg ($)')
+                ->wrapHeader()
+                ->formatStateUsing(fn ($state, Fastener $record) => static::formatUsd($state, $record->currency_code))
+                ->toggleable(isToggledHiddenByDefault: true),
+
+            Tables\Columns\TextColumn::make('drawing_reference')
+                ->label('Drawing Ref')
+                ->toggleable(isToggledHiddenByDefault: true),
+
+            Tables\Columns\TextColumn::make('eci_number')
+                ->label('ECI No')
+                ->toggleable(isToggledHiddenByDefault: true),
+
+            Tables\Columns\TextColumn::make('old_exchange_rate')
+                ->label('Old Rate (Rp)')
+                ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
+                ->alignRight()
+                ->toggleable(isToggledHiddenByDefault: true),
+
+            Tables\Columns\TextColumn::make('exchange_rate_fluctuation')
+                ->label('Fluktuasi Kurs')
+                ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? number_format((float) $state, 4) : '-')
+                ->alignRight()
+                ->toggleable(isToggledHiddenByDefault: true),
+
+            Tables\Columns\TextColumn::make('tooling_depreciation')
+                ->label('Tooling / Jig Depr')
+                ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
+                ->alignRight()
+                ->toggleable(isToggledHiddenByDefault: true),
+        ];
+    }
+
+    /**
+     * @return array<int, Tables\Filters\BaseFilter>
+     */
+    public static function getTableFilters(): array
+    {
+        return [
+            Tables\Filters\SelectFilter::make('quarter')
+                ->label('Filter Kuartal')
+                ->options([
+                    'Q1' => 'Q1 (Januari - Maret)',
+                    'Q2' => 'Q2 (April - Juni)',
+                    'Q3' => 'Q3 (Juli - September)',
+                    'Q4' => 'Q4 (Oktober - Desember)',
+                ])
+                ->multiple(),
+
+            Tables\Filters\SelectFilter::make('supplier_id')
+                ->label('Filter Supplier')
+                ->relationship('supplier', 'name')
+                ->searchable()
+                ->preload(),
+
+            Tables\Filters\SelectFilter::make('year')
+                ->label('Filter Tahun')
+                ->options(function () {
+                    $current = (int) date('Y');
+                    $years = range($current + 2, $current - 2);
+
+                    return array_combine($years, array_map(fn ($y) => "Tahun {$y}", $years));
+                }),
+
+            Tables\Filters\SelectFilter::make('status')
+                ->label('Filter Status')
+                ->options([
+                    'Active' => 'Active',
+                    'Draft' => 'Draft',
+                    'Archived' => 'Archived',
                 ]),
-            ]);
+        ];
+    }
+
+    /**
+     * @return array<int, Tables\Actions\Action|Tables\Actions\ActionGroup>
+     */
+    public static function getTableActions(): array
+    {
+        return [
+            Tables\Actions\Action::make('view_sheet')
+                ->label('Lembar Kalkulasi')
+                ->tooltip('Tampilkan lembar rincian kalkulasi format resmi Excel')
+                ->icon('heroicon-o-document-chart-bar')
+                ->color('info')
+                ->button()
+                ->size(ActionSize::Small)
+                ->slideOver()
+                ->modalHeading(fn (Fastener $record) => "Lembar Perhitungan Fastener Cost: {$record->part_number} - {$record->part_name}")
+                ->modalWidth(MaxWidth::SevenExtraLarge)
+                ->modalSubmitAction(false)
+                ->modalCancelActionLabel('Tutup')
+                ->modalContent(fn (Fastener $record) => view('filament.resources.fasteners.sheet-modal', ['record' => $record])),
+            Tables\Actions\EditAction::make()->iconButton(),
+            Tables\Actions\DeleteAction::make()->iconButton(),
+        ];
+    }
+
+    /**
+     * @return array<int, Tables\Actions\BulkAction|Tables\Actions\BulkActionGroup>
+     */
+    public static function getTableBulkActions(): array
+    {
+        return [
+            Tables\Actions\BulkActionGroup::make([
+                Tables\Actions\BulkAction::make('export_selected_xlsx')
+                    ->label('Export Terpilih (Excel .xlsx)')
+                    ->icon('heroicon-o-arrow-down-tray')
+                    ->color('success')
+                    ->action(fn (Collection $records) => ExcelExportService::exportFastener($records, 'xlsx')),
+
+                Tables\Actions\BulkAction::make('export_selected_csv')
+                    ->label('Export Terpilih (CSV .csv)')
+                    ->icon('heroicon-o-document-text')
+                    ->color('info')
+                    ->action(fn (Collection $records) => ExcelExportService::exportFastener($records, 'csv')),
+
+                Tables\Actions\BulkAction::make('export_selected_xlsx')
+                    ->label('Export Terpilih (Excel .xlsx)')
+                    ->icon('heroicon-o-arrow-down-tray')
+                    ->color('success')
+                    ->action(fn (Collection $records) => ExcelExportService::exportFastener($records, 'xlsx')),
+
+                Tables\Actions\BulkAction::make('export_selected_csv')
+                    ->label('Export Terpilih (CSV .csv)')
+                    ->icon('heroicon-o-document-text')
+                    ->color('info')
+                    ->action(fn (Collection $records) => ExcelExportService::exportFastener($records, 'csv')),
+
+                Tables\Actions\DeleteBulkAction::make(),
+            ]),
+        ];
     }
 
     public static function getEloquentQuery(): Builder

@@ -7,6 +7,7 @@ use App\Models\Material;
 use App\Models\MaterialSteel;
 use App\Models\Supplier;
 use Filament\Actions;
+use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
 
 class EditMaterialSteel extends EditRecord
@@ -146,6 +147,15 @@ class EditMaterialSteel extends EditRecord
     {
         /** @var MaterialSteel $record */
         $record = $this->record;
+
+        if ($record->lastCascadedCount > 0) {
+            $nextInfo = MaterialSteel::getNextQuarterInfo($record->quarter, (int) $record->year);
+            Notification::make()
+                ->title('Kuartal Berikutnya Diperbarui Otomatis')
+                ->body("Perubahan harga pada {$record->quarter} {$record->year} otomatis disinkronkan ke {$record->lastCascadedCount} data kuartal berikutnya ({$nextInfo['label']}, dst.) sesuai logika gap.")
+                ->success()
+                ->send();
+        }
 
         // Jika dikaitkan dengan Master Material tertentu, perbarui harga dasar (basic_rate) material tersebut
         if ($record->material_id) {
