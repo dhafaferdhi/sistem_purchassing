@@ -1018,6 +1018,7 @@ class MaterialSteelResource extends Resource
                     }),
             ])
             ->defaultSort('year', 'desc')
+            ->toggleColumnsTriggerAction(fn (Tables\Actions\Action $action) => $action->hidden())
             ->filters([
                 Tables\Filters\SelectFilter::make('quarter')
                     ->label('Filter Kuartal')
@@ -1131,13 +1132,13 @@ class MaterialSteelResource extends Resource
                         ->label('Export Terpilih (Excel .xlsx)')
                         ->icon('heroicon-o-arrow-down-tray')
                         ->color('success')
-                        ->action(fn (\Illuminate\Database\Eloquent\Collection $records) => ExcelExportService::exportMaterialSteel($records, 'xlsx')),
+                        ->action(fn (Collection $records) => ExcelExportService::exportMaterialSteel($records, 'xlsx')),
 
                     Tables\Actions\BulkAction::make('export_selected_csv')
                         ->label('Export Terpilih (CSV .csv)')
                         ->icon('heroicon-o-document-text')
                         ->color('info')
-                        ->action(fn (\Illuminate\Database\Eloquent\Collection $records) => ExcelExportService::exportMaterialSteel($records, 'csv')),
+                        ->action(fn (Collection $records) => ExcelExportService::exportMaterialSteel($records, 'csv')),
 
                     Tables\Actions\DeleteBulkAction::make(),
                 ]),

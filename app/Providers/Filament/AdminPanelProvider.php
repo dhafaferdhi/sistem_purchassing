@@ -11,6 +11,7 @@ use Filament\Pages;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
+use Filament\Support\Enums\MaxWidth;
 use Filament\View\PanelsRenderHook;
 use Filament\Widgets;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
@@ -33,6 +34,7 @@ class AdminPanelProvider extends PanelProvider
             ->brandName('PT. FUJI SEAT INDONESIA')
             ->sidebarCollapsibleOnDesktop()
             ->spa()
+            ->maxContentWidth(MaxWidth::Full)
             ->colors([
                 'primary' => Color::Blue,
             ])
@@ -47,6 +49,27 @@ class AdminPanelProvider extends PanelProvider
                             font-size: 0.875rem !important;
                             font-weight: 700 !important;
                             line-height: 1.25 !important;
+                        }
+
+                        /* Sembunyikan ikon panah sort ke atas dan ke bawah di samping kanan nama kolom header */
+                        .fi-ta-header-cell-sort-icon {
+                            display: none !important;
+                        }
+
+                        /* Sembunyikan tombol Toggle Columns di toolbar tabel */
+                        .fi-ta-col-toggle-btn,
+                        button[wire\:click*="toggleTableColumnForm"],
+                        button:has(svg[class*="heroicon-m-view-columns"]),
+                        button:has(svg[class*="heroicon-o-view-columns"]),
+                        [aria-label*="Toggle columns"],
+                        [aria-label*="toggle columns"] {
+                            display: none !important;
+                        }
+
+                        /* Konsistensi tabel full width tanpa horizontal slide */
+                        .fi-ta-table {
+                            width: 100% !important;
+                            min-width: 100% !important;
                         }
                     </style>
                 ')

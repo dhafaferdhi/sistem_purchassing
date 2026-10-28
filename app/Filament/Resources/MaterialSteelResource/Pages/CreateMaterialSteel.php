@@ -18,6 +18,11 @@ class CreateMaterialSteel extends CreateRecord
 {
     protected static string $resource = MaterialSteelResource::class;
 
+    public function getMaxContentWidth(): MaxWidth|string|null
+    {
+        return MaxWidth::Full;
+    }
+
     protected function getHeaderActions(): array
     {
         return [

@@ -13,6 +13,11 @@ class EditStampingPart extends EditRecord
 {
     protected static string $resource = StampingPartResource::class;
 
+    public function getMaxContentWidth(): MaxWidth|string|null
+    {
+        return MaxWidth::Full;
+    }
+
     protected function getHeaderActions(): array
     {
         return [

@@ -18,6 +18,11 @@ class CreateStampingPart extends CreateRecord
 {
     protected static string $resource = StampingPartResource::class;
 
+    public function getMaxContentWidth(): MaxWidth|string|null
+    {
+        return MaxWidth::Full;
+    }
+
     public function mount(): void
     {
         parent::mount();

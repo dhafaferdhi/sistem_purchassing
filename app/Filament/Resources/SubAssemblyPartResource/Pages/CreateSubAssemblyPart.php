@@ -16,6 +16,11 @@ class CreateSubAssemblyPart extends CreateRecord
 {
     protected static string $resource = SubAssemblyPartResource::class;
 
+    public function getMaxContentWidth(): MaxWidth|string|null
+    {
+        return MaxWidth::Full;
+    }
+
     protected function getHeaderActions(): array
     {
         return [

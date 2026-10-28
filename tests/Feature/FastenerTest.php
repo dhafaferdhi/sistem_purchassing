@@ -77,10 +77,10 @@ class FastenerTest extends TestCase
             ->assertTableColumnExists('gap_steel_usd')
             ->assertTableColumnExists('gap_steel_kg_usd')
             ->assertTableColumnExists('exchange_rate')
-            ->assertTableColumnExists('coil_price')
-            ->assertTableColumnExists('coil_price_idr')
-            ->assertTableColumnExists('sheet_price')
-            ->assertTableColumnExists('sheet_price_idr')
+            ->assertTableColumnDoesNotExist('coil_price')
+            ->assertTableColumnDoesNotExist('coil_price_idr')
+            ->assertTableColumnDoesNotExist('sheet_price')
+            ->assertTableColumnDoesNotExist('sheet_price_idr')
             ->assertTableActionExists('edit')
             ->assertTableActionExists('delete');
     }
@@ -360,10 +360,10 @@ class FastenerTest extends TestCase
             ->assertTableColumnDoesNotExist('cr_steel_usd')
             ->assertTableColumnExists('exchange_rate')
             ->assertTableColumnExists('wire_price_usd_kg')
-            ->assertTableColumnExists('coil_price')
-            ->assertTableColumnExists('coil_price_idr')
-            ->assertTableColumnExists('sheet_price')
-            ->assertTableColumnExists('sheet_price_idr')
+            ->assertTableColumnDoesNotExist('coil_price')
+            ->assertTableColumnDoesNotExist('coil_price_idr')
+            ->assertTableColumnDoesNotExist('sheet_price')
+            ->assertTableColumnDoesNotExist('sheet_price_idr')
             ->assertTableColumnExists('part_cost');
 
         Livewire::test(CreateFastener::class)

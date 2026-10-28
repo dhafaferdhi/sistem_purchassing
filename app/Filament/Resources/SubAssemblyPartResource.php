@@ -671,6 +671,7 @@ class SubAssemblyPartResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->defaultSort('year', 'desc')
+            ->toggleColumnsTriggerAction(fn (Tables\Actions\Action $action) => $action->hidden())
             ->filters([
                 Tables\Filters\SelectFilter::make('quarter')
                     ->label('Filter Kuartal')

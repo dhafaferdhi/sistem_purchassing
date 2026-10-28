@@ -14,7 +14,6 @@ use Filament\Forms\Get;
 use Filament\Forms\Set;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
-use Filament\Support\Enums\ActionSize;
 use Filament\Support\Enums\MaxWidth;
 use Filament\Tables;
 use Filament\Tables\Enums\ActionsPosition;
@@ -1130,6 +1129,7 @@ class StampingPartResource extends Resource
         return $table
             ->columns(static::getTableColumns())
             ->defaultSort('year', 'desc')
+            ->toggleColumnsTriggerAction(fn (Tables\Actions\Action $action) => $action->hidden())
             ->filters(static::getTableFilters())
             ->filtersTriggerAction(
                 fn (Tables\Actions\Action $action) => $action
@@ -1163,6 +1163,7 @@ class StampingPartResource extends Resource
             Tables\Columns\TextColumn::make('supplier_name')
                 ->label('Supplier')
                 ->weight('bold')
+                ->wrap()
                 ->searchable()
                 ->sortable(),
 
@@ -1170,12 +1171,14 @@ class StampingPartResource extends Resource
                 ->label('Part Number')
                 ->weight('bold')
                 ->placeholder('-')
+                ->wrapHeader()
                 ->searchable()
                 ->sortable(),
 
             Tables\Columns\TextColumn::make('part_name')
                 ->label('Part Name')
                 ->placeholder('-')
+                ->wrap()
                 ->searchable()
                 ->sortable(),
 
@@ -1186,7 +1189,7 @@ class StampingPartResource extends Resource
                 ->sortable(),
 
             Tables\Columns\TextColumn::make('double_thickness')
-                ->label('Thickness(mm)')
+                ->label('Thickness (mm)')
                 ->wrapHeader()
                 ->formatStateUsing(function ($state) {
                     if ($state === null || $state === '') {
@@ -1200,7 +1203,7 @@ class StampingPartResource extends Resource
                 ->sortable(),
 
             Tables\Columns\TextColumn::make('exchange_rate')
-                ->label('Perubahan $ Rupiah')
+                ->label('Kurs USD')
                 ->wrapHeader()
                 ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
                 ->alignRight()
@@ -1235,7 +1238,7 @@ class StampingPartResource extends Resource
                 ->sortable(),
 
             Tables\Columns\TextColumn::make('part_cost')
-                ->label('Total Part Cost')
+                ->label('Total Cost (Rp)')
                 ->wrapHeader()
                 ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
                 ->weight('black')
@@ -1409,8 +1412,7 @@ class StampingPartResource extends Resource
                 ->tooltip('Tampilkan lembar rincian kalkulasi format resmi Excel')
                 ->icon('heroicon-o-document-chart-bar')
                 ->color('info')
-                ->button()
-                ->size(ActionSize::Small)
+                ->iconButton()
                 ->slideOver()
                 ->modalHeading(fn (StampingPart $record) => "Lembar Perhitungan Part Cost: {$record->part_number} - {$record->part_name}")
                 ->modalWidth(MaxWidth::SevenExtraLarge)

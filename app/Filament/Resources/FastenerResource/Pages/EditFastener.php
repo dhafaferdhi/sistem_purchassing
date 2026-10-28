@@ -13,6 +13,11 @@ class EditFastener extends EditRecord
 {
     protected static string $resource = FastenerResource::class;
 
+    public function getMaxContentWidth(): MaxWidth|string|null
+    {
+        return MaxWidth::Full;
+    }
+
     protected function getHeaderActions(): array
     {
         return [

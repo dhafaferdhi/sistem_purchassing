@@ -14,7 +14,6 @@ use Filament\Forms\Get;
 use Filament\Forms\Set;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
-use Filament\Support\Enums\ActionSize;
 use Filament\Support\Enums\MaxWidth;
 use Filament\Tables;
 use Filament\Tables\Enums\ActionsPosition;
@@ -861,43 +860,21 @@ class FastenerResource extends Resource
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromWire($get, $set))
                                     ->columnSpan(2),
 
-                                Forms\Components\TextInput::make('coil_price')
-                                    ->label('Harga Coil ($/Kg)')
-                                    ->numeric()
-                                    ->step(0.0001)
-                                    ->prefix('$')
-                                    ->placeholder('Contoh: 1.1206')
-                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) $state : null)
-                                    ->live(onBlur: true)
-                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromCoil($get, $set))
-                                    ->columnSpan(1),
+                                Forms\Components\Hidden::make('coil_price')
+                                    ->default(0)
+                                    ->live()
+                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromCoil($get, $set)),
 
-                                Forms\Components\TextInput::make('sheet_price')
-                                    ->label('Harga Sheet ($/Kg)')
-                                    ->numeric()
-                                    ->step(0.0001)
-                                    ->prefix('$')
-                                    ->placeholder('Contoh: 1.1456')
-                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) $state : null)
-                                    ->live(onBlur: true)
-                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromSheet($get, $set))
-                                    ->columnSpan(1),
+                                Forms\Components\Hidden::make('sheet_price')
+                                    ->default(0)
+                                    ->live()
+                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromSheet($get, $set)),
 
-                                Forms\Components\TextInput::make('coil_price_idr')
-                                    ->label('Total Coil (IDR/Kg)')
-                                    ->prefix('Rp')
-                                    ->readOnly()
-                                    ->dehydrated()
-                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (int) round((float) $state) : null)
-                                    ->columnSpan(1),
+                                Forms\Components\Hidden::make('coil_price_idr')
+                                    ->default(0),
 
-                                Forms\Components\TextInput::make('sheet_price_idr')
-                                    ->label('Total Sheet (IDR/Kg)')
-                                    ->prefix('Rp')
-                                    ->readOnly()
-                                    ->dehydrated()
-                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (int) round((float) $state) : null)
-                                    ->columnSpan(1),
+                                Forms\Components\Hidden::make('sheet_price_idr')
+                                    ->default(0),
                             ])->columns(2),
 
                         // SECTION 3: Rincian Wire, Washer & Biaya Proses (Nitto Alam Breakdown)
@@ -1133,6 +1110,7 @@ class FastenerResource extends Resource
         return $table
             ->columns(static::getTableColumns())
             ->defaultSort('year', 'desc')
+            ->toggleColumnsTriggerAction(fn (Tables\Actions\Action $action) => $action->hidden())
             ->filters(static::getTableFilters())
             ->filtersTriggerAction(
                 fn (Tables\Actions\Action $action) => $action
@@ -1166,6 +1144,7 @@ class FastenerResource extends Resource
             Tables\Columns\TextColumn::make('supplier_name')
                 ->label('Supplier')
                 ->weight('bold')
+                ->wrap()
                 ->searchable()
                 ->sortable(),
 
@@ -1173,12 +1152,14 @@ class FastenerResource extends Resource
                 ->label('Part Number')
                 ->weight('bold')
                 ->placeholder('-')
+                ->wrapHeader()
                 ->searchable()
                 ->sortable(),
 
             Tables\Columns\TextColumn::make('part_name')
                 ->label('Part Name')
                 ->placeholder('-')
+                ->wrap()
                 ->searchable()
                 ->sortable(),
 
@@ -1189,7 +1170,7 @@ class FastenerResource extends Resource
                 ->sortable(),
 
             Tables\Columns\TextColumn::make('double_thickness')
-                ->label('Thickness / Dia (mm)')
+                ->label('Dia / Thick (mm)')
                 ->wrapHeader()
                 ->formatStateUsing(function ($state, Fastener $record) {
                     $val = ($state !== null && $state !== '') ? $state : $record->diameter;
@@ -1204,7 +1185,7 @@ class FastenerResource extends Resource
                 ->sortable(),
 
             Tables\Columns\TextColumn::make('exchange_rate')
-                ->label('Perubahan $ Rupiah')
+                ->label('Kurs USD')
                 ->wrapHeader()
                 ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
                 ->alignRight()
@@ -1217,36 +1198,8 @@ class FastenerResource extends Resource
                 ->alignRight()
                 ->sortable(),
 
-            Tables\Columns\TextColumn::make('coil_price')
-                ->label('Coil ($)')
-                ->wrapHeader()
-                ->formatStateUsing(fn ($state, Fastener $record) => static::formatUsd($state, $record->currency_code))
-                ->alignRight()
-                ->sortable(),
-
-            Tables\Columns\TextColumn::make('coil_price_idr')
-                ->label('Coil (IDR)')
-                ->wrapHeader()
-                ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
-                ->alignRight()
-                ->sortable(),
-
-            Tables\Columns\TextColumn::make('sheet_price')
-                ->label('Sheet ($)')
-                ->wrapHeader()
-                ->formatStateUsing(fn ($state, Fastener $record) => static::formatUsd($state, $record->currency_code))
-                ->alignRight()
-                ->sortable(),
-
-            Tables\Columns\TextColumn::make('sheet_price_idr')
-                ->label('Sheet (IDR)')
-                ->wrapHeader()
-                ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
-                ->alignRight()
-                ->sortable(),
-
             Tables\Columns\TextColumn::make('part_cost')
-                ->label('Total Part Cost')
+                ->label('Total Cost (Rp)')
                 ->wrapHeader()
                 ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
                 ->weight('black')
@@ -1423,8 +1376,7 @@ class FastenerResource extends Resource
                 ->tooltip('Tampilkan lembar rincian kalkulasi format resmi Excel')
                 ->icon('heroicon-o-document-chart-bar')
                 ->color('info')
-                ->button()
-                ->size(ActionSize::Small)
+                ->iconButton()
                 ->slideOver()
                 ->modalHeading(fn (Fastener $record) => "Lembar Perhitungan Fastener Cost: {$record->part_number} - {$record->part_name}")
                 ->modalWidth(MaxWidth::SevenExtraLarge)

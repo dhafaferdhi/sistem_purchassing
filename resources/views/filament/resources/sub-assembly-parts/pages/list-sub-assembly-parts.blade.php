@@ -58,6 +58,19 @@
             height: 1.75rem !important;
             padding: 0.25rem !important;
         }
+
+        /* Sembunyikan ikon panah sort ke atas dan ke bawah di samping kanan nama kolom */
+        .fi-resource-sub-assembly-parts .fi-ta-header-cell-sort-icon {
+            display: none !important;
+        }
+
+        /* Sembunyikan tombol toggle columns */
+        .fi-resource-sub-assembly-parts .fi-ta-col-toggle-btn,
+        .fi-resource-sub-assembly-parts button[wire\:click*="toggleTableColumnForm"],
+        .fi-resource-sub-assembly-parts [aria-label*="Toggle columns"],
+        .fi-resource-sub-assembly-parts [aria-label*="toggle columns"] {
+            display: none !important;
+        }
     </style>
 
     <div class="flex flex-col gap-y-4">

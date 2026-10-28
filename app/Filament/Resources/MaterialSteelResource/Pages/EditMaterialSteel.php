@@ -9,10 +9,16 @@ use App\Models\Supplier;
 use Filament\Actions;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
+use Filament\Support\Enums\MaxWidth;
 
 class EditMaterialSteel extends EditRecord
 {
     protected static string $resource = MaterialSteelResource::class;
+
+    public function getMaxContentWidth(): MaxWidth|string|null
+    {
+        return MaxWidth::Full;
+    }
 
     protected function getHeaderActions(): array
     {
