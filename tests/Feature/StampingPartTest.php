@@ -658,4 +658,52 @@ class StampingPartTest extends TestCase
             ->assertSet('data.coil_price', 1.5)
             ->assertSet('data.sheet_price', 1.55);
     }
+
+    public function test_stamping_part_calculates_excel_nine_line_breakdown(): void
+    {
+        $stamping = StampingPart::create([
+            'year' => 2026,
+            'quarter' => 'Q2',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'part_number' => '72388-X7V00-A',
+            'part_no_to_compare' => '72388-X7V00',
+            'part_name' => 'BRKT, SEAT BELT ANCHOR LH',
+            'model_name' => 'D26A',
+            'quotation_date' => '2026-04-01',
+            'steel_spec' => 'SPH440-OD',
+            'double_thickness' => '2.6',
+            'wide' => 390,
+            'pitch' => 148,
+            'yield_rate' => 2,
+            'berat' => 0.8874,
+            'sheet_price' => 1.1456,
+            'exchange_rate' => 16000,
+            'scrap_weight' => 0.278,
+            'scrap_price_per_kg' => -1500,
+            'process_man_hour' => 9,
+            'process_charge' => 45,
+            'overhead_supplied_percent' => 11,
+            'overhead_self_percent' => 4,
+            'transportation_cost' => 50.0,
+            'packing_cost' => 30.0,
+            'tooling_depreciation' => 150.0,
+            'comments' => '1. Part price based on standard production',
+            'remarks' => '1. Exchange Rate USD 16000',
+            'alteration' => 'Initial drawing ECI-2026',
+        ]);
+
+        $this->assertEquals(0.8874, (float) $stamping->berat);
+        $this->assertGreaterThan(0, (float) $stamping->material_total);
+        $this->assertEquals(202.50, (float) $stamping->process_total);
+        $this->assertGreaterThan(0, (float) $stamping->part_cost_excluding_tooling);
+        $this->assertEquals(
+            round((float) $stamping->part_cost_excluding_tooling + (float) $stamping->tooling_depreciation, 4),
+            (float) $stamping->part_cost
+        );
+        $this->assertEquals('72388-X7V00', $stamping->part_no_to_compare);
+        $this->assertEquals('2026-04-01', $stamping->quotation_date->format('Y-m-d'));
+        $this->assertEquals('1. Part price based on standard production', $stamping->comments);
+    }
 }

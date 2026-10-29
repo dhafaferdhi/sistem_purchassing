@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Collection;
 
 class StampingPart extends Model
 {
@@ -39,10 +40,16 @@ class StampingPart extends Model
         'overhead_supplied_cost',
         'overhead_self_percent',
         'overhead_self_cost',
+        'transportation_cost',
+        'packing_cost',
+        'part_cost_excluding_tooling',
         'tooling_depreciation',
         'tooling_details',
         'drawing_reference',
         'eci_number',
+        'part_no_to_compare',
+        'quotation_date',
+        'exchange_rate_fluctuation',
         'part_cost',
         'currency_id',
         'currency_code',
@@ -58,6 +65,10 @@ class StampingPart extends Model
         'fluktuasi_jfe',
         'status',
         'notes',
+        'comments',
+        'remarks',
+        'alteration',
+        'etc_contents',
         'created_by',
     ];
 
@@ -74,6 +85,10 @@ class StampingPart extends Model
         'process_total' => 202.50,
         'overhead_supplied_percent' => 11,
         'overhead_self_percent' => 4,
+        'transportation_cost' => 0,
+        'packing_cost' => 0,
+        'part_cost_excluding_tooling' => 0,
+        'exchange_rate_fluctuation' => 1.0,
         'currency_code' => 'USD',
         'exchange_rate' => 16000,
         'gap_steel_usd' => 0,
@@ -94,6 +109,7 @@ class StampingPart extends Model
         return [
             'year' => 'integer',
             'monthly_volume' => 'integer',
+            'quotation_date' => 'date',
             'wide' => 'decimal:2',
             'pitch' => 'decimal:2',
             'yield_rate' => 'decimal:2',
@@ -111,10 +127,14 @@ class StampingPart extends Model
             'overhead_supplied_cost' => 'decimal:2',
             'overhead_self_percent' => 'decimal:2',
             'overhead_self_cost' => 'decimal:2',
+            'transportation_cost' => 'decimal:2',
+            'packing_cost' => 'decimal:2',
+            'part_cost_excluding_tooling' => 'decimal:4',
             'tooling_depreciation' => 'decimal:4',
             'tooling_details' => 'array',
             'part_cost' => 'decimal:4',
             'exchange_rate' => 'decimal:4',
+            'exchange_rate_fluctuation' => 'decimal:6',
             'gap_steel_usd' => 'decimal:4',
             'hr_steel_usd' => 'decimal:4',
             'cr_steel_usd' => 'decimal:4',
@@ -262,13 +282,35 @@ class StampingPart extends Model
             $ohSelfPct = (float) ($model->overhead_self_percent ?? 4);
             $model->overhead_self_cost = round(($ohSelfPct / 100) * (float) $model->material_total, 2);
 
-            $tooling = (float) ($model->tooling_depreciation ?? 0);
+            $transCost = (float) ($model->transportation_cost ?? 0);
+            $packCost = (float) ($model->packing_cost ?? 0);
 
-            $model->part_cost = round(
+            // (8) Part Cost (excluding tooling cost) = Subtotal + OH Supplied + OH Self + Transportation + Packing
+            $model->part_cost_excluding_tooling = round(
                 (float) $model->subtotal
                 + (float) $model->overhead_supplied_cost
                 + (float) $model->overhead_self_cost
-                + $tooling,
+                + $transCost
+                + $packCost,
+                4
+            );
+
+            // Jika ada rincian tooling_details, otomatis hitung total depresiasi
+            if (! empty($model->tooling_details) && is_array($model->tooling_details)) {
+                $calcTooling = 0.0;
+                foreach ($model->tooling_details as $tool) {
+                    $calcTooling += (float) ($tool['depreciation_per_pc'] ?? $tool['depreciation'] ?? 0);
+                }
+                if ($calcTooling > 0 && ((float) ($model->tooling_depreciation ?? 0) == 0.0)) {
+                    $model->tooling_depreciation = round($calcTooling, 4);
+                }
+            }
+
+            $tooling = (float) ($model->tooling_depreciation ?? 0);
+
+            // Total Final Part Cost = Part Cost (excluding tooling) + Die & Jig Depreciation
+            $model->part_cost = round(
+                (float) $model->part_cost_excluding_tooling + $tooling,
                 4
             );
 
@@ -506,6 +548,37 @@ class StampingPart extends Model
     public static function cleanSteelSpec(?string $spec): ?string
     {
         return MaterialSteel::cleanSteelSpec($spec);
+    }
+
+    /**
+     * Dapatkan Sub-Assembly yang menggunakan part ini sebagai child component (BOM)
+     *
+     * @return Collection<int, SubAssemblyPart>
+     */
+    public function getUsedInSubAssembliesAttribute(): Collection
+    {
+        if (empty($this->part_number)) {
+            return collect();
+        }
+
+        $cleanPartNo = trim((string) $this->part_number);
+
+        return SubAssemblyPart::where('year', $this->year)
+            ->where('quarter', $this->quarter)
+            ->get()
+            ->filter(function (SubAssemblyPart $sa) use ($cleanPartNo) {
+                if (! is_array($sa->material_breakdown)) {
+                    return false;
+                }
+                foreach ($sa->material_breakdown as $item) {
+                    $itemPart = trim((string) ($item['part_number'] ?? $item['part_no'] ?? ''));
+                    if ($itemPart !== '' && (strcasecmp($itemPart, $cleanPartNo) === 0 || str_replace([' ', '-'], '', $itemPart) === str_replace([' ', '-'], '', $cleanPartNo))) {
+                        return true;
+                    }
+                }
+
+                return false;
+            })->values();
     }
 
     /**

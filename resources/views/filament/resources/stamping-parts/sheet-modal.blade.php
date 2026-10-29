@@ -13,8 +13,11 @@
     $subtotal = (float) ($current->subtotal ?? ($matTotal + $procTotal));
     $ohSupplied = (float) ($current->overhead_supplied_cost ?? 0);
     $ohSelf = (float) ($current->overhead_self_cost ?? 0);
+    $transCost = (float) ($current->transportation_cost ?? 0);
+    $packCost = (float) ($current->packing_cost ?? 0);
+    $partCostExclTooling = (float) ($current->part_cost_excluding_tooling ?? ($subtotal + $ohSupplied + $ohSelf + $transCost + $packCost));
     $tooling = (float) ($current->tooling_depreciation ?? 0);
-    $partCost = (float) ($current->part_cost ?? ($subtotal + $ohSupplied + $ohSelf + $tooling));
+    $partCost = (float) ($current->part_cost ?? ($partCostExclTooling + $tooling));
 
     // Cari seluruh kuartal lain untuk Part Number yang sama
     $otherQuarters = StampingPart::where('part_number', $current->part_number)
@@ -85,10 +88,16 @@
     $prevSubtotal = $prev ? (float) ($prev->subtotal ?? 0) : null;
     $prevOhSupplied = $prev ? (float) ($prev->overhead_supplied_cost ?? 0) : null;
     $prevOhSelf = $prev ? (float) ($prev->overhead_self_cost ?? 0) : null;
+    $prevTransCost = $prev ? (float) ($prev->transportation_cost ?? 0) : null;
+    $prevPackCost = $prev ? (float) ($prev->packing_cost ?? 0) : null;
+    $prevPartCostExclTooling = $prev ? (float) ($prev->part_cost_excluding_tooling ?? (($prevSubtotal ?? 0) + ($prevOhSupplied ?? 0) + ($prevOhSelf ?? 0) + ($prevTransCost ?? 0) + ($prevPackCost ?? 0))) : null;
     $prevTooling = $prev ? (float) ($prev->tooling_depreciation ?? 0) : null;
     $prevPartCost = $prev ? (float) ($prev->part_cost ?? 0) : null;
 
     $totalDiff = $diffFn($partCost, $prevPartCost, true, 2);
+    $exclToolingDiff = $diffFn($partCostExclTooling, $prevPartCostExclTooling, true, 2);
+    $transDiff = $diffFn($transCost, $prevTransCost, true, 2);
+    $packDiff = $diffFn($packCost, $prevPackCost, true, 2);
 @endphp
 
 <div class="space-y-5 font-sans text-gray-950 dark:text-white antialiased p-1">
@@ -124,14 +133,21 @@
             <div class="rounded-lg bg-gray-100 p-3 border border-gray-300 dark:bg-gray-800 dark:border-gray-700">
                 <span class="text-[11px] font-bold uppercase text-gray-700 dark:text-gray-300 block">Part Number</span>
                 <span class="font-mono font-black text-gray-950 dark:text-white text-sm mt-0.5 block">{{ $current->part_number ?: '-' }}</span>
+                @if($current->part_no_to_compare)
+                    <span class="text-[10px] text-blue-600 dark:text-blue-400 font-semibold block mt-0.5">Comp: {{ $current->part_no_to_compare }}</span>
+                @endif
             </div>
             <div class="rounded-lg bg-gray-100 p-3 border border-gray-300 dark:bg-gray-800 dark:border-gray-700">
                 <span class="text-[11px] font-bold uppercase text-gray-700 dark:text-gray-300 block">Part Name</span>
                 <span class="font-black text-gray-950 dark:text-white text-sm mt-0.5 truncate block" title="{{ $current->part_name }}">{{ $current->part_name ?: '-' }}</span>
+                @if($current->quotation_date)
+                    <span class="text-[10px] text-gray-600 dark:text-gray-400 block mt-0.5">Tgl Quotation: {{ $current->quotation_date->format('d/m/Y') }}</span>
+                @endif
             </div>
             <div class="rounded-lg bg-gray-100 p-3 border border-gray-300 dark:bg-gray-800 dark:border-gray-700">
                 <span class="text-[11px] font-bold uppercase text-gray-700 dark:text-gray-300 block">Model & Vol</span>
                 <span class="font-black text-gray-950 dark:text-white text-sm mt-0.5 block">{{ $current->model_name ?: 'D26A' }} / {{ number_format($current->monthly_volume ?: 16500, 0, ',', '.') }} pcs/bln</span>
+                <span class="text-[10px] text-gray-600 dark:text-gray-400 block mt-0.5">ECI: {{ $current->eci_number ?: '-' }}</span>
             </div>
             <div class="rounded-lg bg-gray-100 p-3 border border-gray-300 dark:bg-gray-800 dark:border-gray-700">
                 <span class="text-[11px] font-bold uppercase text-gray-700 dark:text-gray-300 block">Kurs Acuan (IDR)</span>
@@ -142,7 +158,7 @@
                         <span class="text-[11px] {{ $rateDiff['color'] }}">{{ $rateDiff['formatted'] }}</span>
                     @endif
                 </div>
-                <span class="text-[10px] text-gray-600 dark:text-gray-400 font-bold block mt-0.5">Drawing / ECI: {{ $current->drawing_reference ?: 'Mass Prod. Drwg' }} ({{ $current->eci_number ?: 'F1225' }})</span>
+                <span class="text-[10px] text-gray-600 dark:text-gray-400 font-bold block mt-0.5">Drawing: {{ $current->drawing_reference ?: 'Mass Prod. Drwg' }}</span>
             </div>
         </div>
 
@@ -439,6 +455,40 @@
                         <td class="p-3 text-right font-mono {{ $ohSelfDiff['color'] }}">{{ $ohSelfDiff['formatted'] }}</td>
                     </tr>
                     <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                        <td class="p-3 font-semibold">(6) : Transportation (Rp / pc)</td>
+                        <td class="p-3 text-right font-mono bg-gray-50/50 dark:bg-gray-800/40">
+                            {{ $prev && $prevTransCost !== null ? 'Rp ' . number_format($prevTransCost, 2, ',', '.') : '-' }}
+                        </td>
+                        <td class="p-3 text-right font-mono bg-emerald-50/30 dark:bg-emerald-950/20 font-bold">
+                            Rp {{ number_format($transCost, 2, ',', '.') }}
+                        </td>
+                        <td class="p-3 text-right font-mono {{ $transDiff['color'] }}">{{ $transDiff['formatted'] }}</td>
+                    </tr>
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                        <td class="p-3 font-semibold">(7) : Packing (Rp / pc)</td>
+                        <td class="p-3 text-right font-mono bg-gray-50/50 dark:bg-gray-800/40">
+                            {{ $prev && $prevPackCost !== null ? 'Rp ' . number_format($prevPackCost, 2, ',', '.') : '-' }}
+                        </td>
+                        <td class="p-3 text-right font-mono bg-emerald-50/30 dark:bg-emerald-950/20 font-bold">
+                            Rp {{ number_format($packCost, 2, ',', '.') }}
+                        </td>
+                        <td class="p-3 text-right font-mono {{ $packDiff['color'] }}">{{ $packDiff['formatted'] }}</td>
+                    </tr>
+                    <tr class="bg-amber-100/90 dark:bg-amber-950/60 font-bold border-y-2 border-amber-400 dark:border-amber-700">
+                        <td class="p-3 font-black text-amber-950 dark:text-amber-100">
+                            (8) : Part Cost (excluding tooling cost) = (3) + (4) + (5) + (6) + (7)
+                        </td>
+                        <td class="p-3 text-right font-mono font-black text-amber-900 dark:text-amber-200">
+                            {{ $prev && $prevPartCostExclTooling !== null ? 'Rp ' . number_format($prevPartCostExclTooling, 2, ',', '.') : '-' }}
+                        </td>
+                        <td class="p-3 text-right font-mono font-black text-amber-950 dark:text-amber-100 text-sm">
+                            Rp {{ number_format($partCostExclTooling, 2, ',', '.') }}
+                        </td>
+                        <td class="p-3 text-right font-mono font-black text-sm {{ $exclToolingDiff['color'] }}">
+                            {{ $exclToolingDiff['formatted'] }}
+                        </td>
+                    </tr>
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                         <td class="p-3 font-semibold">(9) : Die & Jig depreciation (Tooling)</td>
                         <td class="p-3 text-right font-mono bg-gray-50/50 dark:bg-gray-800/40">
                             {{ $prev ? 'Rp ' . number_format((float) $prevTooling, 2, ',', '.') : '-' }}
@@ -471,6 +521,100 @@
                             @endif
                         </td>
                     </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 4. RINCIAN TOOLING (DIE & JIG BREAKDOWN) JIKA ADA -->
+    @if(!empty($current->tooling_details) && is_array($current->tooling_details))
+        <div class="rounded-xl border border-gray-300 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+            <div class="flex items-center justify-between border-b border-gray-200 pb-3 dark:border-gray-800">
+                <h3 class="text-sm font-black text-gray-950 dark:text-white flex items-center gap-2">
+                    <span class="flex h-6 w-6 items-center justify-center rounded-full bg-cyan-600 text-xs font-black text-white shadow-sm">4</span>
+                    Rincian Investasi & Amortisasi Tooling (Die & Jig Breakdown)
+                </h3>
+                <span class="text-xs text-gray-700 dark:text-gray-300 font-semibold">Tabel Komponen Cetakan</span>
+            </div>
+            <div class="mt-4 overflow-x-auto">
+                <table class="w-full text-left text-xs border border-gray-300 dark:border-gray-700 rounded-lg overflow-hidden">
+                    <thead class="bg-gray-200 text-gray-950 dark:bg-gray-800 dark:text-white font-extrabold uppercase">
+                        <tr>
+                            <th class="p-2.5">Contents / Item Die</th>
+                            <th class="p-2.5 text-right">Total Cost (KRp)</th>
+                            <th class="p-2.5 text-right">Monthly Volume (pcs)</th>
+                            <th class="p-2.5 text-right">Depreciation / pc (Rp)</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                        @foreach($current->tooling_details as $tool)
+                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                                <td class="p-2.5 font-bold">{{ $tool['contents'] ?? 'DIE STAMPING' }}</td>
+                                <td class="p-2.5 text-right font-mono">{{ number_format((float) ($tool['total_cost_krp'] ?? 0), 0, ',', '.') }}</td>
+                                <td class="p-2.5 text-right font-mono">{{ number_format((float) ($tool['monthly_volume'] ?? 16500), 0, ',', '.') }}</td>
+                                <td class="p-2.5 text-right font-mono font-bold text-cyan-700 dark:text-cyan-300">Rp {{ number_format((float) ($tool['depreciation_per_pc'] ?? 0), 2, ',', '.') }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    @endif
+
+    <!-- 5. FOOTER EXCEL: COMMENTS, REMARKS & ALTERATIONS -->
+    @if($current->comments || $current->remarks || $current->alteration || $current->etc_contents)
+        <div class="rounded-xl border border-gray-300 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+            <h3 class="text-sm font-black text-gray-950 dark:text-white flex items-center gap-2 border-b border-gray-200 pb-3 dark:border-gray-800 mb-3">
+                <span class="flex h-6 w-6 items-center justify-center rounded-full bg-slate-600 text-xs font-black text-white shadow-sm">5</span>
+                Catatan Resmi & Ketentuan Komersial Penawaran (Excel Footer)
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                @if($current->alteration)
+                    <div class="rounded-lg bg-gray-50 dark:bg-gray-800 p-3 border border-gray-200 dark:border-gray-700">
+                        <strong class="text-gray-900 dark:text-white block font-bold uppercase text-[11px] mb-1">ALTERATION / ECI CHANGES:</strong>
+                        <p class="text-gray-700 dark:text-gray-300 whitespace-pre-line">{{ $current->alteration }}</p>
+                    </div>
+                @endif
+                @if($current->etc_contents)
+                    <div class="rounded-lg bg-gray-50 dark:bg-gray-800 p-3 border border-gray-200 dark:border-gray-700">
+                        <strong class="text-gray-900 dark:text-white block font-bold uppercase text-[11px] mb-1">ETC. CONTENTS:</strong>
+                        <p class="text-gray-700 dark:text-gray-300 whitespace-pre-line">{{ $current->etc_contents }}</p>
+                    </div>
+                @endif
+                @if($current->comments)
+                    <div class="rounded-lg bg-blue-50/60 dark:bg-blue-950/30 p-3 border border-blue-200 dark:border-blue-800">
+                        <strong class="text-blue-900 dark:text-blue-200 block font-bold uppercase text-[11px] mb-1">COMMENTS:</strong>
+                        <p class="text-blue-950 dark:text-blue-100 whitespace-pre-line">{{ $current->comments }}</p>
+                    </div>
+                @endif
+                @if($current->remarks)
+                    <div class="rounded-lg bg-purple-50/60 dark:bg-purple-950/30 p-3 border border-purple-200 dark:border-purple-800">
+                        <strong class="text-purple-900 dark:text-purple-200 block font-bold uppercase text-[11px] mb-1">REMARKS:</strong>
+                        <p class="text-purple-950 dark:text-purple-100 whitespace-pre-line">{{ $current->remarks }}</p>
+                    </div>
+                @endif
+            </div>
+        </div>
+    @endif
+
+    <!-- 6. RELASI SUB-ASSEMBLY JIKA DIGUNAKAN SEBAGAI CHILD PART -->
+    @php $subAssies = $current->used_in_sub_assemblies; @endphp
+    @if(!empty($subAssies))
+        <div class="rounded-xl border border-indigo-200 bg-indigo-50/50 p-4 dark:border-indigo-800 dark:bg-indigo-950/40">
+            <div class="flex items-center gap-2 text-xs font-bold text-indigo-900 dark:text-indigo-200 mb-2">
+                <span>🧩</span> Komponen ini Terpasang Pada Sub-Assembly Berikut:
+            </div>
+            <div class="flex flex-wrap gap-2 text-xs">
+                @foreach($subAssies as $sa)
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-gray-800 border border-indigo-300 dark:border-indigo-700 font-semibold text-gray-900 dark:text-white shadow-sm">
+                        <span class="font-mono font-black text-indigo-600 dark:text-indigo-400">{{ $sa['part_number'] }}</span>
+                        <span class="text-gray-500 dark:text-gray-400">({{ $sa['part_name'] ?? 'Sub-Assembly' }})</span>
+                        <span class="text-[10px] bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 px-1.5 py-0.5 rounded font-bold">{{ $sa['model_name'] ?? 'Model' }}</span>
+                    </span>
+                @endforeach
+            </div>
+        </div>
+    @endif
                 </tbody>
             </table>
         </div>

@@ -230,6 +230,36 @@ class ExcelImportService
             'fluktuasi_jfe' => ['fluktuasi_jfe', 'jfe', 'fluktuasi', 'jfe_fluctuation'],
             'status' => ['status', 'status_kontrak'],
             'notes' => ['notes', 'catatan', 'keterangan', 'remark', 'remarks'],
+            'part_number' => ['part_number', 'part_no', 'part_num', 'no_part', 'nomor_part', 'partno'],
+            'part_no_to_compare' => ['part_no_to_compare', 'part_number_to_compare', 'compare_part', 'part_no_compare', 'part_compare'],
+            'part_name' => ['part_name', 'nama_part', 'deskripsi_part', 'item_name', 'nama_barang'],
+            'model_name' => ['model_name', 'model', 'tipe_model', 'car_model'],
+            'eci_number' => ['eci_number', 'eci_no', 'eci'],
+            'quotation_date' => ['quotation_date', 'tgl_quotation', 'tanggal_penawaran', 'date'],
+            'wide' => ['wide', 'lebar', 'width', 'wide_mm'],
+            'pitch' => ['pitch', 'panjang_pitch', 'pitch_mm'],
+            'yield_rate' => ['yield_rate', 'yield', 'yield_stroke'],
+            'scrap_weight' => ['scrap_weight', 'berat_scrap'],
+            'scrap_price_per_kg' => ['scrap_price_per_kg', 'scrap_price', 'harga_scrap'],
+            'process_name' => ['process_name', 'proses', 'nama_proses', 'machine_ton', 'tonnage'],
+            'process_man_hour' => ['process_man_hour', 'sph', 'man_hour', 'cycle_time'],
+            'process_charge' => ['process_charge', 'charge', 'line_charge', 'rate_proses'],
+            'overhead_supplied_percent' => ['overhead_supplied_percent', 'oh_supplied', 'oh_supplied_percent', 'oh_supplied_pct'],
+            'overhead_self_percent' => ['overhead_self_percent', 'oh_self', 'oh_self_percent', 'oh_self_pct'],
+            'transportation_cost' => ['transportation_cost', 'transportation', 'transport', 'ongkir', 'biaya_angkut'],
+            'packing_cost' => ['packing_cost', 'packing', 'kemasan', 'biaya_packing'],
+            'tooling_depreciation' => ['tooling_depreciation', 'tooling_depr', 'depresiasi_tooling', 'tooling', 'die_jig_depreciation', 'die_depr'],
+            'wire_spec' => ['wire_spec', 'spesifikasi_kawat', 'spesifikasi_wire', 'wire'],
+            'gross_weight_gr' => ['gross_weight_gr', 'gross_weight', 'gross_wt', 'berat_kotor'],
+            'nett_weight_gr' => ['nett_weight_gr', 'nett_weight', 'nett_wt', 'berat_bersih'],
+            'wire_price_usd_kg' => ['wire_price_usd_kg', 'wire_price_usd', 'wire_price', 'wire($/kg)', 'wire ($/kg)', 'wire_usd_kg', 'wire_usd'],
+            'washer_price' => ['washer_price', 'washer', 'harga_washer'],
+            'washer_weight_gr' => ['washer_weight_gr', 'washer_weight', 'berat_washer'],
+            'heading_cost' => ['heading_cost', 'heading', 'biaya_heading'],
+            'rolling_cost' => ['rolling_cost', 'rolling', 'biaya_rolling'],
+            'washing_cost_kg' => ['washing_cost_kg', 'washing_cost', 'washing', 'biaya_washing'],
+            'plating_cost_kg' => ['plating_cost_kg', 'plating_cost', 'plating', 'biaya_plating'],
+            'inspection_cost' => ['inspection_cost', 'inspection', 'final_inspection', 'pemeriksaan'],
         ];
     }
 
@@ -251,17 +281,19 @@ class ExcelImportService
                     $q = strtoupper($m[1]);
                     $y = (int) $m[2];
 
-                    // Cari Kurs di baris atasnya atau sekitarnya
+                    // Cari Kurs di baris kuartal atau baris-baris sebelumnya di sekitar kolom ini
                     $rate = null;
-                    for ($checkR = 1; $checkR < $rIdx; $checkR++) {
-                        $possibleRate = $grid[$checkR][$colIdx] ?? ($grid[$checkR][$colIdx + 1] ?? null);
-                        if ($possibleRate && is_numeric($possibleRate) && (float) $possibleRate >= 10000) {
-                            $rate = (float) $possibleRate;
-                            break;
+                    for ($checkR = 0; $checkR <= $rIdx; $checkR++) {
+                        for ($offset = 0; $offset <= 3; $offset++) {
+                            $possibleRate = $grid[$checkR][$colIdx + $offset] ?? null;
+                            if ($possibleRate !== null && is_numeric($possibleRate) && (float) $possibleRate >= 10000) {
+                                $rate = (float) $possibleRate;
+                                break 2;
+                            }
                         }
                     }
 
-                    // Cari penyesuaian HR dan CR dari teks header, misal "Q4-2026 A.R (HR -20$/MT  CR -20$/MT)"
+                    // Cari penyesuaian HRC dan CRC dari teks header atau baris atasnya (seperti "HRC (HOT),,-158", "CRC (COLD),,-138")
                     $hrMt = null;
                     $crMt = null;
 
@@ -270,6 +302,32 @@ class ExcelImportService
                     }
                     if (preg_match('/CR\s*([+-]?\d+(?:[.,]\d+)?)\s*\$\s*\/\s*MT/i', (string) $val, $cm)) {
                         $crMt = (float) str_replace(',', '.', $cm[1]);
+                    }
+
+                    // Jika belum ketemu di teks kuartal, cari di baris atas pada kolom ini
+                    if ($hrMt === null || $crMt === null) {
+                        for ($checkR = 0; $checkR < $rIdx; $checkR++) {
+                            for ($offset = 0; $offset <= 3; $offset++) {
+                                $cellVal = (string) ($grid[$checkR][$colIdx + $offset] ?? '');
+                                if (stripos($cellVal, 'HRC') !== false || (stripos($cellVal, 'HR') !== false && stripos($cellVal, 'HOT') !== false)) {
+                                    for ($vo = 1; $vo <= 3; $vo++) {
+                                        $num = $grid[$checkR][$colIdx + $offset + $vo] ?? null;
+                                        if ($num !== null && $num !== '' && is_numeric($num)) {
+                                            $hrMt = (float) $num;
+                                            break;
+                                        }
+                                    }
+                                } elseif (stripos($cellVal, 'CRC') !== false || (stripos($cellVal, 'CR') !== false && stripos($cellVal, 'COLD') !== false)) {
+                                    for ($vo = 1; $vo <= 3; $vo++) {
+                                        $num = $grid[$checkR][$colIdx + $offset + $vo] ?? null;
+                                        if ($num !== null && $num !== '' && is_numeric($num)) {
+                                            $crMt = (float) $num;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     $gapMt = 0.0;
@@ -363,17 +421,59 @@ class ExcelImportService
             $firstDataRow = 8;
         }
 
+        $subHeaderRow = $selectedPeriod['header_row'] + 1;
+        $orderIsSheetSecond = false;
+        if (isset($grid[$subHeaderRow])) {
+            $h1 = strtolower((string) ($grid[$subHeaderRow][$startCol + 1] ?? ''));
+            if (str_contains($h1, 'sheet')) {
+                $orderIsSheetSecond = true;
+            }
+        }
+
         $dataRows = [];
+        $currentFamily = null;
         for ($r = $firstDataRow; $r <= count($grid); $r++) {
             if (! isset($grid[$r])) {
                 continue;
             }
-            $rawSpec = trim((string) ($grid[$r][1] ?? ''));
-            if (empty($rawSpec)) {
-                $rawSpec = trim((string) ($grid[$r][0] ?? ''));
+
+            $col0 = trim((string) ($grid[$r][0] ?? ''));
+            if (! empty($col0) && ! is_numeric($col0) && strlen($col0) >= 3 && ! str_contains(strtolower($col0), 'note')) {
+                $currentFamily = $col0;
             }
 
+            // Cari spesifikasi baja di kolom 0, 1, atau 2 yang memuat nama spec baja standar (misal "SPH270C-OD T1.6")
+            $candidateCols = [
+                $grid[$r][2] ?? '',
+                $grid[$r][1] ?? '',
+                $grid[$r][0] ?? '',
+            ];
+
+            $rawSpec = '';
+            foreach ($candidateCols as $cVal) {
+                $strVal = trim((string) $cVal);
+                if (preg_match('/(?:SP[HC]|NSC|SAPH)\d+/i', $strVal)) {
+                    $rawSpec = $strVal;
+                    break;
+                }
+            }
+
+            // Fallback jika tidak ada regex match langsung tapi ada teks non-kategori
             if (empty($rawSpec)) {
+                foreach ($candidateCols as $cVal) {
+                    $strVal = trim((string) $cVal);
+                    if (! empty($strVal) && ! is_numeric($strVal) && ! in_array(strtoupper($strVal), ['HOT', 'COLD', 'CAT', 'SPEC', 'SIZE', 'NOTE', 'NOTES'])) {
+                        $rawSpec = $strVal;
+                        break;
+                    }
+                }
+            }
+
+            if (empty($rawSpec) && $currentFamily && ! in_array(strtoupper($currentFamily), ['HOT', 'COLD', 'CAT', 'SPEC'])) {
+                $rawSpec = $currentFamily;
+            }
+
+            if (empty($rawSpec) || in_array(strtoupper($rawSpec), ['HOT', 'COLD', 'CAT', 'SPEC'])) {
                 continue;
             }
 
@@ -390,17 +490,24 @@ class ExcelImportService
                 $thickness = $sm[1];
             }
 
-            // Ambil harga dari kolom target periode
-            $coilUsd = (float) static::cleanNumeric($grid[$r][$startCol] ?? 0);
-            $coilIdr = (float) static::cleanNumeric($grid[$r][$startCol + 1] ?? 0);
-            $sheetUsd = (float) static::cleanNumeric($grid[$r][$startCol + 2] ?? 0);
-            $sheetIdr = (float) static::cleanNumeric($grid[$r][$startCol + 3] ?? 0);
+            // Ambil harga dari kolom target periode sesuai urutan subheader
+            if ($orderIsSheetSecond) {
+                $coilUsd = (float) static::cleanNumeric($grid[$r][$startCol] ?? 0);
+                $sheetUsd = (float) static::cleanNumeric($grid[$r][$startCol + 1] ?? 0);
+                $coilIdr = (float) static::cleanNumeric($grid[$r][$startCol + 2] ?? 0);
+                $sheetIdr = (float) static::cleanNumeric($grid[$r][$startCol + 3] ?? 0);
+            } else {
+                $coilUsd = (float) static::cleanNumeric($grid[$r][$startCol] ?? 0);
+                $coilIdr = (float) static::cleanNumeric($grid[$r][$startCol + 1] ?? 0);
+                $sheetUsd = (float) static::cleanNumeric($grid[$r][$startCol + 2] ?? 0);
+                $sheetIdr = (float) static::cleanNumeric($grid[$r][$startCol + 3] ?? 0);
+            }
 
             if ($coilUsd <= 0 && $sheetUsd <= 0) {
                 continue;
             }
 
-            $code = trim((string) ($grid[$r][2] ?? ''));
+            $code = trim((string) ($grid[$r][1] ?? ($grid[$r][2] ?? '')));
             $steelType = MaterialSteel::determineSteelType($spec);
             $periodHr = $selectedPeriod['hr_mt'] ?? null;
             $periodCr = $selectedPeriod['cr_mt'] ?? null;
@@ -812,6 +919,25 @@ class ExcelImportService
             'fluktuasi_jfe' => static::cleanNumeric($row['fluktuasi_jfe'] ?? $gapKgUsd),
             'status' => ! empty($row['status']) ? trim((string) $row['status']) : 'Active',
             'notes' => trim((string) ($row['notes'] ?? 'Diimpor otomatis via Excel')),
+            'part_number' => trim((string) ($row['part_number'] ?? '')),
+            'part_no_to_compare' => trim((string) ($row['part_no_to_compare'] ?? '')),
+            'part_name' => trim((string) ($row['part_name'] ?? '')),
+            'model_name' => trim((string) ($row['model_name'] ?? ($row['model'] ?? ''))),
+            'eci_number' => trim((string) ($row['eci_number'] ?? '')),
+            'quotation_date' => ! empty($row['quotation_date']) ? $row['quotation_date'] : null,
+            'wide' => isset($row['wide']) ? static::cleanNumeric($row['wide']) : null,
+            'pitch' => isset($row['pitch']) ? static::cleanNumeric($row['pitch']) : null,
+            'yield_rate' => isset($row['yield_rate']) ? static::cleanNumeric($row['yield_rate']) : 1,
+            'scrap_weight' => isset($row['scrap_weight']) ? static::cleanNumeric($row['scrap_weight']) : 0,
+            'scrap_price_per_kg' => isset($row['scrap_price_per_kg']) ? static::cleanNumeric($row['scrap_price_per_kg']) : -1500,
+            'process_name' => ! empty($row['process_name']) ? trim((string) $row['process_name']) : '1. PROGRESSIVE 250T',
+            'process_man_hour' => isset($row['process_man_hour']) ? static::cleanNumeric($row['process_man_hour']) : 9,
+            'process_charge' => isset($row['process_charge']) ? static::cleanNumeric($row['process_charge']) : 45,
+            'overhead_supplied_percent' => isset($row['overhead_supplied_percent']) ? static::cleanNumeric($row['overhead_supplied_percent']) : 11,
+            'overhead_self_percent' => isset($row['overhead_self_percent']) ? static::cleanNumeric($row['overhead_self_percent']) : 4,
+            'transportation_cost' => isset($row['transportation_cost']) ? static::cleanNumeric($row['transportation_cost']) : 0,
+            'packing_cost' => isset($row['packing_cost']) ? static::cleanNumeric($row['packing_cost']) : 0,
+            'tooling_depreciation' => isset($row['tooling_depreciation']) ? static::cleanNumeric($row['tooling_depreciation']) : 0,
         ];
     }
 
@@ -970,7 +1096,7 @@ class ExcelImportService
 
         foreach ($rows as $idx => $row) {
             try {
-                if (empty($row['steel_spec'])) {
+                if (empty($row['steel_spec']) && empty($row['part_number'])) {
                     continue;
                 }
 
@@ -985,32 +1111,23 @@ class ExcelImportService
                     $row['supplier_name'] = $supplier->name;
                 }
 
-                // Cek apakah data sudah ada
-                $existing = StampingPart::where('year', $row['year'])
-                    ->where('quarter', $row['quarter'])
-                    ->where('steel_spec', $row['steel_spec'])
-                    ->when($supplierId, fn ($q) => $q->where('supplier_id', $supplierId))
-                    ->first();
+                // Cek apakah data sudah ada (cocokkan via part_number atau steel_spec)
+                $query = StampingPart::where('year', $row['year'])
+                    ->where('quarter', $row['quarter']);
+
+                if (! empty($row['part_number'])) {
+                    $query->where('part_number', $row['part_number']);
+                } else {
+                    $query->where('steel_spec', $row['steel_spec'])
+                        ->when($supplierId, fn ($q) => $q->where('supplier_id', $supplierId));
+                }
+
+                $existing = $query->first();
 
                 if ($existing) {
                     if ($updateExisting) {
-                        $existing->update([
-                            'vendor_code' => $row['vendor_code'],
-                            'supplier_name' => $row['supplier_name'],
-                            'double_thickness' => $row['double_thickness'],
-                            'size' => ! empty($row['size']) ? $row['size'] : $existing->size,
-                            'berat' => ! empty($row['berat']) ? $row['berat'] : $existing->berat,
-                            'exchange_rate' => $row['exchange_rate'],
-                            'coil_price' => $row['coil_price'],
-                            'coil_price_idr' => $row['coil_price_idr'],
-                            'sheet_price' => $row['sheet_price'],
-                            'sheet_price_idr' => $row['sheet_price_idr'],
-                            'gap_steel_usd' => $row['gap_steel_usd'],
-                            'gap_steel_kg_usd' => $row['gap_steel_kg_usd'],
-                            'fluktuasi_jfe' => $row['fluktuasi_jfe'],
-                            'status' => $row['status'],
-                            'notes' => $row['notes'],
-                        ]);
+                        $updateData = array_filter($row, fn ($val) => $val !== null && $val !== '');
+                        $existing->update($updateData);
                         $updated++;
                     }
                 } else {
@@ -1068,31 +1185,50 @@ class ExcelImportService
 
                 $row['diameter'] = $row['double_thickness'] ?? null;
 
-                // Cek apakah data sudah ada
-                $existing = Fastener::where('year', $row['year'])
-                    ->where('quarter', $row['quarter'])
-                    ->where('steel_spec', $row['steel_spec'])
-                    ->when($supplierId, fn ($q) => $q->where('supplier_id', $supplierId))
-                    ->first();
+                // Cek apakah data sudah ada (berdasarkan part_number jika ada, atau steel_spec)
+                $query = Fastener::where('year', $row['year'])
+                    ->where('quarter', $row['quarter']);
+                if (! empty($row['part_number'])) {
+                    $query->where('part_number', $row['part_number']);
+                } else {
+                    $query->where('steel_spec', $row['steel_spec']);
+                }
+                if ($supplierId) {
+                    $query->where('supplier_id', $supplierId);
+                }
+                $existing = $query->first();
 
                 if ($existing) {
                     if ($updateExisting) {
-                        $existing->update([
-                            'vendor_code' => $row['vendor_code'],
-                            'supplier_name' => $row['supplier_name'],
-                            'double_thickness' => $row['double_thickness'],
-                            'diameter' => $row['diameter'],
-                            'exchange_rate' => $row['exchange_rate'],
-                            'coil_price' => $row['coil_price'],
-                            'coil_price_idr' => $row['coil_price_idr'],
-                            'sheet_price' => $row['sheet_price'],
-                            'sheet_price_idr' => $row['sheet_price_idr'],
-                            'gap_steel_usd' => $row['gap_steel_usd'],
-                            'gap_steel_kg_usd' => $row['gap_steel_kg_usd'],
-                            'fluktuasi_jfe' => $row['fluktuasi_jfe'],
-                            'status' => $row['status'],
-                            'notes' => $row['notes'],
-                        ]);
+                        $updateData = [
+                            'vendor_code' => $row['vendor_code'] ?? $existing->vendor_code,
+                            'supplier_name' => $row['supplier_name'] ?? $existing->supplier_name,
+                            'double_thickness' => $row['double_thickness'] ?? $existing->double_thickness,
+                            'diameter' => $row['diameter'] ?? $existing->diameter,
+                            'exchange_rate' => $row['exchange_rate'] ?? $existing->exchange_rate,
+                            'coil_price' => $row['coil_price'] ?? $existing->coil_price,
+                            'coil_price_idr' => $row['coil_price_idr'] ?? $existing->coil_price_idr,
+                            'sheet_price' => $row['sheet_price'] ?? $existing->sheet_price,
+                            'sheet_price_idr' => $row['sheet_price_idr'] ?? $existing->sheet_price_idr,
+                            'gap_steel_usd' => $row['gap_steel_usd'] ?? $existing->gap_steel_usd,
+                            'gap_steel_kg_usd' => $row['gap_steel_kg_usd'] ?? $existing->gap_steel_kg_usd,
+                            'fluktuasi_jfe' => $row['fluktuasi_jfe'] ?? $existing->fluktuasi_jfe,
+                        ];
+
+                        foreach ([
+                            'part_number', 'part_name', 'model_name', 'wire_spec',
+                            'gross_weight_gr', 'nett_weight_gr', 'wire_price_usd_kg',
+                            'material_control_percent', 'washer_price', 'washer_weight_gr',
+                            'heading_cost', 'rolling_cost', 'washing_cost_kg',
+                            'plating_cost_kg', 'inspection_cost', 'packing_cost',
+                            'overhead_self_percent', 'tooling_depreciation', 'status', 'notes',
+                        ] as $fKey) {
+                            if (isset($row[$fKey])) {
+                                $updateData[$fKey] = $row[$fKey];
+                            }
+                        }
+
+                        $existing->update($updateData);
                         $updated++;
                     }
                 } else {

@@ -6,6 +6,7 @@ use App\Filament\Resources\StampingPartResource\Pages;
 use App\Models\Currency;
 use App\Models\MaterialSteel;
 use App\Models\StampingPart;
+use App\Models\SubAssemblyPart;
 use App\Models\Supplier;
 use App\Services\ExcelExportService;
 use Filament\Forms;
@@ -662,6 +663,11 @@ class StampingPartResource extends Resource
                                     ->live(onBlur: true)
                                     ->columnSpan(1),
 
+                                Forms\Components\TextInput::make('part_no_to_compare')
+                                    ->label('Part No. to Compare')
+                                    ->placeholder('Contoh: 72388-X7V00')
+                                    ->columnSpan(1),
+
                                 Forms\Components\TextInput::make('model_name')
                                     ->label('Model')
                                     ->placeholder('Contoh: D26A')
@@ -674,6 +680,11 @@ class StampingPartResource extends Resource
                                     ->placeholder('Contoh: 16500')
                                     ->default(16500)
                                     ->suffix('pcs/bln')
+                                    ->columnSpan(1),
+
+                                Forms\Components\DatePicker::make('quotation_date')
+                                    ->label('Tanggal Penawaran / Revisi')
+                                    ->placeholder('YYYY-MM-DD')
                                     ->columnSpan(1),
 
                                 Forms\Components\TextInput::make('drawing_reference')
@@ -786,6 +797,57 @@ class StampingPartResource extends Resource
                                     })
                                     ->columnSpan(1),
 
+                                Forms\Components\Placeholder::make('used_in_sub_assembly_info')
+                                    ->hiddenLabel()
+                                    ->visible(fn (Get $get, ?StampingPart $record) => ! empty($get('part_number')) || ($record && $record->part_number))
+                                    ->content(function (Get $get, ?StampingPart $record) {
+                                        $partNo = $get('part_number') ?? $record?->part_number;
+                                        if (empty($partNo)) {
+                                            return null;
+                                        }
+                                        $clean = trim((string) $partNo);
+                                        $year = (int) ($get('year') ?? $record?->year ?? date('Y'));
+                                        $quarter = $get('quarter') ?? $record?->quarter ?? 'Q1';
+
+                                        $subAssemblies = SubAssemblyPart::where('year', $year)
+                                            ->where('quarter', $quarter)
+                                            ->get()
+                                            ->filter(function ($sa) use ($clean) {
+                                                if (! is_array($sa->material_breakdown)) {
+                                                    return false;
+                                                }
+                                                foreach ($sa->material_breakdown as $item) {
+                                                    $ip = trim((string) ($item['part_number'] ?? $item['part_no'] ?? ''));
+                                                    if ($ip !== '' && (strcasecmp($ip, $clean) === 0 || str_replace([' ', '-'], '', $ip) === str_replace([' ', '-'], '', $clean))) {
+                                                        return true;
+                                                    }
+                                                }
+
+                                                return false;
+                                            });
+
+                                        if ($subAssemblies->isEmpty()) {
+                                            return null;
+                                        }
+
+                                        $itemsHtml = '';
+                                        foreach ($subAssemblies as $sa) {
+                                            $itemsHtml .= "<span class='inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300 mr-2 mb-1'>🔗 [{$sa->part_number}] {$sa->part_name} ({$sa->supplier_name})</span>";
+                                        }
+
+                                        return new HtmlString("
+                                            <div class='rounded-lg bg-purple-50 p-3 border border-purple-200 dark:bg-purple-950/30 dark:border-purple-800'>
+                                                <div class='text-xs font-bold text-purple-900 dark:text-purple-200 flex items-center gap-1.5 mb-1'>
+                                                    <span>🧩</span> Komponen ini digunakan pada Sub-Assembly ($quarter $year):
+                                                </div>
+                                                <div class='flex flex-wrap items-center mt-1'>
+                                                    {$itemsHtml}
+                                                </div>
+                                            </div>
+                                        ");
+                                    })
+                                    ->columnSpanFull(),
+
                                 // Hidden fields untuk integritas data
                                 Forms\Components\Hidden::make('vendor_code'),
                                 Forms\Components\Hidden::make('supplier_name'),
@@ -842,7 +904,17 @@ class StampingPartResource extends Resource
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::recalculateFormPrices($get, $set))
                                     ->required()
-                                    ->columnSpan(2),
+                                    ->columnSpan(1),
+
+                                Forms\Components\TextInput::make('exchange_rate_fluctuation')
+                                    ->label('Exchg Fluctuation (Faktor Pengali Kurs)')
+                                    ->numeric()
+                                    ->step(0.000001)
+                                    ->default(1.0)
+                                    ->placeholder('1.0')
+                                    ->live(onBlur: true)
+                                    ->afterStateUpdated(fn (Get $get, Set $set) => static::recalculateFormPrices($get, $set))
+                                    ->columnSpan(1),
 
                                 Forms\Components\TextInput::make('coil_price')
                                     ->label('Harga Coil ($/Kg)')
@@ -983,14 +1055,60 @@ class StampingPartResource extends Resource
                                     ->live(onBlur: true)
                                     ->columnSpan(1),
 
-                                Forms\Components\TextInput::make('tooling_depreciation')
-                                    ->label('Die & Jig Depreciation (Rp / pc)')
+                                Forms\Components\TextInput::make('transportation_cost')
+                                    ->label('(6) Transportation (Rp / pc)')
                                     ->numeric()
                                     ->default(0)
                                     ->prefix('Rp')
                                     ->placeholder('0')
                                     ->live(onBlur: true)
                                     ->columnSpan(1),
+
+                                Forms\Components\TextInput::make('packing_cost')
+                                    ->label('(7) Packing (Rp / pc)')
+                                    ->numeric()
+                                    ->default(0)
+                                    ->prefix('Rp')
+                                    ->placeholder('0')
+                                    ->live(onBlur: true)
+                                    ->columnSpan(1),
+
+                                Forms\Components\TextInput::make('tooling_depreciation')
+                                    ->label('(9) Die & Jig Depreciation (Rp / pc)')
+                                    ->numeric()
+                                    ->default(0)
+                                    ->prefix('Rp')
+                                    ->placeholder('0')
+                                    ->live(onBlur: true)
+                                    ->columnSpan(1),
+
+                                Forms\Components\Repeater::make('tooling_details')
+                                    ->label('Rincian Investasi Tooling & Amortisasi (Die & Jig Breakdown)')
+                                    ->schema([
+                                        Forms\Components\TextInput::make('contents')
+                                            ->label('Contents / Item Die')
+                                            ->placeholder('Misal: DIE STAMPING / WELD JIG')
+                                            ->columnSpan(2),
+                                        Forms\Components\TextInput::make('total_cost_krp')
+                                            ->label('Total Cost (KRp)')
+                                            ->numeric()
+                                            ->placeholder('0')
+                                            ->columnSpan(1),
+                                        Forms\Components\TextInput::make('monthly_volume')
+                                            ->label('Monthly Volume (pcs)')
+                                            ->numeric()
+                                            ->placeholder('16500')
+                                            ->columnSpan(1),
+                                        Forms\Components\TextInput::make('depreciation_per_pc')
+                                            ->label('Depr / pc (Rp)')
+                                            ->numeric()
+                                            ->placeholder('0')
+                                            ->columnSpan(1),
+                                    ])
+                                    ->columns(5)
+                                    ->collapsible()
+                                    ->collapsed()
+                                    ->columnSpanFull(),
 
                                 Forms\Components\Placeholder::make('calculation_summary')
                                     ->hiddenLabel()
@@ -1027,52 +1145,90 @@ class StampingPartResource extends Resource
 
                                         $ohSelfPct = (float) ($get('overhead_self_percent') ?? 4);
                                         $ohSelfCost = round(($ohSelfPct / 100) * $matTotal, 2);
-                                        $toolingDepr = (float) ($get('tooling_depreciation') ?? 0);
 
-                                        $partCost = round($subtotal + $ohSuppliedCost + $ohSelfCost + $toolingDepr, 2);
+                                        $transCost = (float) ($get('transportation_cost') ?? 0);
+                                        $packCost = (float) ($get('packing_cost') ?? 0);
+
+                                        // (8) Part Cost (excluding tooling cost)
+                                        $partCostExclTooling = round($subtotal + $ohSuppliedCost + $ohSelfCost + $transCost + $packCost, 2);
+
+                                        $toolingDepr = (float) ($get('tooling_depreciation') ?? 0);
+                                        $finalPartCost = round($partCostExclTooling + $toolingDepr, 2);
 
                                         return new HtmlString("
                                             <div class='rounded-xl border border-primary-200 bg-white p-5 shadow-sm dark:border-primary-800 dark:bg-gray-900'>
                                                 <div class='mb-3 flex items-center justify-between border-b border-gray-100 pb-2 dark:border-gray-800'>
                                                     <h3 class='text-sm font-semibold text-primary-950 dark:text-primary-100 flex items-center gap-2'>
-                                                        <span>📊</span> Rincian Komponen Biaya Part (PT Posmi Steel)
+                                                        <span>📊</span> Rincian Komponen Biaya Part (Format Breakdown Excel PT Posmi Steel)
                                                     </h3>
+                                                    <span class='text-xs font-mono text-gray-400'>9 Lines Breakdown</span>
                                                 </div>
-                                                <div class='grid grid-cols-2 md:grid-cols-4 gap-4 text-xs'>
-                                                    <div class='rounded-lg bg-gray-50 p-2.5 dark:bg-gray-800/60'>
-                                                        <div class='text-gray-500 dark:text-gray-400'>Gross Material Cost</div>
-                                                        <div class='mt-1 text-sm font-bold text-gray-800 dark:text-gray-200'>Rp ".number_format($grossMatCost, 0, ',', '.')."</div>
-                                                    </div>
-                                                    <div class='rounded-lg bg-amber-50 p-2.5 dark:bg-amber-950/30'>
-                                                        <div class='text-amber-800 dark:text-amber-300'>Scrap Recovery Cost</div>
-                                                        <div class='mt-1 text-sm font-bold text-amber-700 dark:text-amber-400'>Rp ".number_format($scrapCost, 0, ',', '.')."</div>
-                                                    </div>
-                                                    <div class='rounded-lg bg-blue-50 p-2.5 dark:bg-blue-950/30'>
-                                                        <div class='text-blue-800 dark:text-blue-300'>Total Biaya Material</div>
-                                                        <div class='mt-1 text-sm font-bold text-blue-700 dark:text-blue-400'>Rp ".number_format($matTotal, 0, ',', '.')."</div>
-                                                    </div>
-                                                    <div class='rounded-lg bg-purple-50 p-2.5 dark:bg-purple-950/30'>
-                                                        <div class='text-purple-800 dark:text-purple-300'>Total Biaya Proses</div>
-                                                        <div class='mt-1 text-sm font-bold text-purple-700 dark:text-purple-400'>Rp ".number_format($procTotal, 0, ',', '.')."</div>
-                                                    </div>
+
+                                                <div class='overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700'>
+                                                    <table class='min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-xs'>
+                                                        <thead class='bg-gray-50 dark:bg-gray-800 font-semibold text-gray-700 dark:text-gray-300'>
+                                                            <tr>
+                                                                <th class='px-3 py-2 text-left'>No / Komponen Biaya</th>
+                                                                <th class='px-3 py-2 text-left'>Keterangan / Rumus Acuan</th>
+                                                                <th class='px-3 py-2 text-right'>Nilai (Rp / pc)</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody class='divide-y divide-gray-100 dark:divide-gray-800'>
+                                                            <tr class='hover:bg-gray-50/50'>
+                                                                <td class='px-3 py-2 font-medium text-gray-900 dark:text-gray-100'>(1) Material Total</td>
+                                                                <td class='px-3 py-2 text-gray-500'>Gross Material (Rp ".number_format($grossMatCost, 0, ',', '.').') - Scrap Recovery (Rp '.number_format(abs($scrapCost), 0, ',', '.').")</td>
+                                                                <td class='px-3 py-2 text-right font-semibold text-blue-600 dark:text-blue-400'>Rp ".number_format($matTotal, 2, ',', '.')."</td>
+                                                            </tr>
+                                                            <tr class='hover:bg-gray-50/50'>
+                                                                <td class='px-3 py-2 font-medium text-gray-900 dark:text-gray-100'>(2) Process Total</td>
+                                                                <td class='px-3 py-2 text-gray-500'>SPH ({$manHour}) × Charge ({$charge}) / Yield ({$yieldRate})</td>
+                                                                <td class='px-3 py-2 text-right font-semibold text-purple-600 dark:text-purple-400'>Rp ".number_format($procTotal, 2, ',', '.')."</td>
+                                                            </tr>
+                                                            <tr class='bg-gray-50/60 dark:bg-gray-800/40 font-semibold'>
+                                                                <td class='px-3 py-2 text-gray-800 dark:text-gray-200'>(3) Sub Total</td>
+                                                                <td class='px-3 py-2 text-gray-500'>Komponen (1) Material + (2) Process</td>
+                                                                <td class='px-3 py-2 text-right text-gray-900 dark:text-gray-100'>Rp ".number_format($subtotal, 2, ',', '.')."</td>
+                                                            </tr>
+                                                            <tr class='hover:bg-gray-50/50'>
+                                                                <td class='px-3 py-2 text-gray-700 dark:text-gray-300'>(4) O/H Mat'l Supplied</td>
+                                                                <td class='px-3 py-2 text-gray-500'>{$ohSuppliedPct}% × Total Process</td>
+                                                                <td class='px-3 py-2 text-right text-gray-800 dark:text-gray-200'>Rp ".number_format($ohSuppliedCost, 2, ',', '.')."</td>
+                                                            </tr>
+                                                            <tr class='hover:bg-gray-50/50'>
+                                                                <td class='px-3 py-2 text-gray-700 dark:text-gray-300'>(5) O/H Mat'l Self</td>
+                                                                <td class='px-3 py-2 text-gray-500'>{$ohSelfPct}% × Total Material</td>
+                                                                <td class='px-3 py-2 text-right text-gray-800 dark:text-gray-200'>Rp ".number_format($ohSelfCost, 2, ',', '.')."</td>
+                                                            </tr>
+                                                            <tr class='hover:bg-gray-50/50'>
+                                                                <td class='px-3 py-2 text-gray-700 dark:text-gray-300'>(6) Transportation</td>
+                                                                <td class='px-3 py-2 text-gray-500'>Biaya Angkut / Logistik Supplier</td>
+                                                                <td class='px-3 py-2 text-right text-gray-800 dark:text-gray-200'>Rp ".number_format($transCost, 2, ',', '.')."</td>
+                                                            </tr>
+                                                            <tr class='hover:bg-gray-50/50'>
+                                                                <td class='px-3 py-2 text-gray-700 dark:text-gray-300'>(7) Packing</td>
+                                                                <td class='px-3 py-2 text-gray-500'>Biaya Pengemasan Part</td>
+                                                                <td class='px-3 py-2 text-right text-gray-800 dark:text-gray-200'>Rp ".number_format($packCost, 2, ',', '.')."</td>
+                                                            </tr>
+                                                            <tr class='bg-amber-50/60 dark:bg-amber-950/20 font-bold'>
+                                                                <td class='px-3 py-2 text-amber-900 dark:text-amber-200'>(8) Part Cost (Excl. Tooling)</td>
+                                                                <td class='px-3 py-2 text-amber-800/80 dark:text-amber-300/80 font-normal'>Total (3) + (4) + (5) + (6) + (7)</td>
+                                                                <td class='px-3 py-2 text-right text-amber-900 dark:text-amber-200'>Rp ".number_format($partCostExclTooling, 2, ',', '.')."</td>
+                                                            </tr>
+                                                            <tr class='hover:bg-gray-50/50'>
+                                                                <td class='px-3 py-2 text-gray-700 dark:text-gray-300'>(9) Die & Jig Depreciation</td>
+                                                                <td class='px-3 py-2 text-gray-500'>Amortisasi Tooling per pcs</td>
+                                                                <td class='px-3 py-2 text-right text-gray-800 dark:text-gray-200'>Rp ".number_format($toolingDepr, 2, ',', '.')."</td>
+                                                            </tr>
+                                                        </tbody>
+                                                    </table>
                                                 </div>
-                                                <div class='mt-3 grid grid-cols-2 md:grid-cols-3 gap-4 text-xs pt-3 border-t border-gray-100 dark:border-gray-800'>
+
+                                                <div class='mt-4 flex items-center justify-between rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 px-5 py-3.5 text-white shadow'>
                                                     <div>
-                                                        <span class='text-gray-500'>Subtotal (Mat'l + Proc):</span>
-                                                        <span class='font-semibold text-gray-800 dark:text-gray-200 ml-1'>Rp ".number_format($subtotal, 0, ',', '.')."</span>
+                                                        <div class='text-xs font-medium uppercase tracking-wider text-emerald-100'>TOTAL PART COST (Rp / pc)</div>
+                                                        <div class='text-xs text-emerald-100/80'>Baris (8) Part Cost Excl. Tooling + (9) Die & Jig Depreciation</div>
                                                     </div>
-                                                    <div>
-                                                        <span class='text-gray-500'>O/H Supplied ({$ohSuppliedPct}%):</span>
-                                                        <span class='font-semibold text-gray-800 dark:text-gray-200 ml-1'>Rp ".number_format($ohSuppliedCost, 0, ',', '.')."</span>
-                                                    </div>
-                                                    <div>
-                                                        <span class='text-gray-500'>O/H Self ({$ohSelfPct}%):</span>
-                                                        <span class='font-semibold text-gray-800 dark:text-gray-200 ml-1'>Rp ".number_format($ohSelfCost, 0, ',', '.')."</span>
-                                                    </div>
-                                                </div>
-                                                <div class='mt-3 flex items-center justify-between rounded-lg bg-emerald-50 px-4 py-3 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800'>
-                                                    <div class='text-sm font-bold text-emerald-900 dark:text-emerald-100'>FINAL PART COST:</div>
-                                                    <div class='text-lg font-black text-emerald-700 dark:text-emerald-300'>Rp ".number_format($partCost, 0, ',', '.').'</div>
+                                                    <div class='text-2xl font-black tracking-tight'>Rp ".number_format($finalPartCost, 2, ',', '.').'</div>
                                                 </div>
                                             </div>
                                         ');
@@ -1080,11 +1236,35 @@ class StampingPartResource extends Resource
                                     ->columnSpanFull(),
                             ])->columns(3),
 
-                        // SECTION 4: Catatan & Status (Collapsible)
-                        Forms\Components\Section::make('4. Catatan & Status (Opsional)')
+                        // SECTION 4: Catatan, Alterasi & Referensi Excel (Collapsible)
+                        Forms\Components\Section::make('4. Catatan, Alterasi & Referensi Excel (Opsional)')
                             ->collapsible()
                             ->collapsed()
                             ->schema([
+                                Forms\Components\Textarea::make('alteration')
+                                    ->label('Alteration / ECI Changes')
+                                    ->placeholder('Catatan riwayat perubahan gambar kerja / alterasi spesifikasi...')
+                                    ->rows(2)
+                                    ->columnSpan(1),
+
+                                Forms\Components\Textarea::make('etc_contents')
+                                    ->label('Etc. Contents')
+                                    ->placeholder('Catatan konten tambahan lainnya...')
+                                    ->rows(2)
+                                    ->columnSpan(1),
+
+                                Forms\Components\Textarea::make('comments')
+                                    ->label('Comments (Catatan Penawaran Supplier)')
+                                    ->placeholder('1. Part price based on standard production...')
+                                    ->rows(2)
+                                    ->columnSpan(1),
+
+                                Forms\Components\Textarea::make('remarks')
+                                    ->label('Remarks (Catatan Term & Ketentuan)')
+                                    ->placeholder('1. Exchange Rate fluctuation term...')
+                                    ->rows(2)
+                                    ->columnSpan(1),
+
                                 Forms\Components\Select::make('part_id')
                                     ->label('Link Item Part Master (Opsional)')
                                     ->relationship('part', 'part_name')
@@ -1105,8 +1285,9 @@ class StampingPartResource extends Resource
                                     ->columnSpan(1),
 
                                 Forms\Components\Textarea::make('notes')
-                                    ->label('Catatan Kontrak / Referensi Supplier')
+                                    ->label('Catatan Kontrak / Internal')
                                     ->placeholder('Misal: Berdasarkan surat kesepakatan harga No. SKH-2026/SP-01...')
+                                    ->rows(2)
                                     ->columnSpanFull(),
                             ])->columns(2),
                     ])->columnSpanFull(),
@@ -1162,7 +1343,22 @@ class StampingPartResource extends Resource
                 ->placeholder('-')
                 ->wrapHeader()
                 ->searchable()
-                ->sortable(),
+                ->sortable()
+                ->description(fn (StampingPart $record) => $record->part_no_to_compare ? "Comp: {$record->part_no_to_compare}" : null),
+
+            Tables\Columns\TextColumn::make('part_no_to_compare')
+                ->label('Part No (Compare)')
+                ->placeholder('-')
+                ->wrapHeader()
+                ->searchable()
+                ->sortable()
+                ->toggleable(isToggledHiddenByDefault: true),
+
+            Tables\Columns\TextColumn::make('quotation_date')
+                ->label('Quotation Date')
+                ->date('d M Y')
+                ->sortable()
+                ->toggleable(isToggledHiddenByDefault: true),
 
             Tables\Columns\TextColumn::make('part_name')
                 ->label('Part Name')
@@ -1229,6 +1425,7 @@ class StampingPartResource extends Resource
                 ->label('Total Cost (Rp)')
                 ->wrapHeader()
                 ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
+                ->description(fn (StampingPart $record) => $record->part_cost_excluding_tooling > 0 ? 'Excl: Rp '.number_format((float) $record->part_cost_excluding_tooling, 0, ',', '.') : null)
                 ->weight('black')
                 ->color('success')
                 ->alignRight()
@@ -1273,6 +1470,24 @@ class StampingPartResource extends Resource
 
             Tables\Columns\TextColumn::make('overhead_self_cost')
                 ->label('(5) O/H Self (Rp)')
+                ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
+                ->alignRight()
+                ->toggleable(isToggledHiddenByDefault: true),
+
+            Tables\Columns\TextColumn::make('transportation_cost')
+                ->label('(6) Transportation (Rp)')
+                ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
+                ->alignRight()
+                ->toggleable(isToggledHiddenByDefault: true),
+
+            Tables\Columns\TextColumn::make('packing_cost')
+                ->label('(7) Packing (Rp)')
+                ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
+                ->alignRight()
+                ->toggleable(isToggledHiddenByDefault: true),
+
+            Tables\Columns\TextColumn::make('part_cost_excluding_tooling')
+                ->label('(8) Cost Excl. Tooling (Rp)')
                 ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
                 ->alignRight()
                 ->toggleable(isToggledHiddenByDefault: true),

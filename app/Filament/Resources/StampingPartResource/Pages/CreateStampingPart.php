@@ -50,6 +50,8 @@ class CreateStampingPart extends CreateRecord
                 'overhead_supplied_percent', 'overhead_self_percent',
                 'gap_steel_usd', 'gap_steel_kg_usd', 'coil_price', 'sheet_price',
                 'drawing_reference', 'eci_number', 'tooling_depreciation',
+                'part_no_to_compare', 'transportation_cost', 'packing_cost',
+                'comments', 'remarks', 'alteration', 'etc_contents', 'tooling_details',
             ] as $field) {
                 if ((! isset($raw[$field]) || $raw[$field] === '' || $raw[$field] === null) && isset($prevData[$field])) {
                     $raw[$field] = $prevData[$field];
@@ -395,6 +397,8 @@ class CreateStampingPart extends CreateRecord
                             'overhead_supplied_percent', 'overhead_self_percent',
                             'gap_steel_usd', 'gap_steel_kg_usd', 'coil_price', 'sheet_price',
                             'drawing_reference', 'eci_number', 'tooling_depreciation',
+                            'part_no_to_compare', 'transportation_cost', 'packing_cost',
+                            'comments', 'remarks', 'alteration', 'etc_contents', 'tooling_details',
                         ] as $field) {
                             if (isset($record->{$field})) {
                                 $raw[$field] = $record->{$field};
@@ -455,7 +459,11 @@ class CreateStampingPart extends CreateRecord
                         $ohSelf = round(((float) ($raw['overhead_self_percent'] ?? 4) / 100) * $matTotal, 2);
                         $raw['overhead_self_cost'] = $ohSelf;
 
-                        $raw['part_cost'] = round($subtotal + $ohSupp + $ohSelf + (float) ($raw['tooling_depreciation'] ?? 0), 4);
+                        $transCost = (float) ($raw['transportation_cost'] ?? 0);
+                        $packCost = (float) ($raw['packing_cost'] ?? 0);
+                        $partCostExcl = round($subtotal + $ohSupp + $ohSelf + $transCost + $packCost, 4);
+                        $raw['part_cost_excluding_tooling'] = $partCostExcl;
+                        $raw['part_cost'] = round($partCostExcl + (float) ($raw['tooling_depreciation'] ?? 0), 4);
 
                         $this->form->fill($raw);
 

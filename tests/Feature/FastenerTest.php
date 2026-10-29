@@ -503,4 +503,34 @@ class FastenerTest extends TestCase
             ->assertSet('data.part_number', 'FAST-TARGET-001')
             ->assertSet('data.steel_spec', 'SWRCH10A');
     }
+
+    public function test_fastener_excel_template_and_export_download(): void
+    {
+        $fastener = Fastener::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'part_number' => '90041-19960',
+            'part_name' => 'BOLT,W/WASHER',
+            'model_name' => 'D26A',
+            'steel_spec' => 'SWCH-45K',
+            'wire_spec' => 'WIRE OF RIVET [SWCH-45K]',
+            'wire_price_usd_kg' => 2.02,
+            'gross_weight_gr' => 4.84,
+            'nett_weight_gr' => 4.4,
+            'washer_weight_gr' => 4.5,
+            'washer_price' => 198,
+            'exchange_rate' => 16465,
+        ]);
+
+        $templateResponse = \App\Services\ExcelExportService::downloadFastenerTemplate('xlsx');
+        $this->assertEquals(200, $templateResponse->getStatusCode());
+        $this->assertStringContainsString('Template_Import_Fastener.xlsx', $templateResponse->headers->get('Content-Disposition') ?? '');
+
+        $exportResponse = \App\Services\ExcelExportService::exportFastener([$fastener], 'xlsx');
+        $this->assertEquals(200, $exportResponse->getStatusCode());
+        $this->assertStringContainsString('Fasteners_Export_', $exportResponse->headers->get('Content-Disposition') ?? '');
+    }
 }
