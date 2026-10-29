@@ -411,4 +411,24 @@ class PudRequestFeatureTest extends TestCase
         $this->assertNotNull($saved->photo);
         Storage::disk('public')->assertExists($saved->photo);
     }
+
+    public function test_pud_request_seeder_creates_sample_requests_with_photos(): void
+    {
+        $this->seed(\Database\Seeders\PudRequestSeeder::class);
+
+        $samplesWithPhoto = PudRequest::whereNotNull('photo')->get();
+        $this->assertGreaterThanOrEqual(3, $samplesWithPhoto->count());
+
+        $sample1 = PudRequest::where('request_number', 'PUD-2026-000001')->first();
+        $this->assertNotNull($sample1);
+        $this->assertEquals('pud-requests/sample_die_spring_misumi.png', $sample1->photo);
+
+        $sample2 = PudRequest::where('request_number', 'PUD-2026-000002')->first();
+        $this->assertNotNull($sample2);
+        $this->assertEquals('pud-requests/sample_pneumatic_cylinder_smc.png', $sample2->photo);
+
+        $sample3 = PudRequest::where('request_number', 'PUD-2026-000003')->first();
+        $this->assertNotNull($sample3);
+        $this->assertEquals('pud-requests/sample_proximity_sensor_omron.png', $sample3->photo);
+    }
 }
