@@ -60,7 +60,7 @@ class StampingPartsRelationManager extends RelationManager
                     ->badge()
                     ->color('gray')
                     ->searchable(),
-
+    
                 Tables\Columns\TextColumn::make('supplier_name')
                     ->label('Supplier')
                     ->searchable()
