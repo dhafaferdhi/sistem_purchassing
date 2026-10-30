@@ -1,51 +1,125 @@
 @php
     use App\Models\StampingPart;
 
-    // Data kuartal berjalan
-    $current = $record;
-    $rate = (float) ($current->exchange_rate ?? 16000);
-    $coilIdr = (float) ($current->coil_price_idr ?? round((float) ($current->coil_price ?? 0) * $rate));
-    $sheetIdr = (float) ($current->sheet_price_idr ?? round((float) ($current->sheet_price ?? 0) * $rate));
-    $steelRate = $sheetIdr > 0 ? $sheetIdr : ($coilIdr > 0 ? $coilIdr : round((float) ($current->sheet_price ?? $current->coil_price ?? 0) * $rate));
+    // Helper ekstrak seluruh metrik biaya dari suatu record StampingPart
+    $extractMetrics = function (?StampingPart $model): ?array {
+        if (! $model) {
+            return null;
+        }
+        $r = (float) ($model->exchange_rate ?? 16000);
+        $coil = (float) ($model->coil_price_idr ?? round((float) ($model->coil_price ?? 0) * $r));
+        $sheet = (float) ($model->sheet_price_idr ?? round((float) ($model->sheet_price ?? 0) * $r));
+        $steel = $sheet > 0 ? $sheet : ($coil > 0 ? $coil : round((float) ($model->sheet_price ?? $model->coil_price ?? 0) * $r));
+        $berat = (float) ($model->berat ?? 0);
+        $grossMat = (float) ($model->gross_material_cost ?? ($berat * $steel));
+        $scrap = (float) ($model->scrap_cost ?? 0);
+        $matTot = (float) ($model->material_total ?? ($grossMat + $scrap));
+        $procTot = (float) ($model->process_total ?? 0);
+        $sub = (float) ($model->subtotal ?? ($matTot + $procTot));
+        $ohSup = (float) ($model->overhead_supplied_cost ?? 0);
+        $ohSlf = (float) ($model->overhead_self_cost ?? 0);
+        $trans = (float) ($model->transportation_cost ?? 0);
+        $pack = (float) ($model->packing_cost ?? 0);
+        $exclTool = (float) ($model->part_cost_excluding_tooling ?? ($sub + $ohSup + $ohSlf + $trans + $pack));
+        $tool = (float) ($model->tooling_depreciation ?? 0);
+        $cost = (float) ($model->part_cost ?? ($exclTool + $tool));
 
-    $matTotal = (float) ($current->material_total ?? 0);
-    $procTotal = (float) ($current->process_total ?? 0);
-    $subtotal = (float) ($current->subtotal ?? ($matTotal + $procTotal));
-    $ohSupplied = (float) ($current->overhead_supplied_cost ?? 0);
-    $ohSelf = (float) ($current->overhead_self_cost ?? 0);
-    $transCost = (float) ($current->transportation_cost ?? 0);
-    $packCost = (float) ($current->packing_cost ?? 0);
-    $partCostExclTooling = (float) ($current->part_cost_excluding_tooling ?? ($subtotal + $ohSupplied + $ohSelf + $transCost + $packCost));
-    $tooling = (float) ($current->tooling_depreciation ?? 0);
-    $partCost = (float) ($current->part_cost ?? ($partCostExclTooling + $tooling));
+        return [
+            'record' => $model,
+            'year' => $model->year,
+            'quarter' => $model->quarter,
+            'rate' => $r,
+            'sheet_price' => (float) ($model->sheet_price ?? 0),
+            'steel_rate' => $steel,
+            'berat' => $berat,
+            'gross_mat' => $grossMat,
+            'scrap_weight' => (float) ($model->scrap_weight ?? 0),
+            'scrap_price' => (float) ($model->scrap_price_per_kg ?? -1500),
+            'scrap_cost' => $scrap,
+            'mat_total' => $matTot,
+            'process_name' => $model->process_name,
+            'process_man_hour' => (float) ($model->process_man_hour ?? 9),
+            'process_charge' => (float) ($model->process_charge ?? 45),
+            'yield_rate' => (float) ($model->yield_rate ?: 1),
+            'proc_total' => $procTot,
+            'subtotal' => $sub,
+            'oh_supplied_pct' => (float) ($model->overhead_supplied_percent ?? 11),
+            'oh_supplied' => $ohSup,
+            'oh_self_pct' => (float) ($model->overhead_self_percent ?? 4),
+            'oh_self' => $ohSlf,
+            'trans_cost' => $trans,
+            'pack_cost' => $pack,
+            'excl_tooling' => $exclTool,
+            'tooling' => $tool,
+            'part_cost' => $cost,
+        ];
+    };
 
-    // Cari seluruh kuartal lain untuk Part Number yang sama
-    $otherQuarters = StampingPart::where('part_number', $current->part_number)
-        ->where('id', '!=', $current->id)
-        ->orderByDesc('year')
-        ->orderByDesc('quarter')
+    // Skor kronologis untuk membandingkan urutan waktu: year * 10 + quarter (Q1=1, Q2=2, Q3=3, Q4=4)
+    $qNum = fn ($q) => match (strtoupper(trim((string) $q))) {
+        'Q1' => 1, 'Q2' => 2, 'Q3' => 3, 'Q4' => 4, default => 1
+    };
+    $scoreFn = fn ($y, $q) => ((int) $y * 10) + $qNum($q);
+    $currentScore = $scoreFn($record->year, $record->quarter);
+
+    // Cari seluruh record lain untuk part_number yang sama
+    $otherQuarters = StampingPart::where('part_number', $record->part_number)
+        ->where('id', '!=', $record->id)
         ->get();
 
-    // Default kuartal acuan pembanding: cari kuartal persis sebelumnya
-    $prevInfo = StampingPart::getPreviousQuarterInfo($current->quarter, $current->year);
-    $prev = $otherQuarters->first(fn ($q) => (int)$q->year === (int)$prevInfo['prev_year'] && $q->quarter === $prevInfo['prev_quarter'])
-        ?? $otherQuarters->first();
+    // Kuartal sebelum kuartal berjalan (Earlier / Lama)
+    $earlierQuarter = $otherQuarters->filter(fn ($q) => $scoreFn($q->year, $q->quarter) < $currentScore)
+        ->sortByDesc(fn ($q) => $scoreFn($q->year, $q->quarter))
+        ->first();
 
-    // Helper formatting selisih (Difference)
-    $diffFn = function (float $currVal, ?float $prevVal, bool $isPrice = true, int $decimals = 2): array {
-        if ($prevVal === null) {
+    // Kuartal setelah kuartal berjalan (Later / Baru)
+    $laterQuarter = $otherQuarters->filter(fn ($q) => $scoreFn($q->year, $q->quarter) > $currentScore)
+        ->sortBy(fn ($q) => $scoreFn($q->year, $q->quarter))
+        ->first();
+
+    // Tentukan pasangan komparasi secara kronologis (Left = Lebih Awal/Lama, Right = Lebih Baru/Berikutnya)
+    if ($earlierQuarter) {
+        // Kasus 1: Membuka kuartal yang memiliki kuartal acuan sebelumnya (misal membuka Q2 dan ada Q1)
+        $leftRecord = $earlierQuarter;
+        $rightRecord = $record;
+        $leftHeaderLabel = "Lama ({$leftRecord->quarter} {$leftRecord->year})";
+        $rightHeaderLabel = "Baru ({$rightRecord->quarter} {$rightRecord->year})";
+        $activeRecord = 'right';
+    } elseif ($laterQuarter) {
+        // Kasus 2: Membuka kuartal awal (misal Q1) dan ada kuartal berikutnya (Q2)
+        // Kronologi tetap dijaga: Q1 di kiri sebagai awal, Q2 di kanan sebagai eskalasi berikutnya!
+        $leftRecord = $record;
+        $rightRecord = $laterQuarter;
+        $leftHeaderLabel = "Kuartal Berjalan ({$leftRecord->quarter} {$leftRecord->year})";
+        $rightHeaderLabel = "Kuartal Berikutnya ({$rightRecord->quarter} {$rightRecord->year})";
+        $activeRecord = 'left';
+    } else {
+        // Kasus 3: Kuartal tunggal tanpa pembanding
+        $leftRecord = $record;
+        $rightRecord = null;
+        $leftHeaderLabel = "Kuartal Berjalan ({$leftRecord->quarter} {$leftRecord->year})";
+        $rightHeaderLabel = 'Acuan Pembanding';
+        $activeRecord = 'left';
+    }
+
+    $left = $extractMetrics($leftRecord);
+    $right = $extractMetrics($rightRecord);
+
+    // Helper formatting selisih (Difference = Right - Left)
+    $diffFn = function (?float $rightVal, ?float $leftVal, bool $isPrice = true, int $decimals = 2): array {
+        if ($rightVal === null || $leftVal === null) {
             return [
                 'has_prev' => false,
                 'diff' => 0.0,
                 'formatted' => '-',
                 'color' => 'text-gray-400',
                 'badge' => 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
-                'icon' => '—'
+                'icon' => '—',
             ];
         }
 
-        $diff = round($currVal - $prevVal, 4);
-        $pct = $prevVal != 0.0 ? round(($diff / abs($prevVal)) * 100, 2) : 0.0;
+        $diff = round($rightVal - $leftVal, 4);
+        $pct = $leftVal != 0.0 ? round(($diff / abs($leftVal)) * 100, 2) : 0.0;
 
         if (abs($diff) < 0.0001) {
             return [
@@ -54,7 +128,7 @@
                 'formatted' => $isPrice ? 'Rp 0' : '0',
                 'color' => 'text-gray-500 dark:text-gray-400 font-semibold',
                 'badge' => 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
-                'icon' => '—'
+                'icon' => '—',
             ];
         }
 
@@ -68,36 +142,18 @@
             'diff' => $diff,
             'pct' => $pct,
             'formatted' => $text,
-            'formatted_with_pct' => "{$text} (" . ($isUp ? '+' : '') . "{$pct}%)",
+            'formatted_with_pct' => "{$text} (".($isUp ? '+' : '')."{$pct}%)",
             'color' => $isUp ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-emerald-600 dark:text-emerald-400 font-bold',
             'badge' => $isUp ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300',
-            'icon' => $isUp ? '▲' : '▼'
+            'icon' => $isUp ? '▲' : '▼',
         ];
     };
 
-    // Precalculate data kuartal pembanding jika ada
-    $prevRate = $prev ? (float) ($prev->exchange_rate ?? 0) : null;
-    $prevSheetIdr = $prev ? (float) ($prev->sheet_price_idr ?? round((float) ($prev->sheet_price ?? 0) * ($prevRate ?: 16000))) : null;
-    $prevSteelRate = $prevSheetIdr;
-    $prevBerat = $prev ? (float) ($prev->berat ?? 0) : null;
-    $prevGrossMat = $prev ? (float) ($prev->gross_material_cost ?? ($prevBerat * ($prevSteelRate ?: 0))) : null;
-    $prevScrapCost = $prev ? (float) ($prev->scrap_cost ?? 0) : null;
-    $prevMatTotal = $prev ? (float) ($prev->material_total ?? 0) : null;
-
-    $prevProcTotal = $prev ? (float) ($prev->process_total ?? 0) : null;
-    $prevSubtotal = $prev ? (float) ($prev->subtotal ?? 0) : null;
-    $prevOhSupplied = $prev ? (float) ($prev->overhead_supplied_cost ?? 0) : null;
-    $prevOhSelf = $prev ? (float) ($prev->overhead_self_cost ?? 0) : null;
-    $prevTransCost = $prev ? (float) ($prev->transportation_cost ?? 0) : null;
-    $prevPackCost = $prev ? (float) ($prev->packing_cost ?? 0) : null;
-    $prevPartCostExclTooling = $prev ? (float) ($prev->part_cost_excluding_tooling ?? (($prevSubtotal ?? 0) + ($prevOhSupplied ?? 0) + ($prevOhSelf ?? 0) + ($prevTransCost ?? 0) + ($prevPackCost ?? 0))) : null;
-    $prevTooling = $prev ? (float) ($prev->tooling_depreciation ?? 0) : null;
-    $prevPartCost = $prev ? (float) ($prev->part_cost ?? 0) : null;
-
-    $totalDiff = $diffFn($partCost, $prevPartCost, true, 2);
-    $exclToolingDiff = $diffFn($partCostExclTooling, $prevPartCostExclTooling, true, 2);
-    $transDiff = $diffFn($transCost, $prevTransCost, true, 2);
-    $packDiff = $diffFn($packCost, $prevPackCost, true, 2);
+    $current = $record;
+    $totalDiff = $diffFn($right['part_cost'] ?? null, $left['part_cost'] ?? null, true, 2);
+    $exclToolingDiff = $diffFn($right['excl_tooling'] ?? null, $left['excl_tooling'] ?? null, true, 2);
+    $transDiff = $diffFn($right['trans_cost'] ?? null, $left['trans_cost'] ?? null, true, 2);
+    $packDiff = $diffFn($right['pack_cost'] ?? null, $left['pack_cost'] ?? null, true, 2);
 @endphp
 
 <div class="space-y-5 font-sans text-gray-950 dark:text-white antialiased p-1">
@@ -116,10 +172,10 @@
             </div>
             <div class="text-left md:text-right">
                 <div class="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 text-white dark:bg-white dark:text-gray-950 px-3.5 py-1.5 text-xs font-black shadow-sm">
-                    <span>Kuartal Berjalan: {{ $current->year }} - {{ $current->quarter }}</span>
-                    @if($prev)
-                        <span class="text-gray-400 dark:text-gray-500 font-normal">vs</span>
-                        <span class="text-blue-300 dark:text-blue-600">Acuan: {{ $prev->year }} - {{ $prev->quarter }}</span>
+                    <span>Kuartal Terbuka: {{ $current->year }} - {{ $current->quarter }}</span>
+                    @if($rightRecord && $leftRecord && $rightRecord->id !== $leftRecord->id)
+                        <span class="text-gray-400 dark:text-gray-500 font-normal">|</span>
+                        <span class="text-blue-300 dark:text-blue-600">Komparasi: {{ $leftRecord->quarter }} {{ $leftRecord->year }} vs {{ $rightRecord->quarter }} {{ $rightRecord->year }}</span>
                     @endif
                 </div>
                 <div class="text-xs text-gray-800 dark:text-gray-200 mt-1.5 font-semibold">
@@ -152,10 +208,12 @@
             <div class="rounded-lg bg-gray-100 p-3 border border-gray-300 dark:bg-gray-800 dark:border-gray-700">
                 <span class="text-[11px] font-bold uppercase text-gray-700 dark:text-gray-300 block">Kurs Acuan (IDR)</span>
                 <div class="font-mono font-black text-gray-950 dark:text-white text-sm mt-0.5 flex items-baseline justify-between">
-                    <span>Rp {{ number_format($rate, 0, ',', '.') }}</span>
-                    @if($prev && $prevRate)
-                        @php $rateDiff = $diffFn($rate, $prevRate, true, 0); @endphp
-                        <span class="text-[11px] {{ $rateDiff['color'] }}">{{ $rateDiff['formatted'] }}</span>
+                    <span>Rp {{ number_format($current->exchange_rate ?: 16000, 0, ',', '.') }}</span>
+                    @if($right && $left)
+                        @php $rateDiff = $diffFn($right['rate'], $left['rate'], true, 0); @endphp
+                        @if($rateDiff['has_prev'])
+                            <span class="text-[11px] {{ $rateDiff['color'] }}">{{ $rateDiff['formatted'] }}</span>
+                        @endif
                     @endif
                 </div>
                 <span class="text-[10px] text-gray-600 dark:text-gray-400 font-bold block mt-0.5">Drawing: {{ $current->drawing_reference ?: 'Mass Prod. Drwg' }}</span>
@@ -163,15 +221,21 @@
         </div>
 
         <!-- Banner Ringkasan Komparasi Biaya (Top KPI) -->
-        @if($prev)
+        @if($right && $left && $rightRecord && $leftRecord && $rightRecord->id !== $leftRecord->id)
             <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 rounded-lg bg-gradient-to-r from-gray-50 to-blue-50/60 border border-blue-200 dark:from-gray-800/80 dark:to-blue-950/40 dark:border-blue-800">
-                <div>
-                    <span class="text-[11px] font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">Harga Acuan ({{ $prev->quarter }} {{ $prev->year }})</span>
-                    <div class="text-base font-black font-mono text-gray-900 dark:text-white mt-0.5">Rp {{ number_format($prevPartCost, 2, ',', '.') }}</div>
+                <div class="{{ $activeRecord === 'left' ? 'ring-2 ring-blue-500 rounded-lg p-2 bg-white dark:bg-gray-900 shadow-sm' : '' }}">
+                    <span class="text-[11px] font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 flex items-center justify-between">
+                        <span>{{ $leftHeaderLabel }}</span>
+                        @if($activeRecord === 'left') <span class="text-[10px] px-1.5 py-0.2 bg-blue-100 text-blue-800 rounded font-black dark:bg-blue-900 dark:text-blue-200">AKTIF</span> @endif
+                    </span>
+                    <div class="text-base font-black font-mono text-gray-900 dark:text-white mt-0.5">Rp {{ number_format($left['part_cost'], 2, ',', '.') }}</div>
                 </div>
-                <div>
-                    <span class="text-[11px] font-bold uppercase tracking-wider text-blue-800 dark:text-blue-300">Harga Berjalan ({{ $current->quarter }} {{ $current->year }})</span>
-                    <div class="text-base font-black font-mono text-blue-900 dark:text-blue-200 mt-0.5">Rp {{ number_format($partCost, 2, ',', '.') }}</div>
+                <div class="{{ $activeRecord === 'right' ? 'ring-2 ring-blue-500 rounded-lg p-2 bg-white dark:bg-gray-900 shadow-sm' : '' }}">
+                    <span class="text-[11px] font-bold uppercase tracking-wider text-blue-800 dark:text-blue-300 flex items-center justify-between">
+                        <span>{{ $rightHeaderLabel }}</span>
+                        @if($activeRecord === 'right') <span class="text-[10px] px-1.5 py-0.2 bg-blue-100 text-blue-800 rounded font-black dark:bg-blue-900 dark:text-blue-200">AKTIF</span> @endif
+                    </span>
+                    <div class="text-base font-black font-mono text-blue-900 dark:text-blue-200 mt-0.5">Rp {{ number_format($right['part_cost'], 2, ',', '.') }}</div>
                 </div>
                 <div>
                     <span class="text-[11px] font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">Selisih Biaya (Difference)</span>
@@ -206,10 +270,10 @@
                         <th class="p-3 border-b border-gray-300 dark:border-gray-700">Spesifikasi Material Baja</th>
                         <th class="p-3 border-b border-gray-300 dark:border-gray-700 text-center">Parameter Potong & Dimensi</th>
                         <th class="p-3 border-b border-gray-300 dark:border-gray-700 text-right bg-gray-100/70 dark:bg-gray-800/80">
-                            {{ $prev ? "Lama ({$prev->quarter} {$prev->year})" : "Acuan Lama" }}
+                            {{ $leftHeaderLabel }}
                         </th>
                         <th class="p-3 border-b border-gray-300 dark:border-gray-700 text-right bg-blue-50 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200">
-                            {{ "Baru ({$current->quarter} {$current->year})" }}
+                            {{ $rightRecord ? $rightHeaderLabel : '-' }}
                         </th>
                         <th class="p-3 border-b border-gray-300 dark:border-gray-700 text-right bg-gray-200 dark:bg-gray-800 font-black">
                             Difference (Selisih)
@@ -227,18 +291,22 @@
                             T: {{ $current->double_thickness }}mm | W: {{ $current->wide }}mm | P: {{ $current->pitch }}mm | Yield: {{ (int)($current->yield_rate ?: 1) }}
                         </td>
                         <td class="p-3 text-right font-mono bg-gray-50/50 dark:bg-gray-800/40">
-                            @if($prev)
-                                <div>$ {{ number_format((float) ($prev->sheet_price ?: 0), 4) }} /MT</div>
-                                <div class="text-[11px] text-gray-600 dark:text-gray-400 font-bold">Rp {{ number_format((float) $prevSteelRate, 2, ',', '.') }} /kg</div>
+                            @if($left)
+                                <div>$ {{ number_format($left['sheet_price'], 4) }} /kg</div>
+                                <div class="text-[11px] text-gray-600 dark:text-gray-400 font-bold">Rp {{ number_format($left['steel_rate'], 2, ',', '.') }} /kg</div>
                             @else
                                 -
                             @endif
                         </td>
                         <td class="p-3 text-right font-mono bg-blue-50/40 dark:bg-blue-950/20 font-bold">
-                            <div>$ {{ number_format((float) ($current->sheet_price ?: 0), 4) }} /MT</div>
-                            <div class="text-[11px] text-blue-700 dark:text-blue-300 font-bold">Rp {{ number_format($steelRate, 2, ',', '.') }} /kg</div>
+                            @if($right)
+                                <div>$ {{ number_format($right['sheet_price'], 4) }} /kg</div>
+                                <div class="text-[11px] text-blue-700 dark:text-blue-300 font-bold">Rp {{ number_format($right['steel_rate'], 2, ',', '.') }} /kg</div>
+                            @else
+                                -
+                            @endif
                         </td>
-                        @php $steelDiff = $diffFn($steelRate, $prevSteelRate, true, 2); @endphp
+                        @php $steelDiff = $diffFn($right['steel_rate'] ?? null, $left['steel_rate'] ?? null, true, 2); @endphp
                         <td class="p-3 text-right font-mono {{ $steelDiff['color'] }}">
                             {{ $steelDiff['formatted'] }}
                         </td>
@@ -254,12 +322,12 @@
                             {{ number_format((float) $current->berat, 4, ',', '.') }} kg / pcs
                         </td>
                         <td class="p-3 text-right font-mono bg-gray-50/50 dark:bg-gray-800/40 font-bold">
-                            {{ $prev ? 'Rp ' . number_format((float) $prevGrossMat, 2, ',', '.') : '-' }}
+                            {{ $left ? 'Rp ' . number_format($left['gross_mat'], 2, ',', '.') : '-' }}
                         </td>
                         <td class="p-3 text-right font-mono bg-blue-50/40 dark:bg-blue-950/20 font-black text-gray-950 dark:text-white">
-                            Rp {{ number_format((float) $current->gross_material_cost, 2, ',', '.') }}
+                            {{ $right ? 'Rp ' . number_format($right['gross_mat'], 2, ',', '.') : '-' }}
                         </td>
-                        @php $grossMatDiff = $diffFn((float) $current->gross_material_cost, $prevGrossMat, true, 2); @endphp
+                        @php $grossMatDiff = $diffFn($right['gross_mat'] ?? null, $left['gross_mat'] ?? null, true, 2); @endphp
                         <td class="p-3 text-right font-mono {{ $grossMatDiff['color'] }}">
                             {{ $grossMatDiff['formatted'] }}
                         </td>
@@ -275,12 +343,12 @@
                             Berat: {{ number_format((float) $current->scrap_weight, 4, ',', '.') }} kg @ Rp {{ number_format((float) $current->scrap_price_per_kg, 0) }}/kg
                         </td>
                         <td class="p-3 text-right font-mono bg-gray-50/50 dark:bg-gray-800/40 font-bold text-amber-800 dark:text-amber-400">
-                            {{ $prev ? 'Rp ' . number_format((float) $prevScrapCost, 2, ',', '.') : '-' }}
+                            {{ $left ? 'Rp ' . number_format($left['scrap_cost'], 2, ',', '.') : '-' }}
                         </td>
                         <td class="p-3 text-right font-mono bg-blue-50/40 dark:bg-blue-950/20 font-black text-amber-900 dark:text-amber-300">
-                            Rp {{ number_format((float) $current->scrap_cost, 2, ',', '.') }}
+                            {{ $right ? 'Rp ' . number_format($right['scrap_cost'], 2, ',', '.') : '-' }}
                         </td>
-                        @php $scrapDiff = $diffFn((float) $current->scrap_cost, $prevScrapCost, true, 2); @endphp
+                        @php $scrapDiff = $diffFn($right['scrap_cost'] ?? null, $left['scrap_cost'] ?? null, true, 2); @endphp
                         <td class="p-3 text-right font-mono {{ $scrapDiff['color'] }}">
                             {{ $scrapDiff['formatted'] }}
                         </td>
@@ -292,12 +360,12 @@
                             (1) : Material Total (Gross Material Cost - Scrap Recovery)
                         </td>
                         <td class="p-3 text-right font-mono font-black text-gray-900 dark:text-gray-200">
-                            {{ $prev ? 'Rp ' . number_format((float) $prevMatTotal, 2, ',', '.') : '-' }}
+                            {{ $left ? 'Rp ' . number_format($left['mat_total'], 2, ',', '.') : '-' }}
                         </td>
                         <td class="p-3 text-right font-mono font-black text-blue-950 dark:text-blue-100 text-sm">
-                            Rp {{ number_format($matTotal, 2, ',', '.') }}
+                            {{ $right ? 'Rp ' . number_format($right['mat_total'], 2, ',', '.') : '-' }}
                         </td>
-                        @php $matTotalDiff = $diffFn($matTotal, $prevMatTotal, true, 2); @endphp
+                        @php $matTotalDiff = $diffFn($right['mat_total'] ?? null, $left['mat_total'] ?? null, true, 2); @endphp
                         <td class="p-3 text-right font-mono font-black text-sm {{ $matTotalDiff['color'] }}">
                             {{ $matTotalDiff['formatted'] }}
                         </td>
@@ -324,10 +392,10 @@
                         <th class="p-3 border-b border-gray-300 dark:border-gray-700">Tahap Proses</th>
                         <th class="p-3 border-b border-gray-300 dark:border-gray-700">Detail Mesin & Parameter</th>
                         <th class="p-3 border-b border-gray-300 dark:border-gray-700 text-right bg-gray-100/70 dark:bg-gray-800/80">
-                            {{ $prev ? "Lama ({$prev->quarter} {$prev->year})" : "Acuan Lama" }}
+                            {{ $leftHeaderLabel }}
                         </th>
                         <th class="p-3 border-b border-gray-300 dark:border-gray-700 text-right bg-purple-50 dark:bg-purple-950/40 text-purple-900 dark:text-purple-200">
-                            {{ "Baru ({$current->quarter} {$current->year})" }}
+                            {{ $rightRecord ? $rightHeaderLabel : '-' }}
                         </th>
                         <th class="p-3 border-b border-gray-300 dark:border-gray-700 text-right bg-gray-200 dark:bg-gray-800 font-black">
                             Difference (Selisih)
@@ -341,12 +409,12 @@
                             Man-hour: {{ $current->process_man_hour ?: 9 }} | Charge: {{ $current->process_charge ?: 45 }} | Yield: {{ (int)($current->yield_rate ?: 1) }}
                         </td>
                         <td class="p-3 text-right font-mono bg-gray-50/50 dark:bg-gray-800/40 font-bold">
-                            {{ $prev ? 'Rp ' . number_format((float) $prevProcTotal, 2, ',', '.') : '-' }}
+                            {{ $left ? 'Rp ' . number_format($left['proc_total'], 2, ',', '.') : '-' }}
                         </td>
                         <td class="p-3 text-right font-mono bg-purple-50/40 dark:bg-purple-950/20 font-black">
-                            Rp {{ number_format($procTotal, 2, ',', '.') }}
+                            {{ $right ? 'Rp ' . number_format($right['proc_total'], 2, ',', '.') : '-' }}
                         </td>
-                        @php $procDiff = $diffFn($procTotal, $prevProcTotal, true, 2); @endphp
+                        @php $procDiff = $diffFn($right['proc_total'] ?? null, $left['proc_total'] ?? null, true, 2); @endphp
                         <td class="p-3 text-right font-mono {{ $procDiff['color'] }}">{{ $procDiff['formatted'] }}</td>
                     </tr>
 
@@ -356,10 +424,10 @@
                             (2) : Process Total
                         </td>
                         <td class="p-3 text-right font-mono font-black text-gray-900 dark:text-gray-200">
-                            {{ $prev ? 'Rp ' . number_format((float) $prevProcTotal, 2, ',', '.') : '-' }}
+                            {{ $left ? 'Rp ' . number_format($left['proc_total'], 2, ',', '.') : '-' }}
                         </td>
                         <td class="p-3 text-right font-mono font-black text-purple-950 dark:text-purple-100 text-sm">
-                            Rp {{ number_format($procTotal, 2, ',', '.') }}
+                            {{ $right ? 'Rp ' . number_format($right['proc_total'], 2, ',', '.') : '-' }}
                         </td>
                         <td class="p-3 text-right font-mono font-black text-sm {{ $procDiff['color'] }}">
                             {{ $procDiff['formatted'] }}
@@ -386,10 +454,10 @@
                     <tr>
                         <th class="p-3 border-b border-gray-300 dark:border-gray-700">Item Ringkasan Biaya</th>
                         <th class="p-3 border-b border-gray-300 dark:border-gray-700 text-right bg-gray-100/70 dark:bg-gray-800/80">
-                            {{ $prev ? "Lama ({$prev->quarter} {$prev->year})" : "Acuan Lama" }}
+                            {{ $leftHeaderLabel }}
                         </th>
                         <th class="p-3 border-b border-gray-300 dark:border-gray-700 text-right bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200">
-                            {{ "Baru ({$current->quarter} {$current->year})" }}
+                            {{ $rightRecord ? $rightHeaderLabel : '-' }}
                         </th>
                         <th class="p-3 border-b border-gray-300 dark:border-gray-700 text-right bg-gray-200 dark:bg-gray-800 font-black">
                             Difference (Selisih)
@@ -400,32 +468,32 @@
                     <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                         <td class="p-3 font-semibold">(1) : Material Total</td>
                         <td class="p-3 text-right font-mono bg-gray-50/50 dark:bg-gray-800/40">
-                            {{ $prev ? 'Rp ' . number_format((float) $prevMatTotal, 2, ',', '.') : '-' }}
+                            {{ $left ? 'Rp ' . number_format($left['mat_total'], 2, ',', '.') : '-' }}
                         </td>
                         <td class="p-3 text-right font-mono bg-emerald-50/30 dark:bg-emerald-950/20 font-bold">
-                            Rp {{ number_format($matTotal, 2, ',', '.') }}
+                            {{ $right ? 'Rp ' . number_format($right['mat_total'], 2, ',', '.') : '-' }}
                         </td>
                         <td class="p-3 text-right font-mono {{ $matTotalDiff['color'] }}">{{ $matTotalDiff['formatted'] }}</td>
                     </tr>
                     <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                         <td class="p-3 font-semibold">(2) : Process Total</td>
                         <td class="p-3 text-right font-mono bg-gray-50/50 dark:bg-gray-800/40">
-                            {{ $prev ? 'Rp ' . number_format((float) $prevProcTotal, 2, ',', '.') : '-' }}
+                            {{ $left ? 'Rp ' . number_format($left['proc_total'], 2, ',', '.') : '-' }}
                         </td>
                         <td class="p-3 text-right font-mono bg-emerald-50/30 dark:bg-emerald-950/20 font-bold">
-                            Rp {{ number_format($procTotal, 2, ',', '.') }}
+                            {{ $right ? 'Rp ' . number_format($right['proc_total'], 2, ',', '.') : '-' }}
                         </td>
                         <td class="p-3 text-right font-mono {{ $procDiff['color'] }}">{{ $procDiff['formatted'] }}</td>
                     </tr>
                     <tr class="bg-gray-100/90 dark:bg-gray-800/90 font-bold border-y border-gray-300 dark:border-gray-700">
                         <td class="p-3 font-black text-gray-950 dark:text-white">(3) : Subtotal Direct Cost (1 + 2)</td>
                         <td class="p-3 text-right font-mono font-black">
-                            {{ $prev ? 'Rp ' . number_format((float) $prevSubtotal, 2, ',', '.') : '-' }}
+                            {{ $left ? 'Rp ' . number_format($left['subtotal'], 2, ',', '.') : '-' }}
                         </td>
                         <td class="p-3 text-right font-mono font-black text-gray-950 dark:text-white">
-                            Rp {{ number_format($subtotal, 2, ',', '.') }}
+                            {{ $right ? 'Rp ' . number_format($right['subtotal'], 2, ',', '.') : '-' }}
                         </td>
-                        @php $subtotalDiff = $diffFn($subtotal, $prevSubtotal, true, 2); @endphp
+                        @php $subtotalDiff = $diffFn($right['subtotal'] ?? null, $left['subtotal'] ?? null, true, 2); @endphp
                         <td class="p-3 text-right font-mono font-black {{ $subtotalDiff['color'] }}">{{ $subtotalDiff['formatted'] }}</td>
                     </tr>
                     <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
@@ -433,12 +501,12 @@
                             (4) : O/H & Profit supplied portion ({{ $current->overhead_supplied_percent ?: 11 }}% dari Proses)
                         </td>
                         <td class="p-3 text-right font-mono bg-gray-50/50 dark:bg-gray-800/40">
-                            {{ $prev ? 'Rp ' . number_format((float) $prevOhSupplied, 2, ',', '.') : '-' }}
+                            {{ $left ? 'Rp ' . number_format($left['oh_supplied'], 2, ',', '.') : '-' }}
                         </td>
                         <td class="p-3 text-right font-mono bg-emerald-50/30 dark:bg-emerald-950/20 font-bold">
-                            Rp {{ number_format($ohSupplied, 2, ',', '.') }}
+                            {{ $right ? 'Rp ' . number_format($right['oh_supplied'], 2, ',', '.') : '-' }}
                         </td>
-                        @php $ohSuppliedDiff = $diffFn($ohSupplied, $prevOhSupplied, true, 2); @endphp
+                        @php $ohSuppliedDiff = $diffFn($right['oh_supplied'] ?? null, $left['oh_supplied'] ?? null, true, 2); @endphp
                         <td class="p-3 text-right font-mono {{ $ohSuppliedDiff['color'] }}">{{ $ohSuppliedDiff['formatted'] }}</td>
                     </tr>
                     <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
@@ -446,31 +514,31 @@
                             (5) : O/H & Profit self-procuring portion ({{ $current->overhead_self_percent ?: 4 }}% dari Material)
                         </td>
                         <td class="p-3 text-right font-mono bg-gray-50/50 dark:bg-gray-800/40">
-                            {{ $prev ? 'Rp ' . number_format((float) $prevOhSelf, 2, ',', '.') : '-' }}
+                            {{ $left ? 'Rp ' . number_format($left['oh_self'], 2, ',', '.') : '-' }}
                         </td>
                         <td class="p-3 text-right font-mono bg-emerald-50/30 dark:bg-emerald-950/20 font-bold">
-                            Rp {{ number_format($ohSelf, 2, ',', '.') }}
+                            {{ $right ? 'Rp ' . number_format($right['oh_self'], 2, ',', '.') : '-' }}
                         </td>
-                        @php $ohSelfDiff = $diffFn($ohSelf, $prevOhSelf, true, 2); @endphp
+                        @php $ohSelfDiff = $diffFn($right['oh_self'] ?? null, $left['oh_self'] ?? null, true, 2); @endphp
                         <td class="p-3 text-right font-mono {{ $ohSelfDiff['color'] }}">{{ $ohSelfDiff['formatted'] }}</td>
                     </tr>
                     <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                         <td class="p-3 font-semibold">(6) : Transportation (Rp / pc)</td>
                         <td class="p-3 text-right font-mono bg-gray-50/50 dark:bg-gray-800/40">
-                            {{ $prev && $prevTransCost !== null ? 'Rp ' . number_format($prevTransCost, 2, ',', '.') : '-' }}
+                            {{ $left ? 'Rp ' . number_format($left['trans_cost'], 2, ',', '.') : '-' }}
                         </td>
                         <td class="p-3 text-right font-mono bg-emerald-50/30 dark:bg-emerald-950/20 font-bold">
-                            Rp {{ number_format($transCost, 2, ',', '.') }}
+                            {{ $right ? 'Rp ' . number_format($right['trans_cost'], 2, ',', '.') : '-' }}
                         </td>
                         <td class="p-3 text-right font-mono {{ $transDiff['color'] }}">{{ $transDiff['formatted'] }}</td>
                     </tr>
                     <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                         <td class="p-3 font-semibold">(7) : Packing (Rp / pc)</td>
                         <td class="p-3 text-right font-mono bg-gray-50/50 dark:bg-gray-800/40">
-                            {{ $prev && $prevPackCost !== null ? 'Rp ' . number_format($prevPackCost, 2, ',', '.') : '-' }}
+                            {{ $left ? 'Rp ' . number_format($left['pack_cost'], 2, ',', '.') : '-' }}
                         </td>
                         <td class="p-3 text-right font-mono bg-emerald-50/30 dark:bg-emerald-950/20 font-bold">
-                            Rp {{ number_format($packCost, 2, ',', '.') }}
+                            {{ $right ? 'Rp ' . number_format($right['pack_cost'], 2, ',', '.') : '-' }}
                         </td>
                         <td class="p-3 text-right font-mono {{ $packDiff['color'] }}">{{ $packDiff['formatted'] }}</td>
                     </tr>
@@ -479,10 +547,10 @@
                             (8) : Part Cost (excluding tooling cost) = (3) + (4) + (5) + (6) + (7)
                         </td>
                         <td class="p-3 text-right font-mono font-black text-amber-900 dark:text-amber-200">
-                            {{ $prev && $prevPartCostExclTooling !== null ? 'Rp ' . number_format($prevPartCostExclTooling, 2, ',', '.') : '-' }}
+                            {{ $left ? 'Rp ' . number_format($left['excl_tooling'], 2, ',', '.') : '-' }}
                         </td>
                         <td class="p-3 text-right font-mono font-black text-amber-950 dark:text-amber-100 text-sm">
-                            Rp {{ number_format($partCostExclTooling, 2, ',', '.') }}
+                            {{ $right ? 'Rp ' . number_format($right['excl_tooling'], 2, ',', '.') : '-' }}
                         </td>
                         <td class="p-3 text-right font-mono font-black text-sm {{ $exclToolingDiff['color'] }}">
                             {{ $exclToolingDiff['formatted'] }}
@@ -491,12 +559,12 @@
                     <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                         <td class="p-3 font-semibold">(9) : Die & Jig depreciation (Tooling)</td>
                         <td class="p-3 text-right font-mono bg-gray-50/50 dark:bg-gray-800/40">
-                            {{ $prev ? 'Rp ' . number_format((float) $prevTooling, 2, ',', '.') : '-' }}
+                            {{ $left ? 'Rp ' . number_format($left['tooling'], 2, ',', '.') : '-' }}
                         </td>
                         <td class="p-3 text-right font-mono bg-emerald-50/30 dark:bg-emerald-950/20 font-bold">
-                            Rp {{ number_format($tooling, 2, ',', '.') }}
+                            {{ $right ? 'Rp ' . number_format($right['tooling'], 2, ',', '.') : '-' }}
                         </td>
-                        @php $toolingDiff = $diffFn($tooling, $prevTooling, true, 2); @endphp
+                        @php $toolingDiff = $diffFn($right['tooling'] ?? null, $left['tooling'] ?? null, true, 2); @endphp
                         <td class="p-3 text-right font-mono {{ $toolingDiff['color'] }}">{{ $toolingDiff['formatted'] }}</td>
                     </tr>
 
@@ -506,13 +574,13 @@
                             Total Including Tooling Cost = (8) + (9)
                         </td>
                         <td class="p-4 text-right font-mono text-blue-100">
-                            {{ $prev ? 'Rp ' . number_format((float) $prevPartCost, 2, ',', '.') : '-' }}
+                            {{ $left ? 'Rp ' . number_format($left['part_cost'], 2, ',', '.') : '-' }}
                         </td>
                         <td class="p-4 text-right font-mono text-white text-base font-black">
-                            Rp {{ number_format($partCost, 2, ',', '.') }}
+                            {{ $right ? 'Rp ' . number_format($right['part_cost'], 2, ',', '.') : '-' }}
                         </td>
                         <td class="p-4 text-right font-mono text-white text-base font-black">
-                            @if($prev)
+                            @if($right && $left)
                                 <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/20 backdrop-blur-sm text-white font-black">
                                     {{ $totalDiff['icon'] }} {{ $totalDiff['formatted'] }}
                                 </span>
@@ -615,12 +683,8 @@
             </div>
         </div>
     @endif
-                </tbody>
-            </table>
-        </div>
-    </div>
 
-    <!-- 4. SIGN-OFF / APPROVAL WORKFLOW BOX (Standar Dokumen Formal Excel) -->
+    <!-- 7. SIGN-OFF / APPROVAL WORKFLOW BOX (Standar Dokumen Formal Excel) -->
     <div class="rounded-xl border border-gray-300 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
         <span class="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 block mb-2.5">Workflow Verifikasi & Persetujuan Dokumen (Sign-Off Box)</span>
         <div class="grid grid-cols-4 gap-3 text-center text-xs">

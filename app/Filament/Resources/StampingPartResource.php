@@ -112,7 +112,7 @@ class StampingPartResource extends Resource
             $query->where(function ($q) use ($spec, $cleanSpec) {
                 $q->where('steel_spec', $cleanSpec)
                     ->orWhere('steel_spec', $spec)
-                    ->orWhere('steel_spec', 'li ke', $cleanSpec.'%');
+                    ->orWhere('steel_spec', 'like', $cleanSpec.'%');
             });
         }
         if ($supplierId) {
