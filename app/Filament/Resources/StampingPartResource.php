@@ -363,6 +363,13 @@ class StampingPartResource extends Resource
             // Rumus Excel Posmi / Fuji Seat: (Tebal x Wide x Pitch x 7.85) / (1.000.000 x Yield)
             $weight = round(($thk * $wide * $pitch * 7.85) / (1000000 * $yr), 4);
             $set('berat', $weight);
+
+            $currentSize = (string) ($get('size') ?? '');
+            // Otomatis sinkronkan dengan format ukuran quotation: Tebal x Wide x Pitch
+            if (empty($currentSize) || str_ends_with($currentSize, ' x C') || str_ends_with($currentSize, ' x c')) {
+                $thkStr = (string) ($get('double_thickness') ?? $thk);
+                $set('size', "{$thkStr} x {$wide} x {$pitch}");
+            }
         }
     }
 
@@ -760,9 +767,15 @@ class StampingPartResource extends Resource
                                             $set('double_thickness', $clean);
 
                                             if (empty($get('size'))) {
-                                                $spec = (string) ($get('steel_spec') ?? '');
-                                                $width = (str_starts_with($spec, 'SPC') || str_starts_with($spec, 'NSC')) ? 1251 : 1219;
-                                                $set('size', "{$clean} x {$width} x C");
+                                                $wide = $get('wide');
+                                                $pitch = $get('pitch');
+                                                if ($wide && $pitch) {
+                                                    $set('size', "{$clean} x {$wide} x {$pitch}");
+                                                } else {
+                                                    $spec = (string) ($get('steel_spec') ?? '');
+                                                    $width = (str_starts_with($spec, 'SPC') || str_starts_with($spec, 'NSC')) ? 1251 : 1219;
+                                                    $set('size', "{$clean} x {$width} x C");
+                                                }
                                             }
                                         }
                                         static::lookupCurrentQuarterSteel($get, $set);
@@ -773,16 +786,29 @@ class StampingPartResource extends Resource
 
                                 Forms\Components\TextInput::make('size')
                                     ->label('Size / Dimensi (Opsional)')
-                                    ->placeholder('Contoh: 1.6 x 1219 x C')
+                                    ->placeholder('Contoh: 2.6 x 390 x 148 (Quotation)')
+                                    ->helperText('Ukuran sesuai quotation (Tebal x Wide x Pitch) atau master coil.')
                                     ->datalist(function (Get $get) {
                                         $thk = $get('double_thickness');
+                                        $wide = $get('wide');
+                                        $pitch = $get('pitch');
                                         $spec = (string) ($get('steel_spec') ?? '');
                                         $width = (str_starts_with($spec, 'SPC') || str_starts_with($spec, 'NSC')) ? 1251 : 1219;
-                                        if ($thk) {
-                                            return ["{$thk} x {$width} x C"];
-                                        }
 
-                                        return ['1.6 x 1219 x C', '2.6 x 1219 x C', '0.8 x 1251 x C', '1.2 x 1251 x C'];
+                                        $options = [];
+                                        if ($thk && $wide && $pitch) {
+                                            $options[] = "{$thk} x {$wide} x {$pitch}";
+                                            $options[] = "{$wide} x {$pitch}";
+                                        }
+                                        if ($thk) {
+                                            $options[] = "{$thk} x {$width} x C";
+                                        }
+                                        $options[] = '2.6 x 390 x 148';
+                                        $options[] = '1.6 x 280 x 125';
+                                        $options[] = '2.6 x 1219 x C';
+                                        $options[] = '1.6 x 1219 x C';
+
+                                        return array_values(array_unique($options));
                                     })
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(function ($state, Set $set, Get $get) {
