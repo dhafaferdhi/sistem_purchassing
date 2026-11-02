@@ -1382,12 +1382,14 @@ class FastenerResource extends Resource
                     ->label('Export Terpilih (Excel .xlsx)')
                     ->icon('heroicon-o-arrow-down-tray')
                     ->color('success')
+                    ->deselectRecordsAfterCompletion()
                     ->action(fn (Collection $records) => ExcelExportService::exportFastener($records, 'xlsx')),
 
                 Tables\Actions\BulkAction::make('export_selected_csv')
                     ->label('Export Terpilih (CSV .csv)')
                     ->icon('heroicon-o-document-text')
                     ->color('info')
+                    ->deselectRecordsAfterCompletion()
                     ->action(fn (Collection $records) => ExcelExportService::exportFastener($records, 'csv')),
 
                 Tables\Actions\DeleteBulkAction::make(),

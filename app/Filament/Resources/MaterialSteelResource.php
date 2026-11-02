@@ -1100,24 +1100,14 @@ class MaterialSteelResource extends Resource
                         ->label('Export Terpilih (Excel .xlsx)')
                         ->icon('heroicon-o-arrow-down-tray')
                         ->color('success')
+                        ->deselectRecordsAfterCompletion()
                         ->action(fn (Collection $records) => ExcelExportService::exportMaterialSteel($records, 'xlsx')),
 
                     Tables\Actions\BulkAction::make('export_selected_csv')
                         ->label('Export Terpilih (CSV .csv)')
                         ->icon('heroicon-o-document-text')
                         ->color('info')
-                        ->action(fn (Collection $records) => ExcelExportService::exportMaterialSteel($records, 'csv')),
-
-                    Tables\Actions\BulkAction::make('export_selected_xlsx')
-                        ->label('Export Terpilih (Excel .xlsx)')
-                        ->icon('heroicon-o-arrow-down-tray')
-                        ->color('success')
-                        ->action(fn (Collection $records) => ExcelExportService::exportMaterialSteel($records, 'xlsx')),
-
-                    Tables\Actions\BulkAction::make('export_selected_csv')
-                        ->label('Export Terpilih (CSV .csv)')
-                        ->icon('heroicon-o-document-text')
-                        ->color('info')
+                        ->deselectRecordsAfterCompletion()
                         ->action(fn (Collection $records) => ExcelExportService::exportMaterialSteel($records, 'csv')),
 
                     Tables\Actions\DeleteBulkAction::make(),

@@ -64,11 +64,15 @@
             display: none !important;
         }
 
-        /* Sembunyikan tombol toggle columns */
+        /* Sembunyikan tombol toggle columns (ikon garis 3 di samping kanan filter data) */
+        .fi-resource-sub-assembly-parts .fi-ta-col-toggle,
         .fi-resource-sub-assembly-parts .fi-ta-col-toggle-btn,
+        .fi-resource-sub-assembly-parts [wire\:key*="table.column-toggle"],
         .fi-resource-sub-assembly-parts button[wire\:click*="toggleTableColumnForm"],
-        .fi-resource-sub-assembly-parts [aria-label*="Toggle columns"],
-        .fi-resource-sub-assembly-parts [aria-label*="toggle columns"] {
+        .fi-resource-sub-assembly-parts button:has(svg[class*="view-columns"]),
+        .fi-resource-sub-assembly-parts [aria-label*="Toggle columns" i],
+        .fi-resource-sub-assembly-parts [aria-label*="toggle columns" i],
+        .fi-resource-sub-assembly-parts [aria-label*="kolom" i] {
             display: none !important;
         }
     </style>

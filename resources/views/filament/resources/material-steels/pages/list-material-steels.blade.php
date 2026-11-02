@@ -67,11 +67,15 @@
             display: none !important;
         }
 
-        /* Sembunyikan tombol toggle columns */
+        /* Sembunyikan tombol toggle columns (ikon garis 3 di samping kanan filter data) */
+        .fi-resource-material-steels .fi-ta-col-toggle,
         .fi-resource-material-steels .fi-ta-col-toggle-btn,
+        .fi-resource-material-steels [wire\:key*="table.column-toggle"],
         .fi-resource-material-steels button[wire\:click*="toggleTableColumnForm"],
-        .fi-resource-material-steels [aria-label*="Toggle columns"],
-        .fi-resource-material-steels [aria-label*="toggle columns"] {
+        .fi-resource-material-steels button:has(svg[class*="view-columns"]),
+        .fi-resource-material-steels [aria-label*="Toggle columns" i],
+        .fi-resource-material-steels [aria-label*="toggle columns" i],
+        .fi-resource-material-steels [aria-label*="kolom" i] {
             display: none !important;
         }
     </style>

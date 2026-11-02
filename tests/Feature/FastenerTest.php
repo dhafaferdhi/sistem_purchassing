@@ -14,6 +14,7 @@ use App\Models\MaterialSteel;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Services\CurrencyRecalculationService;
+use App\Services\ExcelExportService;
 use App\Services\ExcelImportService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -525,12 +526,50 @@ class FastenerTest extends TestCase
             'exchange_rate' => 16465,
         ]);
 
-        $templateResponse = \App\Services\ExcelExportService::downloadFastenerTemplate('xlsx');
+        $templateResponse = ExcelExportService::downloadFastenerTemplate('xlsx');
         $this->assertEquals(200, $templateResponse->getStatusCode());
         $this->assertStringContainsString('Template_Import_Fastener.xlsx', $templateResponse->headers->get('Content-Disposition') ?? '');
 
-        $exportResponse = \App\Services\ExcelExportService::exportFastener([$fastener], 'xlsx');
+        $exportResponse = ExcelExportService::exportFastener([$fastener], 'xlsx');
         $this->assertEquals(200, $exportResponse->getStatusCode());
         $this->assertStringContainsString('Fasteners_Export_', $exportResponse->headers->get('Content-Disposition') ?? '');
+    }
+
+    public function test_can_call_bulk_action_export_and_delete_on_fasteners(): void
+    {
+        $this->actingAs($this->admin);
+
+        $fastener = Fastener::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'part_number' => '90041-19960',
+            'part_name' => 'BOLT,W/WASHER',
+            'model_name' => 'D26A',
+            'steel_spec' => 'SWCH-45K',
+            'wire_spec' => 'WIRE OF RIVET [SWCH-45K]',
+            'wire_price_usd_kg' => 2.02,
+            'gross_weight_gr' => 4.84,
+            'nett_weight_gr' => 4.4,
+            'washer_weight_gr' => 4.5,
+            'washer_price' => 198,
+            'exchange_rate' => 16465,
+        ]);
+
+        Livewire::test(ListFasteners::class)
+            ->callTableBulkAction('export_selected_xlsx', [$fastener])
+            ->assertSuccessful();
+
+        Livewire::test(ListFasteners::class)
+            ->callTableBulkAction('export_selected_csv', [$fastener])
+            ->assertSuccessful();
+
+        Livewire::test(ListFasteners::class)
+            ->callTableBulkAction('delete', [$fastener])
+            ->assertSuccessful();
+
+        $this->assertDatabaseMissing('fasteners', ['id' => $fastener->id]);
     }
 }

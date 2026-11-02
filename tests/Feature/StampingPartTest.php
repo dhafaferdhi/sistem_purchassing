@@ -706,4 +706,38 @@ class StampingPartTest extends TestCase
         $this->assertEquals('2026-04-01', $stamping->quotation_date->format('Y-m-d'));
         $this->assertEquals('1. Part price based on standard production', $stamping->comments);
     }
+
+    public function test_can_call_bulk_action_export_and_delete_on_stamping_parts(): void
+    {
+        $this->actingAs($this->admin);
+
+        $stamping = StampingPart::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'part_number' => '72387-BZ010',
+            'part_name' => 'BRACKET SUB-ASSY',
+            'steel_spec' => 'SPCC-SD',
+            'double_thickness' => '1.2',
+            'berat' => 0.8874,
+            'sheet_price' => 1.1456,
+            'exchange_rate' => 16000,
+        ]);
+
+        Livewire::test(ListStampingParts::class)
+            ->callTableBulkAction('export_selected_xlsx', [$stamping])
+            ->assertSuccessful();
+
+        Livewire::test(ListStampingParts::class)
+            ->callTableBulkAction('export_selected_csv', [$stamping])
+            ->assertSuccessful();
+
+        Livewire::test(ListStampingParts::class)
+            ->callTableBulkAction('delete', [$stamping])
+            ->assertSuccessful();
+
+        $this->assertDatabaseMissing('stamping_parts', ['id' => $stamping->id]);
+    }
 }

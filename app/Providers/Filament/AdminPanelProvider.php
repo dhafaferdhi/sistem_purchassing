@@ -56,13 +56,16 @@ class AdminPanelProvider extends PanelProvider
                             display: none !important;
                         }
 
-                        /* Sembunyikan tombol Toggle Columns di toolbar tabel */
+                        /* Sembunyikan tombol Toggle Columns (ikon garis 3 di samping kanan filter data) */
+                        .fi-ta-col-toggle,
                         .fi-ta-col-toggle-btn,
-                        button[wire\:click*="toggleTableColumnForm"],
-                        button:has(svg[class*="heroicon-m-view-columns"]),
-                        button:has(svg[class*="heroicon-o-view-columns"]),
-                        [aria-label*="Toggle columns"],
-                        [aria-label*="toggle columns"] {
+                        [wire\:key*="table.column-toggle"],
+                        div:has(> button > svg[class*="view-columns"]),
+                        button:has(svg[class*="view-columns"]),
+                        button:has(svg[class*="bars"]),
+                        [aria-label*="Toggle columns" i],
+                        [aria-label*="toggle columns" i],
+                        [aria-label*="kolom" i] {
                             display: none !important;
                         }
 

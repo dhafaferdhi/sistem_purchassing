@@ -91,11 +91,15 @@
             display: none !important;
         }
 
-        /* Sembunyikan tombol toggle columns */
+        /* Sembunyikan tombol toggle columns (ikon garis 3 di samping kanan filter data) */
+        .fi-resource-stamping-parts .fi-ta-col-toggle,
         .fi-resource-stamping-parts .fi-ta-col-toggle-btn,
+        .fi-resource-stamping-parts [wire\:key*="table.column-toggle"],
         .fi-resource-stamping-parts button[wire\:click*="toggleTableColumnForm"],
-        .fi-resource-stamping-parts [aria-label*="Toggle columns"],
-        .fi-resource-stamping-parts [aria-label*="toggle columns"] {
+        .fi-resource-stamping-parts button:has(svg[class*="view-columns"]),
+        .fi-resource-stamping-parts [aria-label*="Toggle columns" i],
+        .fi-resource-stamping-parts [aria-label*="toggle columns" i],
+        .fi-resource-stamping-parts [aria-label*="kolom" i] {
             display: none !important;
         }
     </style>

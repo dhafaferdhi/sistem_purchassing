@@ -149,4 +149,24 @@ class ExcelImportExportTest extends TestCase
             unlink($tempPath);
         }
     }
+
+    public function test_can_call_bulk_action_export_selected_material_steels(): void
+    {
+        $this->actingAs($this->admin);
+
+        $steel = MaterialSteel::create([
+            'year' => 2025,
+            'quarter' => 'Q2',
+            'supplier_id' => $this->supplier->id,
+            'steel_spec' => 'SPH270C-OD',
+            'double_thickness' => '1.6',
+            'coil_price' => 1.2096,
+            'sheet_price' => 1.2346,
+            'exchange_rate' => 16022.0,
+        ]);
+
+        Livewire::test(ListMaterialSteels::class)
+            ->callTableBulkAction('export_selected_xlsx', [$steel])
+            ->assertSuccessful();
+    }
 }
