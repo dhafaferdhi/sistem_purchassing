@@ -1252,7 +1252,7 @@ class StampingPartResource extends Resource
                                                 <div class='mt-4 flex items-center justify-between rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 px-5 py-3.5 text-white shadow'>
                                                     <div>
                                                         <div class='text-xs font-medium uppercase tracking-wider text-emerald-100'>TOTAL PART COST (Rp / pc)</div>
-                                                        <div class='text-xs text-emerald-100/80'>Baris (8) Part Cost Excl. Tooling + (9) Die & Jig Depreciation</div>
+                                                        <div class='text-xs text-emerald-100/80'>Baris (8) Part Cost + (9) Die & Jig Depreciation</div>
                                                     </div>
                                                     <div class='text-2xl font-black tracking-tight'>Rp ".number_format($finalPartCost, 2, ',', '.').'</div>
                                                 </div>
@@ -1451,7 +1451,6 @@ class StampingPartResource extends Resource
                 ->label('Total Cost (Rp)')
                 ->wrapHeader()
                 ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
-                ->description(fn (StampingPart $record) => $record->part_cost_excluding_tooling > 0 ? 'Excl: Rp '.number_format((float) $record->part_cost_excluding_tooling, 0, ',', '.') : null)
                 ->weight('black')
                 ->color('success')
                 ->alignRight()

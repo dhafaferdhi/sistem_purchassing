@@ -261,7 +261,7 @@ class MaterialSteelQuarterlyTest extends TestCase
             'quarter' => 'Q2',
             'supplier_id' => $this->supplier->id,
             'vendor_code' => $this->supplier->code,
-            'supplier_name' => $this->supplier->name,
+            '   supplier_name' => $this->supplier->name,
             'steel_spec' => 'COUNT-SPEC-2',
             'currency_id' => $this->currency->id,
             'steel_price' => 1.9500,
