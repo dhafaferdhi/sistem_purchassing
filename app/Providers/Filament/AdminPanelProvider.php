@@ -56,16 +56,16 @@ class AdminPanelProvider extends PanelProvider
                             display: none !important;
                         }
 
-                        /* Sembunyikan tombol Toggle Columns (ikon garis 3 di samping kanan filter data) */
+                        /* Sembunyikan tombol Toggle Columns (ikon garis 3 di samping kanan filter data pada tabel) */
                         .fi-ta-col-toggle,
                         .fi-ta-col-toggle-btn,
                         [wire\:key*="table.column-toggle"],
-                        div:has(> button > svg[class*="view-columns"]),
-                        button:has(svg[class*="view-columns"]),
-                        button:has(svg[class*="bars"]),
-                        [aria-label*="Toggle columns" i],
-                        [aria-label*="toggle columns" i],
-                        [aria-label*="kolom" i] {
+                        .fi-ta-header-toolbar div:has(> button > svg[class*="view-columns"]),
+                        .fi-ta-header-toolbar button:has(svg[class*="view-columns"]),
+                        .fi-ta-header-toolbar button:has(svg[class*="bars"]),
+                        .fi-ta-header [aria-label*="Toggle columns" i],
+                        .fi-ta-header [aria-label*="toggle columns" i],
+                        .fi-ta-header [aria-label*="kolom" i] {
                             display: none !important;
                         }
 
