@@ -6,6 +6,22 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * @property int $id
+ * @property string $name
+ * @property string $stage_type
+ * @property string $category
+ * @property int|null $machine_id
+ * @property int $cycle_time_seconds
+ * @property string $tooling_type
+ * @property string|null $dies_code
+ * @property string|null $dies_name
+ * @property float $default_cost
+ * @property bool $is_active
+ * @property \Carbon\Carbon|null $created_at
+ * @property \Carbon\Carbon|null $updated_at
+ * @mixin \Illuminate\Database\Eloquent\Builder
+ */
 class Process extends Model
 {
     protected $fillable = [

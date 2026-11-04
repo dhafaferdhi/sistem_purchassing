@@ -6,6 +6,22 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * @property int $id
+ * @property string $spec
+ * @property string|null $category
+ * @property string|null $main_category
+ * @property string|null $sub_category
+ * @property int|null $supplier_id
+ * @property int|null $currency_id
+ * @property float $basic_rate
+ * @property float $price_idr
+ * @property string $unit
+ * @property bool $is_active
+ * @property \Carbon\Carbon|null $created_at
+ * @property \Carbon\Carbon|null $updated_at
+ * @mixin \Illuminate\Database\Eloquent\Builder
+ */
 class Material extends Model
 {
     protected $fillable = [
