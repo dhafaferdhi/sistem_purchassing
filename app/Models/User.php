@@ -21,6 +21,7 @@ use Illuminate\Notifications\Notifiable;
  * @property \Carbon\Carbon|null $created_at
  * @property \Carbon\Carbon|null $updated_at
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Quotation> $quotations
+ * @mixin \Illuminate\Database\Eloquent\Builder
  */
 class User extends Authenticatable implements FilamentUser
 {

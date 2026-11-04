@@ -40,6 +40,7 @@ use Illuminate\Support\Facades\Auth;
  * @property-read \App\Models\User|null $approvedBy
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\PurchaseOrderItem> $items
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\GoodsReceipt> $goodsReceipts
+ * @mixin \Illuminate\Database\Eloquent\Builder
  */
 class PurchaseOrder extends Model
 {
@@ -88,12 +89,12 @@ class PurchaseOrder extends Model
                 $po->po_number = static::generatePoNumber();
             }
             if (empty($po->user_id)) {
-                $po->user_id = Auth::id() ?? (int) (User::value('id') ?? 1);
+                $po->user_id = (int) (Auth::id() ?: (User::query()->value('id') ?? 1));
             }
         });
 
         static::saving(function (PurchaseOrder $po) {
-            $taxRate = (float) ($po->tax_percentage ?: 11.0);
+            $taxRate = $po->tax_percentage !== null ? (float) $po->tax_percentage : 11.0;
             $po->tax_amount_idr = round(((float) $po->subtotal_idr) * ($taxRate / 100), 2);
             $po->total_amount_idr = round(((float) $po->subtotal_idr) + $po->tax_amount_idr, 2);
         });
