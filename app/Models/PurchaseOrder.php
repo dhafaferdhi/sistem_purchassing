@@ -5,7 +5,42 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Auth;
 
+/**
+ * @property int $id
+ * @property string $po_number
+ * @property int $supplier_id
+ * @property int $user_id
+ * @property int|null $quotation_id
+ * @property \Carbon\Carbon|null $order_date
+ * @property \Carbon\Carbon|null $delivery_date
+ * @property string $payment_terms
+ * @property int $currency_id
+ * @property float $exchange_rate
+ * @property float $subtotal_idr
+ * @property float $tax_percentage
+ * @property float $tax_amount_idr
+ * @property float $total_amount_idr
+ * @property string $status
+ * @property string $delivery_status
+ * @property int|null $approved_by
+ * @property string|null $notes
+ * @property \Carbon\Carbon|null $created_at
+ * @property \Carbon\Carbon|null $updated_at
+ * @property-read float $total_ordered_quantity
+ * @property-read float $total_received_quantity
+ * @property-read float $remaining_quantity
+ * @property-read float $delivery_percentage
+ * @property-read string $delivery_progress
+ * @property-read \App\Models\Supplier|null $supplier
+ * @property-read \App\Models\User|null $user
+ * @property-read \App\Models\Quotation|null $quotation
+ * @property-read \App\Models\Currency|null $currency
+ * @property-read \App\Models\User|null $approvedBy
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\PurchaseOrderItem> $items
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\GoodsReceipt> $goodsReceipts
+ */
 class PurchaseOrder extends Model
 {
     protected $fillable = [
@@ -53,7 +88,7 @@ class PurchaseOrder extends Model
                 $po->po_number = static::generatePoNumber();
             }
             if (empty($po->user_id)) {
-                $po->user_id = auth()->id() ?? User::first()?->id;
+                $po->user_id = Auth::id() ?? (int) (User::value('id') ?? 1);
             }
         });
 
@@ -119,6 +154,11 @@ class PurchaseOrder extends Model
         }
 
         return min(100.0, round(($this->total_received_quantity / $ordered) * 100, 1));
+    }
+
+    public function getDeliveryProgressAttribute(): string
+    {
+        return number_format($this->total_received_quantity, 0, ',', '.').' / '.number_format($this->total_ordered_quantity, 0, ',', '.').' pcs ('.$this->delivery_percentage.'%)';
     }
 
     public function supplier(): BelongsTo

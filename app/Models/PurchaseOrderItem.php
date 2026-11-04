@@ -6,6 +6,28 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * @property int $id
+ * @property int $purchase_order_id
+ * @property int|null $part_id
+ * @property string $item_code
+ * @property string $description
+ * @property string|null $vendor_item_code
+ * @property int|null $moq
+ * @property int|null $lead_time_days
+ * @property float $quantity
+ * @property float $quantity_received
+ * @property float $quantity_rejected
+ * @property string $unit
+ * @property float $unit_price_idr
+ * @property float $total_price_idr
+ * @property \Carbon\Carbon|null $created_at
+ * @property \Carbon\Carbon|null $updated_at
+ * @property-read float $remaining_quantity
+ * @property-read \App\Models\PurchaseOrder|null $purchaseOrder
+ * @property-read \App\Models\Part|null $part
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\GoodsReceiptItem> $goodsReceiptItems
+ */
 class PurchaseOrderItem extends Model
 {
     protected $fillable = [
