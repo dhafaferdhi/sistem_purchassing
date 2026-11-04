@@ -13,6 +13,11 @@ class LatestPartsPriceMatrixWidget extends BaseWidget
 {
     use InteractsWithPageFilters;
 
+    public static function canView(): bool
+    {
+        return false;
+    }
+
     protected static ?string $heading = '📋 Rekapitulasi Harga Komponen Stamping Terkini';
 
     protected static ?int $sort = 5;

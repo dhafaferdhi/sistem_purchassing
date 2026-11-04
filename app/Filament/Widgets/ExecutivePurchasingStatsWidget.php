@@ -14,6 +14,11 @@ class ExecutivePurchasingStatsWidget extends BaseWidget
 {
     use InteractsWithPageFilters;
 
+    public static function canView(): bool
+    {
+        return false;
+    }
+
     protected static ?int $sort = 2;
 
     protected int|string|array $columnSpan = 'full';

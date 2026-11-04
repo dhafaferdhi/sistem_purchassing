@@ -11,6 +11,11 @@ class CostBreakdownDoughnutChart extends ChartWidget
 {
     use InteractsWithPageFilters;
 
+    public static function canView(): bool
+    {
+        return false;
+    }
+
     protected static ?string $heading = '🍩 Struktur Komposisi Biaya Part Rata-Rata';
 
     protected static ?int $sort = 4;

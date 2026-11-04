@@ -18,6 +18,7 @@ class EditQuotation extends EditRecord
                 ->label('Kembali')
                 ->icon('heroicon-o-arrow-left')
                 ->color('gray')
+                ->extraAttributes(['class' => 'fi-btn-back'])
                 ->url(static::getResource()::getUrl('index')),
             Actions\Action::make('pdf')
                 ->label('Cetak PDF')

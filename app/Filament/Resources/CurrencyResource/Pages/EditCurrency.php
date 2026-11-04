@@ -23,6 +23,7 @@ class EditCurrency extends EditRecord
                 ->label('Kembali')
                 ->icon('heroicon-o-arrow-left')
                 ->color('gray')
+                ->extraAttributes(['class' => 'fi-btn-back'])
                 ->url(static::getResource()::getUrl('index')),
             Actions\DeleteAction::make()
                 ->before(function (Currency $record, Actions\DeleteAction $action) {

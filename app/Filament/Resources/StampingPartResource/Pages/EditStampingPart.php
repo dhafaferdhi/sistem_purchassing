@@ -21,6 +21,12 @@ class EditStampingPart extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
+            Actions\Action::make('back')
+                ->label('Kembali')
+                ->icon('heroicon-o-arrow-left')
+                ->color('gray')
+                ->extraAttributes(['class' => 'fi-btn-back'])
+                ->url(static::getResource()::getUrl('index')),
             Actions\Action::make('view_sheet')
                 ->label('Lembar Kalkulasi')
                 ->icon('heroicon-o-document-chart-bar')
@@ -31,11 +37,6 @@ class EditStampingPart extends EditRecord
                 ->modalSubmitAction(false)
                 ->modalCancelActionLabel('Tutup')
                 ->modalContent(fn () => view('filament.resources.stamping-parts.sheet-modal', ['record' => $this->record])),
-            Actions\Action::make('back')
-                ->label('Keluar / Kembali')
-                ->icon('heroicon-o-arrow-left')
-                ->color('gray')
-                ->url(static::getResource()::getUrl('index')),
             Actions\DeleteAction::make(),
         ];
     }
@@ -43,7 +44,7 @@ class EditStampingPart extends EditRecord
     protected function getCancelFormAction(): Actions\Action
     {
         return parent::getCancelFormAction()
-            ->label('Keluar');
+            ->label('Kembali');
     }
 
     protected function getRedirectUrl(): string

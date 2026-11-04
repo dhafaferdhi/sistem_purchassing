@@ -26,6 +26,13 @@ class CreateMaterialSteel extends CreateRecord
     protected function getHeaderActions(): array
     {
         return [
+            Actions\Action::make('back')
+                ->label('Kembali')
+                ->icon('heroicon-o-arrow-left')
+                ->color('gray')
+                ->extraAttributes(['class' => 'fi-btn-back'])
+                ->url(static::getResource()::getUrl('index')),
+
             Actions\Action::make('create_top')
                 ->label('Simpan Data')
                 ->icon('heroicon-o-check')
@@ -338,12 +345,6 @@ class CreateMaterialSteel extends CreateRecord
                             ->send();
                     }
                 }),
-
-            Actions\Action::make('back')
-                ->label('Keluar / Kembali')
-                ->icon('heroicon-o-arrow-left')
-                ->color('gray')
-                ->url(static::getResource()::getUrl('index')),
         ];
     }
 

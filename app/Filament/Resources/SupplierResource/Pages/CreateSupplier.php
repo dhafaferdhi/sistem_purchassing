@@ -17,6 +17,7 @@ class CreateSupplier extends CreateRecord
                 ->label('Kembali')
                 ->icon('heroicon-o-arrow-left')
                 ->color('gray')
+                ->extraAttributes(['class' => 'fi-btn-back'])
                 ->url(static::getResource()::getUrl('index')),
         ];
     }

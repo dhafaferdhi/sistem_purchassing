@@ -17,6 +17,7 @@ class EditPart extends EditRecord
                 ->label('Kembali')
                 ->icon('heroicon-o-arrow-left')
                 ->color('gray')
+                ->extraAttributes(['class' => 'fi-btn-back'])
                 ->url(static::getResource()::getUrl('index')),
             Actions\DeleteAction::make(),
         ];

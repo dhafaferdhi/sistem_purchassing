@@ -10,6 +10,11 @@ class SteelPriceTrendChart extends ChartWidget
 {
     use InteractsWithPageFilters;
 
+    public static function canView(): bool
+    {
+        return false;
+    }
+
     protected static ?string $heading = '📈 Tren Fluktuasi Harga Material Steel ($/Kg) per Kuartal';
 
     protected static ?int $sort = 3;

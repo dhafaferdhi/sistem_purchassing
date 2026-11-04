@@ -18,6 +18,11 @@ class PurchasingHeaderWidget extends Widget
 {
     use InteractsWithPageFilters;
 
+    public static function canView(): bool
+    {
+        return false;
+    }
+
     protected static string $view = 'filament.widgets.purchasing-header';
 
     protected static ?int $sort = 1;
