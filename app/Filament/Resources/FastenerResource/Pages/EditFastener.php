@@ -9,6 +9,9 @@ use Filament\Actions;
 use Filament\Resources\Pages\EditRecord;
 use Filament\Support\Enums\MaxWidth;
 
+/**
+ * @property \App\Models\Fastener $record
+ */
 class EditFastener extends EditRecord
 {
     protected static string $resource = FastenerResource::class;

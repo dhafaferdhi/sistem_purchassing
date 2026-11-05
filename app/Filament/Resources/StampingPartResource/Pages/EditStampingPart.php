@@ -9,6 +9,9 @@ use Filament\Actions;
 use Filament\Resources\Pages\EditRecord;
 use Filament\Support\Enums\MaxWidth;
 
+/**
+ * @property \App\Models\StampingPart $record
+ */
 class EditStampingPart extends EditRecord
 {
     protected static string $resource = StampingPartResource::class;
@@ -51,7 +54,7 @@ class EditStampingPart extends EditRecord
     {
         return static::getResource()::getUrl('index');
     }
-
+    
     protected function mutateFormDataBeforeSave(array $data): array
     {
         if (empty($data['supplier_id']) && ! empty($data['supplier_name'])) {

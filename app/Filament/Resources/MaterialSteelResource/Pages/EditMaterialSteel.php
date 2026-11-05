@@ -11,6 +11,9 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
 use Filament\Support\Enums\MaxWidth;
 
+/**
+ * @property \App\Models\MaterialSteel $record
+ */
 class EditMaterialSteel extends EditRecord
 {
     protected static string $resource = MaterialSteelResource::class;
