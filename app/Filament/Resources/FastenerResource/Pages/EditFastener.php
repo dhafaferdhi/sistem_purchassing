@@ -80,7 +80,7 @@ class EditFastener extends EditRecord
 
         if (empty($data['diameter']) && ! empty($data['double_thickness'])) {
             $data['diameter'] = $data['double_thickness'];
-        }
+        }               
 
         if (empty($data['currency_id'])) {
             $year = (int) ($data['year'] ?? date('Y'));
