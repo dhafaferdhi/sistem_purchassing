@@ -659,6 +659,62 @@ class StampingPartTest extends TestCase
             ->assertSet('data.sheet_price', 1.55);
     }
 
+    public function test_stamping_part_pull_previous_applies_manual_rate_and_gap_mt_across_quarters(): void
+    {
+        $this->actingAs($this->admin);
+
+        $stamping = StampingPart::create([
+            'year' => 2025,
+            'quarter' => 'Q2',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'part_number' => 'STAMP-Q2-Q4-001',
+            'part_name' => 'BRACKET JUMP QUARTER',
+            'steel_spec' => 'SPH440-OD',
+            'double_thickness' => '2.0',
+            'size' => '2.0 x 100 x 200',
+            'berat' => 0.5000,
+            'scrap_weight' => 0.1000,
+            'scrap_price_per_kg' => -1500,
+            'coil_price' => 1.2000,
+            'sheet_price' => 1.2500,
+            'exchange_rate' => 16000.0,
+        ]);
+
+        Livewire::test(CreateStampingPart::class)
+            ->callAction('pull_previous', [
+                'source_year' => 2025,
+                'source_quarter' => 'Q2',
+                'target_year' => 2025,
+                'target_quarter' => 'Q4',
+                'source_record_id' => 'stamping:'.$stamping->id,
+                'exchange_rate' => 19500,
+                'hr_steel_usd' => -50,
+            ])
+            ->assertSet('data.year', 2025)
+            ->assertSet('data.quarter', 'Q4')
+            ->assertSet('data.exchange_rate', 19500.0)
+            ->assertSet('data.hr_steel_usd', -50.0)
+            ->assertSet('data.gap_steel_usd', -50.0)
+            ->assertSet('data.gap_steel_kg_usd', -0.05)
+            ->assertSet('data.coil_price', 1.15)
+            ->assertSet('data.sheet_price', 1.2)
+            ->assertSet('data.sheet_price_idr', 23400.0)
+            ->call('create')
+            ->assertHasNoFormErrors();
+
+        $this->assertDatabaseHas('stamping_parts', [
+            'year' => 2025,
+            'quarter' => 'Q4',
+            'part_number' => 'STAMP-Q2-Q4-001',
+            'exchange_rate' => 19500.0,
+            'coil_price' => 1.15,
+            'sheet_price' => 1.2,
+            'sheet_price_idr' => 23400.0,
+        ]);
+    }
+
     public function test_stamping_part_calculates_excel_nine_line_breakdown(): void
     {
         $stamping = StampingPart::create([

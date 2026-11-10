@@ -629,7 +629,42 @@
         </div>
     </div>
 
-    <!-- 4. SIGN-OFF / APPROVAL WORKFLOW BOX (Standar Dokumen Formal Excel) -->
+    @if(!empty($record->tooling_details) && is_array($record->tooling_details))
+        <!-- 4. RINCIAN TOOLING (HEADING DIE BREAKDOWN) -->
+        <div class="rounded-xl border border-gray-300 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+            <div class="flex items-center justify-between border-b border-gray-200 pb-3 dark:border-gray-800">
+                <h3 class="text-sm font-black text-gray-950 dark:text-white flex items-center gap-2">
+                    <span class="flex h-6 w-6 items-center justify-center rounded-full bg-cyan-600 text-xs font-black text-white shadow-sm">4</span>
+                    Rincian Investasi & Amortisasi Tooling (Heading Die Breakdown)
+                </h3>
+                <span class="text-xs text-gray-700 dark:text-gray-300 font-semibold">Tabel Komponen Cetakan</span>
+            </div>
+            <div class="mt-4 overflow-x-auto">
+                <table class="w-full text-left text-xs border border-gray-300 dark:border-gray-700 rounded-lg overflow-hidden">
+                    <thead class="bg-gray-200 text-gray-950 dark:bg-gray-800 dark:text-white font-extrabold uppercase">
+                        <tr>
+                            <th class="p-2.5">Contents / Item Die</th>
+                            <th class="p-2.5 text-right">Total Cost (KRp)</th>
+                            <th class="p-2.5 text-right">Monthly Volume (pcs)</th>
+                            <th class="p-2.5 text-right">Depreciation / pc (Rp)</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                        @foreach($record->tooling_details as $tool)
+                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                                <td class="p-2.5 font-bold">{{ $tool['contents'] ?? 'HEADING DIE' }}</td>
+                                <td class="p-2.5 text-right font-mono">{{ number_format((float) ($tool['total_cost_krp'] ?? 0), 0, ',', '.') }}</td>
+                                <td class="p-2.5 text-right font-mono">{{ number_format((float) ($tool['monthly_volume'] ?? 20000), 0, ',', '.') }}</td>
+                                <td class="p-2.5 text-right font-mono font-bold text-cyan-700 dark:text-cyan-300">Rp {{ number_format((float) ($tool['depreciation_per_pc'] ?? 0), 2, ',', '.') }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    @endif
+
+    <!-- SIGN-OFF / APPROVAL WORKFLOW BOX (Standar Dokumen Formal Excel) -->
     <div class="rounded-xl border border-gray-300 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
         <span class="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 block mb-2.5">Workflow Verifikasi & Persetujuan Dokumen (Sign-Off Box)</span>
         <div class="grid grid-cols-4 gap-3 text-center text-xs">

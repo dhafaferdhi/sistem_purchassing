@@ -8,6 +8,7 @@ use App\Models\Fastener;
 use App\Models\MaterialSteel;
 use App\Models\Supplier;
 use App\Services\ExcelExportService;
+use App\Services\QuarterlyPullHelper;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
@@ -323,13 +324,16 @@ class FastenerResource extends Resource
     {
         $coil = (float) ($get('coil_price') ?? 0);
         $sheet = (float) ($get('sheet_price') ?? 0);
+        $wire = (float) ($get('wire_price_usd_kg') ?? 0);
         $rate = (float) ($get('exchange_rate') ?? 1);
 
         $coilIdr = round($coil * $rate);
         $sheetIdr = round($sheet * $rate);
+        $wireIdr = round($wire * $rate, 2);
 
         $set('coil_price_idr', $coilIdr);
         $set('sheet_price_idr', $sheetIdr);
+        $set('wire_price_idr_kg', $wireIdr);
     }
 
     public static function updatePricesFromWire(Get $get, Set $set): void
@@ -356,6 +360,7 @@ class FastenerResource extends Resource
 
         if (empty($get('wire_price_usd_kg')) && $coil > 0) {
             $set('wire_price_usd_kg', $coil);
+            $set('wire_price_idr_kg', round($coil * $rate, 2));
         }
 
         if ($sheet > 0 && $coil > 0) {
@@ -857,7 +862,16 @@ class FastenerResource extends Resource
                                     ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) $state : null)
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromWire($get, $set))
-                                    ->columnSpan(2),
+                                    ->columnSpan(1),
+
+                                Forms\Components\TextInput::make('wire_price_idr_kg')
+                                    ->label('Harga Wire / Kawat (IDR/Kg)')
+                                    ->prefix('Rp')
+                                    ->readOnly()
+                                    ->dehydrated()
+                                    ->default(fn (Get $get) => round(((float) ($get('wire_price_usd_kg') ?? 1.66)) * ((float) ($get('exchange_rate') ?? 16000)), 2))
+                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) $state : null)
+                                    ->columnSpan(1),
 
                                 Forms\Components\Hidden::make('coil_price')
                                     ->default(0)
@@ -987,6 +1001,8 @@ class FastenerResource extends Resource
                                     ->placeholder('0')
                                     ->live(onBlur: true)
                                     ->columnSpan(1),
+
+                                QuarterlyPullHelper::buildToolingDetailsRepeater('Misal: HEADING DIE / ROLLING DIE', '20000'),
 
                                 Forms\Components\Placeholder::make('calculation_summary')
                                     ->hiddenLabel()

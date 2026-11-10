@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\QuarterlyPullHelper;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Collection;
@@ -297,12 +298,9 @@ class StampingPart extends Model
 
             // Jika ada rincian tooling_details, otomatis hitung total depresiasi
             if (! empty($model->tooling_details) && is_array($model->tooling_details)) {
-                $calcTooling = 0.0;
-                foreach ($model->tooling_details as $tool) {
-                    $calcTooling += (float) ($tool['depreciation_per_pc'] ?? $tool['depreciation'] ?? 0);
-                }
+                $calcTooling = QuarterlyPullHelper::sumToolingDepreciation($model->tooling_details);
                 if ($calcTooling > 0 && ((float) ($model->tooling_depreciation ?? 0) == 0.0)) {
-                    $model->tooling_depreciation = round($calcTooling, 4);
+                    $model->tooling_depreciation = $calcTooling;
                 }
             }
 

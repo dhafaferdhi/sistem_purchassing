@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\QuarterlyPullHelper;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -295,6 +296,13 @@ class Fastener extends Model
 
             if ($model->old_exchange_rate !== null && (float) $model->old_exchange_rate > 0 && $rate > 0) {
                 $model->exchange_rate_fluctuation = round($rate / (float) $model->old_exchange_rate, 6);
+            }
+
+            if (! empty($model->tooling_details) && is_array($model->tooling_details)) {
+                $calcTooling = QuarterlyPullHelper::sumToolingDepreciation($model->tooling_details);
+                if ($calcTooling > 0 && ((float) ($model->tooling_depreciation ?? 0) == 0.0)) {
+                    $model->tooling_depreciation = $calcTooling;
+                }
             }
 
             $tooling = (float) ($model->tooling_depreciation ?? 0);

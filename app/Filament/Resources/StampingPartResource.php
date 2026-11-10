@@ -6,9 +6,9 @@ use App\Filament\Resources\StampingPartResource\Pages;
 use App\Models\Currency;
 use App\Models\MaterialSteel;
 use App\Models\StampingPart;
-use App\Models\SubAssemblyPart;
 use App\Models\Supplier;
 use App\Services\ExcelExportService;
+use App\Services\QuarterlyPullHelper;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
@@ -823,57 +823,6 @@ class StampingPartResource extends Resource
                                     })
                                     ->columnSpan(1),
 
-                                Forms\Components\Placeholder::make('used_in_sub_assembly_info')
-                                    ->hiddenLabel()
-                                    ->visible(fn (Get $get, ?StampingPart $record) => ! empty($get('part_number')) || ($record && $record->part_number))
-                                    ->content(function (Get $get, ?StampingPart $record) {
-                                        $partNo = $get('part_number') ?? $record?->part_number;
-                                        if (empty($partNo)) {
-                                            return null;
-                                        }
-                                        $clean = trim((string) $partNo);
-                                        $year = (int) ($get('year') ?? $record?->year ?? date('Y'));
-                                        $quarter = $get('quarter') ?? $record?->quarter ?? 'Q1';
-
-                                        $subAssemblies = SubAssemblyPart::where('year', $year)
-                                            ->where('quarter', $quarter)
-                                            ->get()
-                                            ->filter(function ($sa) use ($clean) {
-                                                if (! is_array($sa->material_breakdown)) {
-                                                    return false;
-                                                }
-                                                foreach ($sa->material_breakdown as $item) {
-                                                    $ip = trim((string) ($item['part_number'] ?? $item['part_no'] ?? ''));
-                                                    if ($ip !== '' && (strcasecmp($ip, $clean) === 0 || str_replace([' ', '-'], '', $ip) === str_replace([' ', '-'], '', $clean))) {
-                                                        return true;
-                                                    }
-                                                }
-
-                                                return false;
-                                            });
-
-                                        if ($subAssemblies->isEmpty()) {
-                                            return null;
-                                        }
-
-                                        $itemsHtml = '';
-                                        foreach ($subAssemblies as $sa) {
-                                            $itemsHtml .= "<span class='inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300 mr-2 mb-1'>🔗 [{$sa->part_number}] {$sa->part_name} ({$sa->supplier_name})</span>";
-                                        }
-
-                                        return new HtmlString("
-                                            <div class='rounded-lg bg-purple-50 p-3 border border-purple-200 dark:bg-purple-950/30 dark:border-purple-800'>
-                                                <div class='text-xs font-bold text-purple-900 dark:text-purple-200 flex items-center gap-1.5 mb-1'>
-                                                    <span>🧩</span> Komponen ini digunakan pada Sub-Assembly ($quarter $year):
-                                                </div>
-                                                <div class='flex flex-wrap items-center mt-1'>
-                                                    {$itemsHtml}
-                                                </div>
-                                            </div>
-                                        ");
-                                    })
-                                    ->columnSpanFull(),
-
                                 // Hidden fields untuk integritas data
                                 Forms\Components\Hidden::make('vendor_code'),
                                 Forms\Components\Hidden::make('supplier_name'),
@@ -1108,33 +1057,7 @@ class StampingPartResource extends Resource
                                     ->live(onBlur: true)
                                     ->columnSpan(1),
 
-                                Forms\Components\Repeater::make('tooling_details')
-                                    ->label('Rincian Investasi Tooling & Amortisasi (Die & Jig Breakdown)')
-                                    ->schema([
-                                        Forms\Components\TextInput::make('contents')
-                                            ->label('Contents / Item Die')
-                                            ->placeholder('Misal: DIE STAMPING / WELD JIG')
-                                            ->columnSpan(2),
-                                        Forms\Components\TextInput::make('total_cost_krp')
-                                            ->label('Total Cost (KRp)')
-                                            ->numeric()
-                                            ->placeholder('0')
-                                            ->columnSpan(1),
-                                        Forms\Components\TextInput::make('monthly_volume')
-                                            ->label('Monthly Volume (pcs)')
-                                            ->numeric()
-                                            ->placeholder('16500')
-                                            ->columnSpan(1),
-                                        Forms\Components\TextInput::make('depreciation_per_pc')
-                                            ->label('Depr / pc (Rp)')
-                                            ->numeric()
-                                            ->placeholder('0')
-                                            ->columnSpan(1),
-                                    ])
-                                    ->columns(5)
-                                    ->collapsible()
-                                    ->collapsed()
-                                    ->columnSpanFull(),
+                                QuarterlyPullHelper::buildToolingDetailsRepeater('Misal: DIE STAMPING / WELD JIG', '16500'),
 
                                 Forms\Components\Placeholder::make('calculation_summary')
                                     ->hiddenLabel()

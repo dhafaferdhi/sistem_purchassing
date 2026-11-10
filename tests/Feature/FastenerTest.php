@@ -123,6 +123,8 @@ class FastenerTest extends TestCase
             ->assertFormFieldExists('sheet_price')
             ->assertFormFieldExists('sheet_price_idr')
             ->assertFormFieldExists('wire_price_usd_kg')
+            ->assertFormFieldExists('wire_price_idr_kg')
+            ->assertFormFieldExists('tooling_details')
             ->assertActionExists('back');
     }
 
@@ -503,6 +505,65 @@ class FastenerTest extends TestCase
             ->assertSet('data.quarter', 'Q2')
             ->assertSet('data.part_number', 'FAST-TARGET-001')
             ->assertSet('data.steel_spec', 'SWRCH10A');
+    }
+
+    public function test_fastener_pull_previous_applies_manual_rate_and_wire_price_across_quarters(): void
+    {
+        $this->actingAs($this->admin);
+
+        $fastener = Fastener::create([
+            'year' => 2025,
+            'quarter' => 'Q2',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'part_number' => 'FAST-Q2-Q4-001',
+            'part_name' => 'BOLT JUMP QUARTER',
+            'steel_spec' => 'SWCH-45K',
+            'wire_spec' => 'WIRE OF RIVET [SWCH-45K]',
+            'double_thickness' => '6.0',
+            'diameter' => '6.0',
+            'coil_price' => 1.6600,
+            'wire_price_usd_kg' => 1.6600,
+            'gross_weight_gr' => 4.84,
+            'washer_price' => 198,
+            'exchange_rate' => 16000.0,
+            'tooling_details' => [
+                ['contents' => 'Heading Die', 'total_cost_krp' => 10000, 'monthly_volume' => 20000, 'depreciation_per_pc' => 15.5],
+            ],
+        ]);
+
+        // Tooling details automatically summed when tooling_depreciation was 0
+        $this->assertEquals(15.5, (float) $fastener->tooling_depreciation);
+
+        Livewire::test(CreateFastener::class)
+            ->callAction('pull_previous', [
+                'source_year' => 2025,
+                'source_quarter' => 'Q2',
+                'target_year' => 2025,
+                'target_quarter' => 'Q4',
+                'source_record_id' => 'fastener:'.$fastener->id,
+                'exchange_rate' => 19500,
+                'wire_price_usd_kg' => 2.0200,
+            ])
+            ->assertSet('data.year', 2025)
+            ->assertSet('data.quarter', 'Q4')
+            ->assertSet('data.exchange_rate', 19500.0)
+            ->assertSet('data.old_exchange_rate', 16000.0)
+            ->assertSet('data.exchange_rate_fluctuation', round(19500 / 16000, 6))
+            ->assertSet('data.wire_price_usd_kg', 2.02)
+            ->assertSet('data.wire_price_idr_kg', 39390.0)
+            ->call('create')
+            ->assertHasNoFormErrors();
+
+        $this->assertDatabaseHas('fasteners', [
+            'year' => 2025,
+            'quarter' => 'Q4',
+            'part_number' => 'FAST-Q2-Q4-001',
+            'exchange_rate' => 19500.0,
+            'wire_price_usd_kg' => 2.02,
+            'wire_price_idr_kg' => 39390.0,
+        ]);
     }
 
     public function test_fastener_excel_template_and_export_download(): void

@@ -7,6 +7,7 @@ use App\Models\Currency;
 use App\Models\Fastener;
 use App\Models\MaterialSteel;
 use App\Models\Supplier;
+use App\Services\QuarterlyPullHelper;
 use Filament\Actions;
 use Filament\Forms;
 use Filament\Notifications\Notification;
@@ -110,187 +111,125 @@ class CreateFastener extends CreateRecord
                 ->color('primary')
                 ->tooltip('Pilih dan tarik data acuan dari kuartal sebelumnya')
                 ->modalHeading('Tarik Data Acuan Fasteners')
-                ->modalDescription('Pilih kuartal dan item fastener (baut/nut/rivet) atau material acuan untuk disalin ke formulir.')
+                ->modalDescription('Pilih kuartal dan item fastener acuan, lalu sesuaikan Kurs USD (New Rate) atau Harga Wire ($/Kg) sesuai surat penawaran.')
                 ->modalSubmitActionLabel('Terapkan Data Terpilih')
                 ->modalWidth(MaxWidth::TwoExtraLarge)
-                ->form([
-                    Forms\Components\Grid::make(2)
-                        ->schema([
-                            Forms\Components\Select::make('source_year')
-                                ->label('Tahun Acuan')
-                                ->options(function () {
-                                    $current = (int) date('Y');
-                                    $years = range($current + 2, 2020);
+                ->form(fn () => array_merge(
+                    QuarterlyPullHelper::buildPeriodSelectionGrids(fn () => $this->data ?? []),
+                    [
+                        Forms\Components\Select::make('source_record_id')
+                            ->label('Pilih Item Fastener Acuan')
+                            ->placeholder('-- Pilih Item Fastener Acuan --')
+                            ->searchable()
+                            ->live()
+                            ->options(function (Forms\Get $get) {
+                                $y = (int) ($get('source_year') ?: date('Y'));
+                                $q = $get('source_quarter') ?: 'Q1';
 
-                                    return array_combine($years, $years);
-                                })
-                                ->default(function () {
-                                    $q = $this->data['quarter'] ?? 'Q1';
-                                    $y = (int) ($this->data['year'] ?? date('Y'));
-
-                                    return $q === 'Q1' ? $y - 1 : $y;
-                                })
-                                ->required()
-                                ->live(),
-
-                            Forms\Components\Select::make('source_quarter')
-                                ->label('Kuartal Acuan')
-                                ->options([
-                                    'Q1' => 'Q1 (Januari - Maret)',
-                                    'Q2' => 'Q2 (April - Juni)',
-                                    'Q3' => 'Q3 (Juli - September)',
-                                    'Q4' => 'Q4 (Oktober - Desember)',
-                                ])
-                                ->default(function () {
-                                    $q = $this->data['quarter'] ?? 'Q1';
-
-                                    return match ($q) {
-                                        'Q1' => 'Q4',
-                                        'Q2' => 'Q1',
-                                        'Q3' => 'Q2',
-                                        'Q4' => 'Q3',
-                                        default => 'Q4',
-                                    };
-                                })
-                                ->required()
-                                ->live(),
-                        ]),
-
-                    Forms\Components\Grid::make(2)
-                        ->schema([
-                            Forms\Components\Select::make('target_year')
-                                ->label('Tahun yang Akan Diisi')
-                                ->options(function () {
-                                    $current = (int) date('Y');
-                                    $years = range($current + 2, 2020);
-
-                                    return array_combine($years, $years);
-                                })
-                                ->default(fn () => (int) ($this->data['year'] ?? date('Y')))
-                                ->required()
-                                ->live(),
-
-                            Forms\Components\Select::make('target_quarter')
-                                ->label('Kuartal yang Akan Diisi')
-                                ->options([
-                                    'Q1' => 'Q1 (Januari - Maret)',
-                                    'Q2' => 'Q2 (April - Juni)',
-                                    'Q3' => 'Q3 (Juli - September)',
-                                    'Q4' => 'Q4 (Oktober - Desember)',
-                                ])
-                                ->default(function (Forms\Get $get) {
-                                    $sq = $get('source_quarter') ?? $this->data['quarter'] ?? 'Q1';
-
-                                    return match ($sq) {
-                                        'Q1' => 'Q2',
-                                        'Q2' => 'Q3',
-                                        'Q3' => 'Q4',
-                                        'Q4' => 'Q1',
-                                        default => 'Q2',
-                                    };
-                                })
-                                ->required()
-                                ->live(),
-                        ]),
-
-                    Forms\Components\Select::make('source_record_id')
-                        ->label('Pilih Item Fastener Acuan')
-                        ->placeholder('-- Pilih Item Fastener Acuan --')
-                        ->searchable()
-                        ->live()
-                        ->options(function (Forms\Get $get) {
-                            $y = (int) ($get('source_year') ?: date('Y'));
-                            $q = $get('source_quarter') ?: 'Q1';
-
-                            $fasteners = Fastener::where('year', $y)
-                                ->where('quarter', $q)
-                                ->get()
-                                ->mapWithKeys(function ($item) {
-                                    $cost = number_format((float) $item->part_cost, 2, ',', '.');
-                                    $spec = $item->steel_spec ?: 'Spec -';
-                                    $label = "{$item->part_number} - {$item->part_name} ({$spec}) — {$item->supplier_name} [Cost: Rp {$cost}]";
-
-                                    return ['fastener:'.$item->id => $label];
-                                })
-                                ->toArray();
-
-                            if (empty($fasteners)) {
-                                $steels = MaterialSteel::where('year', $y)
+                                $fasteners = Fastener::where('year', $y)
                                     ->where('quarter', $q)
                                     ->get()
                                     ->mapWithKeys(function ($item) {
-                                        $coil = number_format((float) $item->coil_price, 4);
-                                        $sheet = number_format((float) $item->sheet_price, 4);
-                                        $label = "[Material Steel] {$item->steel_spec} — {$item->supplier_name} [Coil: \${$coil} | Sheet: \${$sheet}]";
+                                        $cost = number_format((float) $item->part_cost, 2, ',', '.');
+                                        $spec = $item->steel_spec ?: 'Spec -';
+                                        $label = "{$item->part_number} - {$item->part_name} ({$spec}) — {$item->supplier_name} [Cost: Rp {$cost}]";
 
-                                        return ['steel:'.$item->id => $label];
+                                        return ['fastener:'.$item->id => $label];
                                     })
                                     ->toArray();
 
-                                return $steels;
-                            }
+                                if (empty($fasteners)) {
+                                    return MaterialSteel::where('year', $y)
+                                        ->where('quarter', $q)
+                                        ->get()
+                                        ->mapWithKeys(function ($item) {
+                                            $coil = number_format((float) $item->coil_price, 4);
+                                            $sheet = number_format((float) $item->sheet_price, 4);
+                                            $label = "[Material Steel] {$item->steel_spec} — {$item->supplier_name} [Coil: \${$coil} | Sheet: \${$sheet}]";
 
-                            return $fasteners;
-                        }),
+                                            return ['steel:'.$item->id => $label];
+                                        })
+                                        ->toArray();
+                                }
 
-                    Forms\Components\Placeholder::make('preview')
-                        ->label('Pratinjau Data Terpilih')
-                        ->content(function (Forms\Get $get) {
-                            $selected = $get('source_record_id');
-                            if (! $selected) {
-                                return new HtmlString('<div class="p-3 text-sm text-gray-500 bg-gray-50 dark:bg-gray-800 rounded-lg border border-dashed border-gray-300 dark:border-gray-700">Pilih salah satu item di atas untuk melihat rincian spesifikasi kawat, berat, proses, dan part cost.</div>');
-                            }
+                                return $fasteners;
+                            })
+                            ->afterStateUpdated(function ($state, Forms\Set $set, Forms\Get $get) {
+                                if (! $state) {
+                                    $set('wire_price_usd_kg', null);
 
-                            if (str_starts_with($selected, 'steel:')) {
-                                $steelId = (int) str_replace('steel:', '', $selected);
-                                $rec = MaterialSteel::find($steelId);
+                                    return;
+                                }
+
+                                if (str_starts_with($state, 'steel:')) {
+                                    $rec = MaterialSteel::find((int) str_replace('steel:', '', $state));
+                                    if ($rec) {
+                                        if ((float) $rec->coil_price > 0) {
+                                            $set('wire_price_usd_kg', (float) $rec->coil_price);
+                                        }
+                                        if (empty($get('exchange_rate')) && $rec->exchange_rate) {
+                                            $set('exchange_rate', (int) round((float) $rec->exchange_rate));
+                                        }
+                                    }
+
+                                    return;
+                                }
+
+                                $rec = Fastener::find((int) str_replace('fastener:', '', $state));
+                                if ($rec) {
+                                    $wireVal = (float) ($rec->wire_price_usd_kg ?: $rec->coil_price ?: 0);
+                                    if ($wireVal > 0) {
+                                        $set('wire_price_usd_kg', $wireVal);
+                                    }
+                                    if (empty($get('exchange_rate')) && $rec->exchange_rate) {
+                                        $set('exchange_rate', (int) round((float) $rec->exchange_rate));
+                                    }
+                                }
+                            }),
+                    ],
+                    QuarterlyPullHelper::buildFastenerAdjustmentFields(),
+                    [
+                        Forms\Components\Placeholder::make('preview')
+                            ->label('Pratinjau Data Terpilih & Simulasi Harga')
+                            ->content(function (Forms\Get $get) {
+                                $selected = $get('source_record_id');
+                                if (! $selected) {
+                                    return new HtmlString('<div class="p-3 text-sm text-gray-500 bg-gray-50 dark:bg-gray-800 rounded-lg border border-dashed border-gray-300 dark:border-gray-700">Pilih salah satu item di atas untuk melihat rincian spesifikasi kawat, simulasi harga, kurs, dan part cost.</div>');
+                                }
+
+                                $wireOverride = $get('wire_price_usd_kg') !== null && $get('wire_price_usd_kg') !== '' && (float) $get('wire_price_usd_kg') > 0
+                                    ? (float) $get('wire_price_usd_kg')
+                                    : null;
+                                $targetQ = $get('target_quarter') ?? 'Q2';
+                                $targetY = (int) ($get('target_year') ?? date('Y'));
+
+                                if (str_starts_with($selected, 'steel:')) {
+                                    $rec = MaterialSteel::find((int) str_replace('steel:', '', $selected));
+                                    if (! $rec) {
+                                        return '';
+                                    }
+
+                                    $rate = QuarterlyPullHelper::resolveAppliedRate($get('exchange_rate'), (float) $rec->exchange_rate);
+                                    $appliedKg = $wireOverride !== null && (float) $rec->coil_price > 0
+                                        ? round($wireOverride - (float) $rec->coil_price, 4)
+                                        : 0.0;
+                                    $sim = QuarterlyPullHelper::computeMaterialSteelSimulation($rec, $rate, $appliedKg);
+
+                                    return new HtmlString(QuarterlyPullHelper::renderMaterialSteelPreviewHtml($rec, $targetQ, $targetY, $sim));
+                                }
+
+                                $rec = Fastener::find((int) str_replace('fastener:', '', $selected));
                                 if (! $rec) {
                                     return '';
                                 }
-                                $rateStr = number_format((float) $rec->exchange_rate, 0, ',', '.');
 
-                                return new HtmlString("
-                                        <div class='p-4 bg-primary-50 dark:bg-primary-950/40 border border-primary-200 dark:border-primary-800 rounded-lg text-sm space-y-1.5'>
-                                            <div class='font-bold text-primary-900 dark:text-primary-100'>[Material Steel] {$rec->steel_spec} ({$rec->double_thickness} mm)</div>
-                                            <div class='text-gray-600 dark:text-gray-300'><strong>Vendor:</strong> {$rec->supplier_name}</div>
-                                            <div class='grid grid-cols-2 gap-2 text-xs pt-2 border-t border-primary-200'>
-                                                <div><strong>Coil Price:</strong> $ {$rec->coil_price}</div>
-                                                <div><strong>Sheet Price:</strong> $ {$rec->sheet_price}</div>
-                                                <div><strong>Kurs $:</strong> Rp {$rateStr}</div>
-                                            </div>
-                                        </div>
-                                    ");
-                            }
+                                $rate = QuarterlyPullHelper::resolveAppliedRate($get('exchange_rate'), (float) $rec->exchange_rate);
+                                $sim = QuarterlyPullHelper::computeFastenerSimulation($rec, $rate, 0.0, $wireOverride);
 
-                            $fastenerId = (int) str_replace('fastener:', '', $selected);
-                            $rec = Fastener::find($fastenerId);
-                            if (! $rec) {
-                                return '';
-                            }
-
-                            $costStr = number_format((float) $rec->part_cost, 2, ',', '.');
-                            $rateStr = number_format((float) $rec->exchange_rate, 0, ',', '.');
-
-                            return new HtmlString("
-                                    <div class='p-4 bg-primary-50 dark:bg-primary-950/40 border border-primary-200 dark:border-primary-800 rounded-lg text-sm space-y-2'>
-                                        <div class='font-semibold text-primary-900 dark:text-primary-100 flex items-center justify-between'>
-                                            <span class='text-base font-bold'>{$rec->part_number}</span>
-                                            <span class='text-xs px-2 py-0.5 rounded bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 font-mono'>Rp {$costStr} / pcs</span>
-                                        </div>
-                                        <div class='text-gray-700 dark:text-gray-300'><strong>Nama Item:</strong> {$rec->part_name}</div>
-                                        <div class='text-gray-700 dark:text-gray-300'><strong>Supplier:</strong> {$rec->supplier_name} <span class='text-xs text-gray-500'>({$rec->vendor_code})</span></div>
-                                        <div class='grid grid-cols-2 gap-2 pt-2 border-t border-primary-200 dark:border-primary-800/50 text-xs text-gray-700 dark:text-gray-300'>
-                                            <div><strong>Spec Kawat:</strong> {$rec->wire_spec} ({$rec->double_thickness} mm)</div>
-                                            <div><strong>Gross Weight:</strong> {$rec->gross_weight_gr} gr</div>
-                                            <div><strong>Harga Kawat:</strong> $ {$rec->wire_price_usd_kg} /kg</div>
-                                            <div><strong>Harga Washer:</strong> Rp {$rec->washer_price}</div>
-                                            <div><strong>Kurs $:</strong> Rp {$rateStr}</div>
-                                            <div><strong>Depr. Tooling:</strong> Rp {$rec->tooling_depreciation}</div>
-                                        </div>
-                                    </div>
-                                ");
-                        }),
-                ])
+                                return new HtmlString(QuarterlyPullHelper::renderFastenerPreviewHtml($rec, $targetQ, $targetY, $sim));
+                            }),
+                    ]
+                ))
                 ->action(function (array $data) {
                     $selected = $data['source_record_id'] ?? null;
                     $raw = $this->data ?? [];
@@ -301,28 +240,22 @@ class CreateFastener extends CreateRecord
                     $quarter = $targetQuarter;
                     $year = $targetYear;
 
+                    $wireOverride = isset($data['wire_price_usd_kg']) && $data['wire_price_usd_kg'] !== '' && (float) $data['wire_price_usd_kg'] > 0
+                        ? (float) $data['wire_price_usd_kg']
+                        : null;
+                    $hrMt = isset($data['hr_steel_usd']) && $data['hr_steel_usd'] !== '' ? (float) $data['hr_steel_usd'] : 0.0;
+                    $crMt = isset($data['cr_steel_usd']) && $data['cr_steel_usd'] !== '' ? (float) $data['cr_steel_usd'] : 0.0;
+
                     // Handle MaterialSteel selection
                     if ($selected && str_starts_with($selected, 'steel:')) {
-                        $steelId = (int) str_replace('steel:', '', $selected);
-                        $steel = MaterialSteel::find($steelId);
+                        $steel = MaterialSteel::find((int) str_replace('steel:', '', $selected));
                         if ($steel) {
-                            $raw['steel_spec'] = $steel->steel_spec;
-                            $raw['double_thickness'] = $steel->double_thickness;
-                            $raw['diameter'] = $steel->double_thickness;
-                            $raw['coil_price'] = (float) $steel->coil_price;
-                            $raw['sheet_price'] = (float) $steel->sheet_price;
-                            $raw['supplier_id'] = $steel->supplier_id;
-                            $raw['vendor_code'] = $steel->vendor_code;
-                            $raw['supplier_name'] = $steel->supplier_name;
-                            $rate = (float) ($steel->exchange_rate ?: 16000);
-                            $raw['exchange_rate'] = $rate;
-                            $raw['coil_price_idr'] = round((float) $steel->coil_price * $rate, 2);
-                            $raw['sheet_price_idr'] = round((float) $steel->sheet_price * $rate, 2);
+                            $this->applyMaterialSteelFallback($raw, $steel, $data['exchange_rate'] ?? null, $hrMt, $crMt, $wireOverride);
                             $this->form->fill($raw);
 
                             Notification::make()
                                 ->title('Data Material Steel Berhasil Diterapkan!')
-                                ->body("Acuan harga dari {$steel->steel_spec} ({$steel->supplier_name}) berhasil disalin.")
+                                ->body("Acuan harga dari {$steel->steel_spec} ({$steel->supplier_name}) berhasil disalin ke {$targetQuarter} {$targetYear}.")
                                 ->success()
                                 ->send();
 
@@ -332,13 +265,11 @@ class CreateFastener extends CreateRecord
 
                     $record = null;
                     if ($selected && str_starts_with($selected, 'fastener:')) {
-                        $fastenerId = (int) str_replace('fastener:', '', $selected);
-                        $record = Fastener::find($fastenerId);
+                        $record = Fastener::find((int) str_replace('fastener:', '', $selected));
                     } elseif ($selected && is_numeric($selected)) {
                         $record = Fastener::find($selected);
                     }
 
-                    // Fallback jika tidak ada record terpilih (misal dipanggil tanpa input modal dari headless test)
                     if (! $record) {
                         $sourceYear = (int) ($data['source_year'] ?? 0);
                         $sourceQuarter = $data['source_quarter'] ?? null;
@@ -364,35 +295,21 @@ class CreateFastener extends CreateRecord
                         $raw['steel_spec'] = $record->steel_spec;
                         $raw['double_thickness'] = $record->double_thickness;
                         $raw['diameter'] = $record->diameter ?: $record->double_thickness;
-                        $raw['gap_steel_usd'] = 0;
-                        $raw['gap_steel_kg_usd'] = 0;
-                        $raw['hr_steel_usd'] = 0;
-                        $raw['cr_steel_usd'] = 0;
-                        $raw['coil_price'] = (float) ($record->coil_price ?? 0);
-                        $raw['sheet_price'] = (float) ($record->sheet_price ?? 0);
                         $raw['drawing_reference'] = $record->drawing_reference;
                         $raw['eci_number'] = $record->eci_number;
                         $raw['tooling_depreciation'] = (float) ($record->tooling_depreciation ?? 0);
-                        $raw['old_exchange_rate'] = (float) ($record->exchange_rate ?: ($record->old_exchange_rate ?: 16000));
-                        $raw['exchange_rate_fluctuation'] = 1.0;
 
                         foreach ([
-                            'part_number', 'part_name', 'wire_spec', 'wire_price_usd_kg',
-                            'gross_weight_gr', 'nett_weight_gr', 'material_control_percent',
-                            'washer_price', 'washer_weight_gr', 'heading_cost', 'rolling_cost',
-                            'washing_cost_kg', 'plating_cost_kg', 'inspection_cost', 'packing_cost',
-                            'overhead_self_percent',
+                            'part_number', 'old_part_number', 'part_name', 'model_name',
+                            'monthly_volume', 'wire_spec', 'gross_weight_gr', 'nett_weight_gr',
+                            'material_control_percent', 'washer_price', 'washer_weight_gr',
+                            'heading_cost', 'rolling_cost', 'washing_cost_kg', 'plating_cost_kg',
+                            'inspection_cost', 'packing_cost', 'overhead_self_percent', 'tooling_details',
                         ] as $field) {
                             if (isset($record->{$field})) {
                                 $raw[$field] = $record->{$field};
                             }
                         }
-
-                        $raw['prev_coil_price'] = (float) ($record->coil_price ?? 0);
-                        $raw['prev_sheet_price'] = (float) ($record->sheet_price ?? 0);
-                        $raw['prev_wire_price'] = (float) ($record->wire_price_usd_kg ?? $record->coil_price ?? 0);
-                        $raw['prev_record_found'] = true;
-                        $raw['prev_quarter_label'] = "{$record->quarter} {$record->year}";
 
                         if (! empty($record->supplier_id)) {
                             $raw['supplier_id'] = $record->supplier_id;
@@ -400,20 +317,52 @@ class CreateFastener extends CreateRecord
                             $raw['supplier_name'] = $record->supplier_name;
                         }
 
-                        $rate = (float) ($record->exchange_rate ?: ($raw['exchange_rate'] ?? 16000));
+                        $gap = QuarterlyPullHelper::resolveSteelGap(Fastener::determineSteelType($record->steel_spec), $hrMt, $crMt);
+                        $rate = QuarterlyPullHelper::resolveAppliedRate($data['exchange_rate'] ?? null, (float) $record->exchange_rate, (float) ($raw['exchange_rate'] ?? 0));
+                        $sim = QuarterlyPullHelper::computeFastenerSimulation($record, $rate, $gap['applied_kg'], $wireOverride);
+
+                        $raw['old_exchange_rate'] = $sim['old_rate'];
+                        $raw['exchange_rate_fluctuation'] = $sim['exchange_rate_fluctuation'];
+
+                        $raw['prev_coil_price'] = $sim['base_coil'];
+                        $raw['prev_sheet_price'] = $sim['base_sheet'];
+                        $raw['prev_wire_price'] = $sim['base_wire'];
+                        $raw['prev_rate'] = $sim['old_rate'];
+                        $raw['prev_record_found'] = true;
+                        $raw['prev_quarter_label'] = "{$record->quarter} {$record->year}";
+
+                        $raw['hr_steel_usd'] = $hrMt;
+                        $raw['cr_steel_usd'] = $crMt;
+                        $raw['gap_steel_usd'] = $gap['applied_mt'];
+                        $raw['gap_steel_kg_usd'] = $gap['applied_kg'];
+                        $raw['fluktuasi_jfe'] = $gap['applied_kg'];
+
+                        $raw['coil_price'] = $sim['new_coil'];
+                        $raw['sheet_price'] = $sim['new_sheet'];
+                        $raw['wire_price_usd_kg'] = $sim['new_wire_usd'];
                         $raw['exchange_rate'] = $rate;
-                        $raw['coil_price_idr'] = round((float) ($record->coil_price ?? 0) * $rate, 2);
-                        $raw['sheet_price_idr'] = round((float) ($record->sheet_price ?? 0) * $rate, 2);
+                        $raw['coil_price_idr'] = $sim['coil_price_idr'];
+                        $raw['sheet_price_idr'] = $sim['sheet_price_idr'];
+                        $raw['wire_price_idr_kg'] = $sim['wire_price_idr_kg'];
+                        $raw['wire_price_pc'] = $sim['wire_price_pc'];
+                        $raw['material_control_cost'] = $sim['material_control_cost'];
+                        $raw['material_total'] = $sim['material_total'];
+                        $raw['washing_cost'] = $sim['washing_cost'];
+                        $raw['plating_cost'] = $sim['plating_cost'];
+                        $raw['process_total'] = $sim['process_total'];
+                        $raw['subtotal'] = $sim['subtotal'];
+                        $raw['overhead_self_cost'] = $sim['overhead_self_cost'];
+                        $raw['part_cost'] = $sim['part_cost'];
 
                         $this->form->fill($raw);
 
+                        $wireInfo = "Wire \$ {$sim['new_wire_usd']}/kg, Kurs Rp ".number_format($rate, 0, ',', '.');
                         Notification::make()
                             ->title('Data Fastener Berhasil Diterapkan!')
-                            ->body("Item {$record->part_number} ({$record->part_name}) dari periode {$record->quarter} {$record->year} berhasil disalin ke formulir.")
+                            ->body("Item {$record->part_number} ({$record->part_name}) dari periode {$record->quarter} {$record->year} disalin ke {$targetQuarter} {$targetYear} ({$wireInfo}).")
                             ->success()
                             ->send();
                     } else {
-                        // Fallback ke MaterialSteel jika ada
                         $supplierId = $raw['supplier_id'] ?? null;
                         $spec = $raw['steel_spec'] ?? null;
                         $currentSteel = MaterialSteel::where('year', $year)
@@ -425,18 +374,7 @@ class CreateFastener extends CreateRecord
                             ?? MaterialSteel::where('year', $year)->where('quarter', $quarter)->latest('id')->first();
 
                         if ($currentSteel) {
-                            $raw['steel_spec'] = $currentSteel->steel_spec;
-                            $raw['double_thickness'] = $currentSteel->double_thickness;
-                            $raw['diameter'] = $currentSteel->double_thickness;
-                            $raw['coil_price'] = (float) $currentSteel->coil_price;
-                            $raw['sheet_price'] = (float) $currentSteel->sheet_price;
-                            $raw['supplier_id'] = $currentSteel->supplier_id;
-                            $raw['vendor_code'] = $currentSteel->vendor_code;
-                            $raw['supplier_name'] = $currentSteel->supplier_name;
-                            $rate = (float) ($currentSteel->exchange_rate ?: 16000);
-                            $raw['exchange_rate'] = $rate;
-                            $raw['coil_price_idr'] = round((float) $currentSteel->coil_price * $rate, 2);
-                            $raw['sheet_price_idr'] = round((float) $currentSteel->sheet_price * $rate, 2);
+                            $this->applyMaterialSteelFallback($raw, $currentSteel, $data['exchange_rate'] ?? null, $hrMt, $crMt, $wireOverride);
                             $this->form->fill($raw);
 
                             Notification::make()
@@ -445,7 +383,6 @@ class CreateFastener extends CreateRecord
                                 ->success()
                                 ->send();
                         } else {
-                            $info = Fastener::getPreviousQuarterInfo($quarter, $year);
                             Notification::make()
                                 ->title('Belum Ada Data Acuan')
                                 ->body('Tidak ditemukan data acuan pada periode yang dipilih.')
@@ -455,6 +392,50 @@ class CreateFastener extends CreateRecord
                     }
                 }),
         ];
+    }
+
+    /**
+     * Terapkan data acuan Material Steel beserta kurs dan harga wire ke state form Fastener.
+     */
+    protected function applyMaterialSteelFallback(array &$raw, MaterialSteel $steel, mixed $modalRate, float $hrMt, float $crMt, ?float $wireOverride = null): void
+    {
+        $gap = QuarterlyPullHelper::resolveSteelGap(Fastener::determineSteelType($steel->steel_spec), $hrMt, $crMt);
+        $rate = QuarterlyPullHelper::resolveAppliedRate($modalRate, (float) $steel->exchange_rate, (float) ($raw['exchange_rate'] ?? 0));
+        $appliedKg = $wireOverride !== null && (float) $steel->coil_price > 0
+            ? round($wireOverride - (float) $steel->coil_price, 4)
+            : $gap['applied_kg'];
+        $sim = QuarterlyPullHelper::computeMaterialSteelSimulation($steel, $rate, $appliedKg);
+
+        $raw['steel_spec'] = $steel->steel_spec;
+        $raw['double_thickness'] = $steel->double_thickness;
+        $raw['diameter'] = $steel->double_thickness;
+        $raw['supplier_id'] = $steel->supplier_id;
+        $raw['vendor_code'] = $steel->vendor_code;
+        $raw['supplier_name'] = $steel->supplier_name;
+
+        $raw['prev_coil_price'] = $sim['base_coil'];
+        $raw['prev_sheet_price'] = $sim['base_sheet'];
+        $raw['prev_wire_price'] = $sim['base_coil'];
+        $raw['prev_rate'] = (float) ($steel->exchange_rate ?: 16000);
+        $raw['prev_record_found'] = true;
+        $raw['prev_quarter_label'] = "{$steel->quarter} {$steel->year}";
+
+        $raw['hr_steel_usd'] = $hrMt;
+        $raw['cr_steel_usd'] = $crMt;
+        $raw['gap_steel_usd'] = $gap['applied_mt'];
+        $raw['gap_steel_kg_usd'] = $appliedKg;
+        $raw['fluktuasi_jfe'] = $appliedKg;
+
+        $raw['coil_price'] = $sim['new_coil'];
+        $raw['sheet_price'] = $sim['new_sheet'];
+        $wireUsd = $wireOverride ?? ($sim['new_coil'] > 0 ? $sim['new_coil'] : 0.0);
+        if ($wireUsd > 0) {
+            $raw['wire_price_usd_kg'] = $wireUsd;
+            $raw['wire_price_idr_kg'] = round($wireUsd * $rate, 2);
+        }
+        $raw['exchange_rate'] = $rate;
+        $raw['coil_price_idr'] = $sim['coil_price_idr'];
+        $raw['sheet_price_idr'] = $sim['sheet_price_idr'];
     }
 
     protected function getCancelFormAction(): Actions\Action

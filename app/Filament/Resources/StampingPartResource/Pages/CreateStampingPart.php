@@ -7,6 +7,7 @@ use App\Models\Currency;
 use App\Models\MaterialSteel;
 use App\Models\StampingPart;
 use App\Models\Supplier;
+use App\Services\QuarterlyPullHelper;
 use Filament\Actions;
 use Filament\Forms;
 use Filament\Notifications\Notification;
@@ -135,187 +136,107 @@ class CreateStampingPart extends CreateRecord
                 ->color('primary')
                 ->tooltip('Pilih dan tarik data acuan dari kuartal sebelumnya')
                 ->modalHeading('Tarik Data Acuan Stamping Part')
-                ->modalDescription('Pilih kuartal dan part stamping acuan untuk disalin ke formulir.')
+                ->modalDescription('Pilih kuartal dan part stamping acuan, lalu sesuaikan kurs USD atau gap baja bila diperlukan.')
                 ->modalSubmitActionLabel('Terapkan Data Terpilih')
                 ->modalWidth(MaxWidth::TwoExtraLarge)
-                ->form([
-                    Forms\Components\Grid::make(2)
-                        ->schema([
-                            Forms\Components\Select::make('source_year')
-                                ->label('Tahun Acuan')
-                                ->options(function () {
-                                    $current = (int) date('Y');
-                                    $years = range($current + 2, 2020);
+                ->form(fn () => array_merge(
+                    QuarterlyPullHelper::buildPeriodSelectionGrids(fn () => $this->data ?? []),
+                    [
+                        Forms\Components\Select::make('source_record_id')
+                            ->label('Pilih Part Stamping Acuan')
+                            ->placeholder('-- Pilih Part Stamping Acuan --')
+                            ->searchable()
+                            ->live()
+                            ->options(function (Forms\Get $get) {
+                                $y = (int) ($get('source_year') ?: date('Y'));
+                                $q = $get('source_quarter') ?: 'Q1';
 
-                                    return array_combine($years, $years);
-                                })
-                                ->default(function () {
-                                    $q = $this->data['quarter'] ?? 'Q1';
-                                    $y = (int) ($this->data['year'] ?? date('Y'));
-
-                                    return $q === 'Q1' ? $y - 1 : $y;
-                                })
-                                ->required()
-                                ->live(),
-
-                            Forms\Components\Select::make('source_quarter')
-                                ->label('Kuartal Acuan')
-                                ->options([
-                                    'Q1' => 'Q1 (Januari - Maret)',
-                                    'Q2' => 'Q2 (April - Juni)',
-                                    'Q3' => 'Q3 (Juli - September)',
-                                    'Q4' => 'Q4 (Oktober - Desember)',
-                                ])
-                                ->default(function () {
-                                    $q = $this->data['quarter'] ?? 'Q1';
-
-                                    return match ($q) {
-                                        'Q1' => 'Q4',
-                                        'Q2' => 'Q1',
-                                        'Q3' => 'Q2',
-                                        'Q4' => 'Q3',
-                                        default => 'Q4',
-                                    };
-                                })
-                                ->required()
-                                ->live(),
-                        ]),
-
-                    Forms\Components\Grid::make(2)
-                        ->schema([
-                            Forms\Components\Select::make('target_year')
-                                ->label('Tahun yang Akan Diisi')
-                                ->options(function () {
-                                    $current = (int) date('Y');
-                                    $years = range($current + 2, 2020);
-
-                                    return array_combine($years, $years);
-                                })
-                                ->default(fn () => (int) ($this->data['year'] ?? date('Y')))
-                                ->required()
-                                ->live(),
-
-                            Forms\Components\Select::make('target_quarter')
-                                ->label('Kuartal yang Akan Diisi')
-                                ->options([
-                                    'Q1' => 'Q1 (Januari - Maret)',
-                                    'Q2' => 'Q2 (April - Juni)',
-                                    'Q3' => 'Q3 (Juli - September)',
-                                    'Q4' => 'Q4 (Oktober - Desember)',
-                                ])
-                                ->default(function (Forms\Get $get) {
-                                    $sq = $get('source_quarter') ?? $this->data['quarter'] ?? 'Q1';
-
-                                    return match ($sq) {
-                                        'Q1' => 'Q2',
-                                        'Q2' => 'Q3',
-                                        'Q3' => 'Q4',
-                                        'Q4' => 'Q1',
-                                        default => 'Q2',
-                                    };
-                                })
-                                ->required()
-                                ->live(),
-                        ]),
-
-                    Forms\Components\Select::make('source_record_id')
-                        ->label('Pilih Part Stamping Acuan')
-                        ->placeholder('-- Pilih Part Stamping Acuan --')
-                        ->searchable()
-                        ->live()
-                        ->options(function (Forms\Get $get) {
-                            $y = (int) ($get('source_year') ?: date('Y'));
-                            $q = $get('source_quarter') ?: 'Q1';
-
-                            $stampings = StampingPart::where('year', $y)
-                                ->where('quarter', $q)
-                                ->get()
-                                ->mapWithKeys(function ($item) {
-                                    $cost = number_format((float) $item->part_cost, 2, ',', '.');
-                                    $spec = $item->steel_spec ?: 'Spec -';
-                                    $label = "{$item->part_number} - {$item->part_name} ({$spec}) — {$item->supplier_name} [Cost: Rp {$cost}]";
-
-                                    return ['stamping:'.$item->id => $label];
-                                })
-                                ->toArray();
-
-                            if (empty($stampings)) {
-                                $steels = MaterialSteel::where('year', $y)
+                                $stampings = StampingPart::where('year', $y)
                                     ->where('quarter', $q)
                                     ->get()
                                     ->mapWithKeys(function ($item) {
-                                        $coil = number_format((float) $item->coil_price, 4);
-                                        $sheet = number_format((float) $item->sheet_price, 4);
-                                        $label = "[Material Steel] {$item->steel_spec} — {$item->supplier_name} [Coil: \${$coil} | Sheet: \${$sheet}]";
+                                        $cost = number_format((float) $item->part_cost, 2, ',', '.');
+                                        $spec = $item->steel_spec ?: 'Spec -';
+                                        $label = "{$item->part_number} - {$item->part_name} ({$spec}) — {$item->supplier_name} [Cost: Rp {$cost}]";
 
-                                        return ['steel:'.$item->id => $label];
+                                        return ['stamping:'.$item->id => $label];
                                     })
                                     ->toArray();
 
-                                return $steels;
-                            }
+                                if (empty($stampings)) {
+                                    return MaterialSteel::where('year', $y)
+                                        ->where('quarter', $q)
+                                        ->get()
+                                        ->mapWithKeys(function ($item) {
+                                            $coil = number_format((float) $item->coil_price, 4);
+                                            $sheet = number_format((float) $item->sheet_price, 4);
+                                            $label = "[Material Steel] {$item->steel_spec} — {$item->supplier_name} [Coil: \${$coil} | Sheet: \${$sheet}]";
 
-                            return $stampings;
-                        }),
+                                            return ['steel:'.$item->id => $label];
+                                        })
+                                        ->toArray();
+                                }
 
-                    Forms\Components\Placeholder::make('preview')
-                        ->label('Pratinjau Data Terpilih')
-                        ->content(function (Forms\Get $get) {
-                            $selected = $get('source_record_id');
-                            if (! $selected) {
-                                return new HtmlString('<div class="p-3 text-sm text-gray-500 bg-gray-50 dark:bg-gray-800 rounded-lg border border-dashed border-gray-300 dark:border-gray-700">Pilih salah satu part di atas untuk melihat rincian spesifikasi, harga baja, proses, dan part cost.</div>');
-                            }
+                                return $stampings;
+                            })
+                            ->afterStateUpdated(function ($state, Forms\Set $set, Forms\Get $get) {
+                                if (! $state || ! empty($get('exchange_rate'))) {
+                                    return;
+                                }
 
-                            if (str_starts_with($selected, 'steel:')) {
-                                $steelId = (int) str_replace('steel:', '', $selected);
-                                $rec = MaterialSteel::find($steelId);
+                                $rate = null;
+                                if (str_starts_with($state, 'steel:')) {
+                                    $rate = MaterialSteel::find((int) str_replace('steel:', '', $state))?->exchange_rate;
+                                } elseif (str_starts_with($state, 'stamping:')) {
+                                    $rate = StampingPart::find((int) str_replace('stamping:', '', $state))?->exchange_rate;
+                                }
+
+                                if ($rate) {
+                                    $set('exchange_rate', (int) round((float) $rate));
+                                }
+                            }),
+                    ],
+                    QuarterlyPullHelper::buildAdjustmentFields(),
+                    [
+                        Forms\Components\Placeholder::make('preview')
+                            ->label('Pratinjau Data Terpilih & Simulasi Harga')
+                            ->content(function (Forms\Get $get) {
+                                $selected = $get('source_record_id');
+                                if (! $selected) {
+                                    return new HtmlString('<div class="p-3 text-sm text-gray-500 bg-gray-50 dark:bg-gray-800 rounded-lg border border-dashed border-gray-300 dark:border-gray-700">Pilih salah satu part di atas untuk melihat rincian spesifikasi, simulasi harga baja, kurs, dan part cost.</div>');
+                                }
+
+                                $hrMt = (float) ($get('hr_steel_usd') ?? 0);
+                                $crMt = (float) ($get('cr_steel_usd') ?? 0);
+                                $targetQ = $get('target_quarter') ?? 'Q2';
+                                $targetY = (int) ($get('target_year') ?? date('Y'));
+
+                                if (str_starts_with($selected, 'steel:')) {
+                                    $rec = MaterialSteel::find((int) str_replace('steel:', '', $selected));
+                                    if (! $rec) {
+                                        return '';
+                                    }
+
+                                    $gap = QuarterlyPullHelper::resolveSteelGap(MaterialSteel::determineSteelType($rec->steel_spec), $hrMt, $crMt);
+                                    $rate = QuarterlyPullHelper::resolveAppliedRate($get('exchange_rate'), (float) $rec->exchange_rate);
+                                    $sim = QuarterlyPullHelper::computeMaterialSteelSimulation($rec, $rate, $gap['applied_kg']);
+
+                                    return new HtmlString(QuarterlyPullHelper::renderMaterialSteelPreviewHtml($rec, $targetQ, $targetY, $sim));
+                                }
+
+                                $rec = StampingPart::find((int) str_replace('stamping:', '', $selected));
                                 if (! $rec) {
                                     return '';
                                 }
-                                $rateStr = number_format((float) $rec->exchange_rate, 0, ',', '.');
 
-                                return new HtmlString("
-                                        <div class='p-4 bg-primary-50 dark:bg-primary-950/40 border border-primary-200 dark:border-primary-800 rounded-lg text-sm space-y-1.5'>
-                                            <div class='font-bold text-primary-900 dark:text-primary-100'>[Material Steel] {$rec->steel_spec} ({$rec->double_thickness} mm)</div>
-                                            <div class='text-gray-600 dark:text-gray-300'><strong>Vendor:</strong> {$rec->supplier_name}</div>
-                                            <div class='grid grid-cols-2 gap-2 text-xs pt-2 border-t border-primary-200'>
-                                                <div><strong>Coil Price:</strong> $ {$rec->coil_price}</div>
-                                                <div><strong>Sheet Price:</strong> $ {$rec->sheet_price}</div>
-                                                <div><strong>Kurs $:</strong> Rp {$rateStr}</div>
-                                            </div>
-                                        </div>
-                                    ");
-                            }
+                                $gap = QuarterlyPullHelper::resolveSteelGap(StampingPart::determineSteelType($rec->steel_spec), $hrMt, $crMt);
+                                $rate = QuarterlyPullHelper::resolveAppliedRate($get('exchange_rate'), (float) $rec->exchange_rate);
+                                $sim = QuarterlyPullHelper::computeStampingSimulation($rec, $rate, $gap['applied_kg']);
 
-                            $stampingId = (int) str_replace('stamping:', '', $selected);
-                            $rec = StampingPart::find($stampingId);
-                            if (! $rec) {
-                                return '';
-                            }
-
-                            $costStr = number_format((float) $rec->part_cost, 2, ',', '.');
-                            $rateStr = number_format((float) $rec->exchange_rate, 0, ',', '.');
-
-                            return new HtmlString("
-                                    <div class='p-4 bg-primary-50 dark:bg-primary-950/40 border border-primary-200 dark:border-primary-800 rounded-lg text-sm space-y-2'>
-                                        <div class='font-semibold text-primary-900 dark:text-primary-100 flex items-center justify-between'>
-                                            <span class='text-base font-bold'>{$rec->part_number}</span>
-                                            <span class='text-xs px-2 py-0.5 rounded bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 font-mono'>Rp {$costStr} / pcs</span>
-                                        </div>
-                                        <div class='text-gray-700 dark:text-gray-300'><strong>Nama Part:</strong> {$rec->part_name} <span class='text-xs text-gray-500'>({$rec->model_name})</span></div>
-                                        <div class='text-gray-700 dark:text-gray-300'><strong>Supplier:</strong> {$rec->supplier_name} <span class='text-xs text-gray-500'>({$rec->vendor_code})</span></div>
-                                        <div class='grid grid-cols-2 gap-2 pt-2 border-t border-primary-200 dark:border-primary-800/50 text-xs text-gray-700 dark:text-gray-300'>
-                                            <div><strong>Spec Baja:</strong> {$rec->steel_spec} ({$rec->double_thickness} mm)</div>
-                                            <div><strong>Berat Bersih:</strong> {$rec->berat} kg</div>
-                                            <div><strong>Proses:</strong> {$rec->process_name}</div>
-                                            <div><strong>Harga Coil:</strong> $ {$rec->coil_price}</div>
-                                            <div><strong>Kurs $:</strong> Rp {$rateStr}</div>
-                                            <div><strong>Depr. Tooling:</strong> Rp {$rec->tooling_depreciation}</div>
-                                        </div>
-                                    </div>
-                                ");
-                        }),
-                ])
+                                return new HtmlString(QuarterlyPullHelper::renderStampingPreviewHtml($rec, $targetQ, $targetY, $sim));
+                            }),
+                    ]
+                ))
                 ->action(function (array $data) {
                     $selected = $data['source_record_id'] ?? null;
                     $raw = $this->data ?? [];
@@ -326,38 +247,19 @@ class CreateStampingPart extends CreateRecord
                     $quarter = $targetQuarter;
                     $year = $targetYear;
 
+                    $hrMt = isset($data['hr_steel_usd']) && $data['hr_steel_usd'] !== '' ? (float) $data['hr_steel_usd'] : 0.0;
+                    $crMt = isset($data['cr_steel_usd']) && $data['cr_steel_usd'] !== '' ? (float) $data['cr_steel_usd'] : 0.0;
+
                     // Handle MaterialSteel selection
                     if ($selected && str_starts_with($selected, 'steel:')) {
-                        $steelId = (int) str_replace('steel:', '', $selected);
-                        $steel = MaterialSteel::find($steelId);
+                        $steel = MaterialSteel::find((int) str_replace('steel:', '', $selected));
                         if ($steel) {
-                            $raw['steel_spec'] = $steel->steel_spec;
-                            $raw['double_thickness'] = $steel->double_thickness;
-                            $raw['size'] = $steel->size;
-                            $raw['coil_price'] = (float) $steel->coil_price;
-                            $raw['sheet_price'] = (float) $steel->sheet_price;
-                            $raw['supplier_id'] = $steel->supplier_id;
-                            $raw['vendor_code'] = $steel->vendor_code;
-                            $raw['supplier_name'] = $steel->supplier_name;
-                            $rate = (float) ($steel->exchange_rate ?: 16000);
-                            $raw['exchange_rate'] = $rate;
-                            $raw['coil_price_idr'] = round((float) $steel->coil_price * $rate, 2);
-                            $raw['sheet_price_idr'] = round((float) $steel->sheet_price * $rate, 2);
-                            $raw['gap_steel_usd'] = 0;
-                            $raw['gap_steel_kg_usd'] = 0;
-                            $raw['hr_steel_usd'] = 0;
-                            $raw['cr_steel_usd'] = 0;
-                            $raw['berat'] = null;
-                            $raw['scrap_weight'] = 0;
-                            $raw['scrap_cost'] = 0;
-                            $raw['gross_material_cost'] = 0;
-                            $raw['material_total'] = 0;
-                            $raw['part_cost'] = 0;
+                            $this->applyMaterialSteelFallback($raw, $steel, $data['exchange_rate'] ?? null, $hrMt, $crMt);
                             $this->form->fill($raw);
 
                             Notification::make()
                                 ->title('Data Material Steel Berhasil Diterapkan!')
-                                ->body("Acuan harga dari {$steel->steel_spec} ({$steel->supplier_name}) berhasil disalin.")
+                                ->body("Acuan harga dari {$steel->steel_spec} ({$steel->supplier_name}) berhasil disalin ke {$targetQuarter} {$targetYear}.")
                                 ->success()
                                 ->send();
 
@@ -367,13 +269,11 @@ class CreateStampingPart extends CreateRecord
 
                     $record = null;
                     if ($selected && str_starts_with($selected, 'stamping:')) {
-                        $stampingId = (int) str_replace('stamping:', '', $selected);
-                        $record = StampingPart::find($stampingId);
+                        $record = StampingPart::find((int) str_replace('stamping:', '', $selected));
                     } elseif ($selected && is_numeric($selected)) {
                         $record = StampingPart::find($selected);
                     }
 
-                    // Fallback jika tidak ada record terpilih (misal dipanggil tanpa input modal dari headless test)
                     if (! $record) {
                         $sourceYear = (int) ($data['source_year'] ?? 0);
                         $sourceQuarter = $data['source_quarter'] ?? null;
@@ -402,7 +302,6 @@ class CreateStampingPart extends CreateRecord
                             'size', 'berat', 'scrap_weight', 'scrap_price_per_kg',
                             'process_name', 'process_man_hour', 'process_charge',
                             'overhead_supplied_percent', 'overhead_self_percent',
-                            'gap_steel_usd', 'gap_steel_kg_usd', 'coil_price', 'sheet_price',
                             'drawing_reference', 'eci_number', 'tooling_depreciation',
                             'part_no_to_compare', 'transportation_cost', 'packing_cost',
                             'comments', 'remarks', 'alteration', 'etc_contents', 'tooling_details',
@@ -412,75 +311,53 @@ class CreateStampingPart extends CreateRecord
                             }
                         }
 
-                        $raw['prev_coil_price'] = (float) $record->coil_price;
-                        $raw['prev_sheet_price'] = (float) $record->sheet_price;
-                        $raw['prev_record_found'] = true;
-                        $raw['prev_quarter_label'] = "{$record->quarter} {$record->year}";
-
                         if (! empty($record->supplier_id)) {
                             $raw['supplier_id'] = $record->supplier_id;
                             $raw['vendor_code'] = $record->vendor_code;
                             $raw['supplier_name'] = $record->supplier_name;
                         }
 
-                        $rate = (float) ($record->exchange_rate ?: ($raw['exchange_rate'] ?? 16000));
+                        $gap = QuarterlyPullHelper::resolveSteelGap(StampingPart::determineSteelType($record->steel_spec), $hrMt, $crMt);
+                        $rate = QuarterlyPullHelper::resolveAppliedRate($data['exchange_rate'] ?? null, (float) $record->exchange_rate, (float) ($raw['exchange_rate'] ?? 0));
+                        $sim = QuarterlyPullHelper::computeStampingSimulation($record, $rate, $gap['applied_kg']);
+
+                        $raw['prev_coil_price'] = $sim['base_coil'];
+                        $raw['prev_sheet_price'] = $sim['base_sheet'];
+                        $raw['prev_rate'] = (float) ($record->exchange_rate ?: 16000);
+                        $raw['prev_record_found'] = true;
+                        $raw['prev_quarter_label'] = "{$record->quarter} {$record->year}";
+
+                        $raw['hr_steel_usd'] = $hrMt;
+                        $raw['cr_steel_usd'] = $crMt;
+                        $raw['gap_steel_usd'] = $gap['applied_mt'];
+                        $raw['gap_steel_kg_usd'] = $gap['applied_kg'];
+                        $raw['fluktuasi_jfe'] = $gap['applied_kg'];
+
+                        $raw['coil_price'] = $sim['new_coil'];
+                        $raw['sheet_price'] = $sim['new_sheet'];
                         $raw['exchange_rate'] = $rate;
-                        $raw['coil_price_idr'] = round((float) ($raw['coil_price'] ?? 0) * $rate, 2);
-                        $raw['sheet_price_idr'] = round((float) ($raw['sheet_price'] ?? 0) * $rate, 2);
-
-                        $steelRate = (float) ($raw['sheet_price_idr'] ?: $raw['coil_price_idr']);
-                        $thk = (float) ($raw['double_thickness'] ?? $record->double_thickness ?? 0);
-                        $wide = (float) ($raw['wide'] ?? $record->wide ?? 0);
-                        $pitch = (float) ($raw['pitch'] ?? $record->pitch ?? 0);
-                        $yieldRate = (float) ($raw['yield_rate'] ?? $record->yield_rate ?? 1);
-                        $yieldRate = $yieldRate > 0 ? $yieldRate : 1;
-
-                        $berat = (float) ($raw['berat'] ?? $record->berat ?? 0);
-                        if ($berat <= 0.0 && $thk > 0 && $wide > 0 && $pitch > 0) {
-                            $berat = round(($thk * $wide * $pitch * 7.85) / (1000000 * $yieldRate), 4);
-                            $raw['berat'] = $berat;
-                        }
-
-                        $grossMat = $berat > 0 && $steelRate > 0 ? round($berat * $steelRate, 2) : 0;
-                        $raw['gross_material_cost'] = $grossMat;
-
-                        $scrapWeight = $berat > 0 ? (float) ($raw['scrap_weight'] ?? $record->scrap_weight ?? 0) : 0;
-                        $scrapPrice = (float) ($raw['scrap_price_per_kg'] ?? $record->scrap_price_per_kg ?? -1500);
-                        $scrapCost = round($scrapWeight * $scrapPrice, 2);
-                        $raw['scrap_cost'] = $scrapCost;
-
-                        $matTotal = round($grossMat + $scrapCost, 2);
-                        $raw['material_total'] = $matTotal;
-
-                        $procMan = (float) ($raw['process_man_hour'] ?? 9);
-                        $procChg = (float) ($raw['process_charge'] ?? 45);
-                        $procTotal = round(($procMan * $procChg) / $yieldRate, 2);
-                        $raw['process_total'] = $procTotal;
-
-                        $subtotal = round($matTotal + $procTotal, 2);
-                        $raw['subtotal'] = $subtotal;
-
-                        $ohSupp = round(((float) ($raw['overhead_supplied_percent'] ?? 11) / 100) * $procTotal, 2);
-                        $raw['overhead_supplied_cost'] = $ohSupp;
-
-                        $ohSelf = round(((float) ($raw['overhead_self_percent'] ?? 4) / 100) * $matTotal, 2);
-                        $raw['overhead_self_cost'] = $ohSelf;
-
-                        $transCost = (float) ($raw['transportation_cost'] ?? 0);
-                        $packCost = (float) ($raw['packing_cost'] ?? 0);
-                        $partCostExcl = round($subtotal + $ohSupp + $ohSelf + $transCost + $packCost, 4);
-                        $raw['part_cost_excluding_tooling'] = $partCostExcl;
-                        $raw['part_cost'] = round($partCostExcl + (float) ($raw['tooling_depreciation'] ?? 0), 4);
+                        $raw['coil_price_idr'] = $sim['coil_price_idr'];
+                        $raw['sheet_price_idr'] = $sim['sheet_price_idr'];
+                        $raw['berat'] = $sim['berat'];
+                        $raw['gross_material_cost'] = $sim['gross_material_cost'];
+                        $raw['scrap_cost'] = $sim['scrap_cost'];
+                        $raw['material_total'] = $sim['material_total'];
+                        $raw['process_total'] = $sim['process_total'];
+                        $raw['subtotal'] = $sim['subtotal'];
+                        $raw['overhead_supplied_cost'] = $sim['overhead_supplied_cost'];
+                        $raw['overhead_self_cost'] = $sim['overhead_self_cost'];
+                        $raw['part_cost_excluding_tooling'] = $sim['part_cost_excluding_tooling'];
+                        $raw['part_cost'] = $sim['part_cost'];
 
                         $this->form->fill($raw);
 
+                        $adjText = $gap['applied_mt'] != 0.0 ? " (Gap {$gap['applied_mt']} $/MT, Kurs Rp ".number_format($rate, 0, ',', '.').')' : ' (Kurs Rp '.number_format($rate, 0, ',', '.').')';
                         Notification::make()
                             ->title('Data Part Stamping Berhasil Diterapkan!')
-                            ->body("Part {$record->part_number} ({$record->part_name}) dari periode {$record->quarter} {$record->year} berhasil disalin ke formulir.")
+                            ->body("Part {$record->part_number} ({$record->part_name}) dari periode {$record->quarter} {$record->year} disalin ke {$targetQuarter} {$targetYear}{$adjText}.")
                             ->success()
                             ->send();
                     } else {
-                        // Fallback ke MaterialSteel jika ada
                         $supplierId = $raw['supplier_id'] ?? null;
                         $spec = $raw['steel_spec'] ?? null;
                         $currentSteel = MaterialSteel::where('year', $year)
@@ -492,27 +369,7 @@ class CreateStampingPart extends CreateRecord
                             ?? MaterialSteel::where('year', $year)->where('quarter', $quarter)->latest('id')->first();
 
                         if ($currentSteel) {
-                            $raw['steel_spec'] = $currentSteel->steel_spec;
-                            $raw['double_thickness'] = $currentSteel->double_thickness;
-                            $raw['coil_price'] = (float) $currentSteel->coil_price;
-                            $raw['sheet_price'] = (float) $currentSteel->sheet_price;
-                            $raw['supplier_id'] = $currentSteel->supplier_id;
-                            $raw['vendor_code'] = $currentSteel->vendor_code;
-                            $raw['supplier_name'] = $currentSteel->supplier_name;
-                            $rate = (float) ($currentSteel->exchange_rate ?: 16000);
-                            $raw['exchange_rate'] = $rate;
-                            $raw['coil_price_idr'] = round((float) $currentSteel->coil_price * $rate, 2);
-                            $raw['sheet_price_idr'] = round((float) $currentSteel->sheet_price * $rate, 2);
-                            $raw['gap_steel_usd'] = 0;
-                            $raw['gap_steel_kg_usd'] = 0;
-                            $raw['hr_steel_usd'] = 0;
-                            $raw['cr_steel_usd'] = 0;
-                            $raw['berat'] = null;
-                            $raw['scrap_weight'] = 0;
-                            $raw['scrap_cost'] = 0;
-                            $raw['gross_material_cost'] = 0;
-                            $raw['material_total'] = 0;
-                            $raw['part_cost'] = 0;
+                            $this->applyMaterialSteelFallback($raw, $currentSteel, $data['exchange_rate'] ?? null, $hrMt, $crMt);
                             $this->form->fill($raw);
 
                             Notification::make()
@@ -521,7 +378,6 @@ class CreateStampingPart extends CreateRecord
                                 ->success()
                                 ->send();
                         } else {
-                            $info = StampingPart::getPreviousQuarterInfo($quarter, $year);
                             Notification::make()
                                 ->title('Belum Ada Data Acuan')
                                 ->body('Tidak ditemukan data acuan pada periode yang dipilih.')
@@ -531,6 +387,48 @@ class CreateStampingPart extends CreateRecord
                     }
                 }),
         ];
+    }
+
+    /**
+     * Terapkan data acuan Material Steel beserta kurs dan gap baja ke state form.
+     */
+    protected function applyMaterialSteelFallback(array &$raw, MaterialSteel $steel, mixed $modalRate, float $hrMt, float $crMt): void
+    {
+        $gap = QuarterlyPullHelper::resolveSteelGap(StampingPart::determineSteelType($steel->steel_spec), $hrMt, $crMt);
+        $rate = QuarterlyPullHelper::resolveAppliedRate($modalRate, (float) $steel->exchange_rate, (float) ($raw['exchange_rate'] ?? 0));
+        $sim = QuarterlyPullHelper::computeMaterialSteelSimulation($steel, $rate, $gap['applied_kg']);
+
+        $raw['steel_spec'] = $steel->steel_spec;
+        $raw['double_thickness'] = $steel->double_thickness;
+        $raw['size'] = $steel->size;
+        $raw['supplier_id'] = $steel->supplier_id;
+        $raw['vendor_code'] = $steel->vendor_code;
+        $raw['supplier_name'] = $steel->supplier_name;
+
+        $raw['prev_coil_price'] = $sim['base_coil'];
+        $raw['prev_sheet_price'] = $sim['base_sheet'];
+        $raw['prev_rate'] = (float) ($steel->exchange_rate ?: 16000);
+        $raw['prev_record_found'] = true;
+        $raw['prev_quarter_label'] = "{$steel->quarter} {$steel->year}";
+
+        $raw['hr_steel_usd'] = $hrMt;
+        $raw['cr_steel_usd'] = $crMt;
+        $raw['gap_steel_usd'] = $gap['applied_mt'];
+        $raw['gap_steel_kg_usd'] = $gap['applied_kg'];
+        $raw['fluktuasi_jfe'] = $gap['applied_kg'];
+
+        $raw['coil_price'] = $sim['new_coil'];
+        $raw['sheet_price'] = $sim['new_sheet'];
+        $raw['exchange_rate'] = $rate;
+        $raw['coil_price_idr'] = $sim['coil_price_idr'];
+        $raw['sheet_price_idr'] = $sim['sheet_price_idr'];
+
+        $raw['berat'] = null;
+        $raw['scrap_weight'] = 0;
+        $raw['scrap_cost'] = 0;
+        $raw['gross_material_cost'] = 0;
+        $raw['material_total'] = 0;
+        $raw['part_cost'] = 0;
     }
 
     protected function getCancelFormAction(): Actions\Action
