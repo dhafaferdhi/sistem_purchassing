@@ -165,36 +165,42 @@ class QuarterlyPullHelper
     }
 
     /**
-     * Bangun komponen input Kurs USD dan Gap HRC/CRC ($/MT) untuk simulasi baja lembaran (Stamping Part).
+     * Bangun Grid 2 kolom berisi Kurs USD dan harga material per Kg USD.
      *
      * @return array<int, Forms\Components\Component>
      */
-    public static function buildAdjustmentFields(): array
+    public static function buildRateAndUsdPriceFields(string $priceField, string $priceLabel, string $pricePlaceholder, string $priceHelper): array
     {
         return [
-            static::buildRateField(),
-
             Forms\Components\Grid::make(2)
                 ->schema([
-                    Forms\Components\TextInput::make('hr_steel_usd')
-                        ->label('Gap HRC ($/MT)')
-                        ->numeric()
-                        ->prefix('$')
-                        ->placeholder('Contoh: -57 atau 50')
-                        ->helperText('Gunakan minus (-) jika harga turun (contoh: -57), positif jika naik')
-                        ->default(0)
-                        ->live(debounce: 400),
+                    static::buildRateField(),
 
-                    Forms\Components\TextInput::make('cr_steel_usd')
-                        ->label('Gap CRC ($/MT)')
+                    Forms\Components\TextInput::make($priceField)
+                        ->label($priceLabel)
                         ->numeric()
+                        ->step(0.0001)
                         ->prefix('$')
-                        ->placeholder('Contoh: -57 atau 100')
-                        ->helperText('Gunakan minus (-) jika harga turun (contoh: -57), positif jika naik')
-                        ->default(0)
+                        ->placeholder($pricePlaceholder)
+                        ->helperText($priceHelper)
                         ->live(debounce: 400),
                 ]),
         ];
+    }
+
+    /**
+     * Bangun komponen input Kurs USD dan Harga Sheet / Baja ($/Kg) sesuai standar Excel Stamping Part.
+     *
+     * @return array<int, Forms\Components\Component>
+     */
+    public static function buildStampingAdjustmentFields(): array
+    {
+        return static::buildRateAndUsdPriceFields(
+            priceField: 'sheet_price',
+            priceLabel: 'Harga Baja / Sheet ($/Kg)',
+            pricePlaceholder: 'Contoh: 1.2320',
+            priceHelper: 'Harga baja USD/kg (terisi otomatis dari part acuan, bisa diubah manual)',
+        );
     }
 
     /**
@@ -204,21 +210,12 @@ class QuarterlyPullHelper
      */
     public static function buildFastenerAdjustmentFields(): array
     {
-        return [
-            Forms\Components\Grid::make(2)
-                ->schema([
-                    static::buildRateField(),
-
-                    Forms\Components\TextInput::make('wire_price_usd_kg')
-                        ->label('Harga Wire / Kawat ($/Kg)')
-                        ->numeric()
-                        ->step(0.0001)
-                        ->prefix('$')
-                        ->placeholder('Contoh: 2.0200')
-                        ->helperText('Harga kawat dalam USD/kg (terisi otomatis dari item acuan)')
-                        ->live(debounce: 400),
-                ]),
-        ];
+        return static::buildRateAndUsdPriceFields(
+            priceField: 'wire_price_usd_kg',
+            priceLabel: 'Harga Wire / Kawat ($/Kg)',
+            pricePlaceholder: 'Contoh: 2.0200',
+            priceHelper: 'Harga kawat dalam USD/kg (terisi otomatis dari item acuan)',
+        );
     }
 
     /**
@@ -349,16 +346,23 @@ class QuarterlyPullHelper
     }
 
     /**
-     * Hitung simulasi biaya 9 baris untuk Stamping Part berdasarkan kurs dan selisih baja baru.
+     * Hitung simulasi biaya 9 baris untuk Stamping Part berdasarkan kurs, harga baja ($/kg), atau selisih baja baru.
      *
      * @return array<string, float>
      */
-    public static function computeStampingSimulation(StampingPart $rec, float $rate, float $appliedKg): array
+    public static function computeStampingSimulation(StampingPart $rec, float $rate, float $appliedKg = 0.0, ?float $overrideSheetUsd = null): array
     {
         $baseCoil = (float) ($rec->coil_price ?? 0);
         $baseSheet = (float) ($rec->sheet_price ?? 0);
-        $newCoil = $baseCoil > 0 ? round($baseCoil + $appliedKg, 4) : 0.0;
-        $newSheet = $baseSheet > 0 ? round($baseSheet + $appliedKg, 4) : 0.0;
+        $basePrimary = $baseSheet > 0 ? $baseSheet : $baseCoil;
+
+        $hasExplicitSheet = $overrideSheetUsd !== null && $overrideSheetUsd > 0;
+        $deltaUsd = $hasExplicitSheet ? round($overrideSheetUsd - $basePrimary, 4) : $appliedKg;
+
+        $newSheet = $hasExplicitSheet
+            ? round($overrideSheetUsd, 4)
+            : ($baseSheet > 0 ? round($baseSheet + $appliedKg, 4) : 0.0);
+        $newCoil = $baseCoil > 0 ? round($baseCoil + $deltaUsd, 4) : 0.0;
 
         $coilIdr = round($newCoil * $rate, 2);
         $sheetIdr = round($newSheet * $rate, 2);

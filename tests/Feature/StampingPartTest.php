@@ -659,7 +659,7 @@ class StampingPartTest extends TestCase
             ->assertSet('data.sheet_price', 1.55);
     }
 
-    public function test_stamping_part_pull_previous_applies_manual_rate_and_gap_mt_across_quarters(): void
+    public function test_stamping_part_pull_previous_applies_manual_rate_and_sheet_price_across_quarters(): void
     {
         $this->actingAs($this->admin);
 
@@ -690,17 +690,14 @@ class StampingPartTest extends TestCase
                 'target_quarter' => 'Q4',
                 'source_record_id' => 'stamping:'.$stamping->id,
                 'exchange_rate' => 19500,
-                'hr_steel_usd' => -50,
+                'sheet_price' => 1.2520,
             ])
             ->assertSet('data.year', 2025)
             ->assertSet('data.quarter', 'Q4')
             ->assertSet('data.exchange_rate', 19500.0)
-            ->assertSet('data.hr_steel_usd', -50.0)
-            ->assertSet('data.gap_steel_usd', -50.0)
-            ->assertSet('data.gap_steel_kg_usd', -0.05)
-            ->assertSet('data.coil_price', 1.15)
-            ->assertSet('data.sheet_price', 1.2)
-            ->assertSet('data.sheet_price_idr', 23400.0)
+            ->assertSet('data.coil_price', 1.202)
+            ->assertSet('data.sheet_price', 1.252)
+            ->assertSet('data.sheet_price_idr', 24414.0)
             ->call('create')
             ->assertHasNoFormErrors();
 
@@ -709,9 +706,9 @@ class StampingPartTest extends TestCase
             'quarter' => 'Q4',
             'part_number' => 'STAMP-Q2-Q4-001',
             'exchange_rate' => 19500.0,
-            'coil_price' => 1.15,
-            'sheet_price' => 1.2,
-            'sheet_price_idr' => 23400.0,
+            'coil_price' => 1.202,
+            'sheet_price' => 1.252,
+            'sheet_price_idr' => 24414.0,
         ]);
     }
 

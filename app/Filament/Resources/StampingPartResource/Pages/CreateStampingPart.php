@@ -136,7 +136,7 @@ class CreateStampingPart extends CreateRecord
                 ->color('primary')
                 ->tooltip('Pilih dan tarik data acuan dari kuartal sebelumnya')
                 ->modalHeading('Tarik Data Acuan Stamping Part')
-                ->modalDescription('Pilih kuartal dan part stamping acuan, lalu sesuaikan kurs USD atau gap baja bila diperlukan.')
+                ->modalDescription('Pilih kuartal dan part stamping acuan, lalu sesuaikan Kurs USD atau Harga Sheet / Baja ($/Kg).')
                 ->modalSubmitActionLabel('Terapkan Data Terpilih')
                 ->modalWidth(MaxWidth::TwoExtraLarge)
                 ->form(fn () => array_merge(
@@ -180,23 +180,28 @@ class CreateStampingPart extends CreateRecord
                                 return $stampings;
                             })
                             ->afterStateUpdated(function ($state, Forms\Set $set, Forms\Get $get) {
-                                if (! $state || ! empty($get('exchange_rate'))) {
+                                if (! $state) {
+                                    $set('sheet_price', null);
+
                                     return;
                                 }
 
-                                $rate = null;
-                                if (str_starts_with($state, 'steel:')) {
-                                    $rate = MaterialSteel::find((int) str_replace('steel:', '', $state))?->exchange_rate;
-                                } elseif (str_starts_with($state, 'stamping:')) {
-                                    $rate = StampingPart::find((int) str_replace('stamping:', '', $state))?->exchange_rate;
-                                }
+                                $rec = str_starts_with($state, 'steel:')
+                                    ? MaterialSteel::find((int) str_replace('steel:', '', $state))
+                                    : StampingPart::find((int) str_replace('stamping:', '', $state));
 
-                                if ($rate) {
-                                    $set('exchange_rate', (int) round((float) $rate));
+                                if ($rec) {
+                                    $sheetVal = (float) ($rec->sheet_price > 0 ? $rec->sheet_price : ($rec->coil_price ?? 0));
+                                    if ($sheetVal > 0) {
+                                        $set('sheet_price', $sheetVal);
+                                    }
+                                    if (empty($get('exchange_rate')) && $rec->exchange_rate) {
+                                        $set('exchange_rate', (int) round((float) $rec->exchange_rate));
+                                    }
                                 }
                             }),
                     ],
-                    QuarterlyPullHelper::buildAdjustmentFields(),
+                    QuarterlyPullHelper::buildStampingAdjustmentFields(),
                     [
                         Forms\Components\Placeholder::make('preview')
                             ->label('Pratinjau Data Terpilih & Simulasi Harga')
@@ -206,8 +211,9 @@ class CreateStampingPart extends CreateRecord
                                     return new HtmlString('<div class="p-3 text-sm text-gray-500 bg-gray-50 dark:bg-gray-800 rounded-lg border border-dashed border-gray-300 dark:border-gray-700">Pilih salah satu part di atas untuk melihat rincian spesifikasi, simulasi harga baja, kurs, dan part cost.</div>');
                                 }
 
-                                $hrMt = (float) ($get('hr_steel_usd') ?? 0);
-                                $crMt = (float) ($get('cr_steel_usd') ?? 0);
+                                $sheetOverride = $get('sheet_price') !== null && $get('sheet_price') !== '' && (float) $get('sheet_price') > 0
+                                    ? (float) $get('sheet_price')
+                                    : null;
                                 $targetQ = $get('target_quarter') ?? 'Q2';
                                 $targetY = (int) ($get('target_year') ?? date('Y'));
 
@@ -217,9 +223,12 @@ class CreateStampingPart extends CreateRecord
                                         return '';
                                     }
 
-                                    $gap = QuarterlyPullHelper::resolveSteelGap(MaterialSteel::determineSteelType($rec->steel_spec), $hrMt, $crMt);
                                     $rate = QuarterlyPullHelper::resolveAppliedRate($get('exchange_rate'), (float) $rec->exchange_rate);
-                                    $sim = QuarterlyPullHelper::computeMaterialSteelSimulation($rec, $rate, $gap['applied_kg']);
+                                    $basePrimary = (float) ($rec->sheet_price > 0 ? $rec->sheet_price : $rec->coil_price);
+                                    $appliedKg = $sheetOverride !== null && $basePrimary > 0
+                                        ? round($sheetOverride - $basePrimary, 4)
+                                        : 0.0;
+                                    $sim = QuarterlyPullHelper::computeMaterialSteelSimulation($rec, $rate, $appliedKg);
 
                                     return new HtmlString(QuarterlyPullHelper::renderMaterialSteelPreviewHtml($rec, $targetQ, $targetY, $sim));
                                 }
@@ -229,9 +238,8 @@ class CreateStampingPart extends CreateRecord
                                     return '';
                                 }
 
-                                $gap = QuarterlyPullHelper::resolveSteelGap(StampingPart::determineSteelType($rec->steel_spec), $hrMt, $crMt);
                                 $rate = QuarterlyPullHelper::resolveAppliedRate($get('exchange_rate'), (float) $rec->exchange_rate);
-                                $sim = QuarterlyPullHelper::computeStampingSimulation($rec, $rate, $gap['applied_kg']);
+                                $sim = QuarterlyPullHelper::computeStampingSimulation($rec, $rate, 0.0, $sheetOverride);
 
                                 return new HtmlString(QuarterlyPullHelper::renderStampingPreviewHtml($rec, $targetQ, $targetY, $sim));
                             }),
@@ -247,6 +255,9 @@ class CreateStampingPart extends CreateRecord
                     $quarter = $targetQuarter;
                     $year = $targetYear;
 
+                    $sheetOverride = isset($data['sheet_price']) && $data['sheet_price'] !== '' && (float) $data['sheet_price'] > 0
+                        ? (float) $data['sheet_price']
+                        : null;
                     $hrMt = isset($data['hr_steel_usd']) && $data['hr_steel_usd'] !== '' ? (float) $data['hr_steel_usd'] : 0.0;
                     $crMt = isset($data['cr_steel_usd']) && $data['cr_steel_usd'] !== '' ? (float) $data['cr_steel_usd'] : 0.0;
 
@@ -254,7 +265,7 @@ class CreateStampingPart extends CreateRecord
                     if ($selected && str_starts_with($selected, 'steel:')) {
                         $steel = MaterialSteel::find((int) str_replace('steel:', '', $selected));
                         if ($steel) {
-                            $this->applyMaterialSteelFallback($raw, $steel, $data['exchange_rate'] ?? null, $hrMt, $crMt);
+                            $this->applyMaterialSteelFallback($raw, $steel, $data['exchange_rate'] ?? null, $hrMt, $crMt, $sheetOverride);
                             $this->form->fill($raw);
 
                             Notification::make()
@@ -319,7 +330,7 @@ class CreateStampingPart extends CreateRecord
 
                         $gap = QuarterlyPullHelper::resolveSteelGap(StampingPart::determineSteelType($record->steel_spec), $hrMt, $crMt);
                         $rate = QuarterlyPullHelper::resolveAppliedRate($data['exchange_rate'] ?? null, (float) $record->exchange_rate, (float) ($raw['exchange_rate'] ?? 0));
-                        $sim = QuarterlyPullHelper::computeStampingSimulation($record, $rate, $gap['applied_kg']);
+                        $sim = QuarterlyPullHelper::computeStampingSimulation($record, $rate, $gap['applied_kg'], $sheetOverride);
 
                         $raw['prev_coil_price'] = $sim['base_coil'];
                         $raw['prev_sheet_price'] = $sim['base_sheet'];
@@ -351,10 +362,10 @@ class CreateStampingPart extends CreateRecord
 
                         $this->form->fill($raw);
 
-                        $adjText = $gap['applied_mt'] != 0.0 ? " (Gap {$gap['applied_mt']} $/MT, Kurs Rp ".number_format($rate, 0, ',', '.').')' : ' (Kurs Rp '.number_format($rate, 0, ',', '.').')';
+                        $sheetInfo = "Sheet \$ {$sim['new_sheet']}/kg, Kurs Rp ".number_format($rate, 0, ',', '.');
                         Notification::make()
                             ->title('Data Part Stamping Berhasil Diterapkan!')
-                            ->body("Part {$record->part_number} ({$record->part_name}) dari periode {$record->quarter} {$record->year} disalin ke {$targetQuarter} {$targetYear}{$adjText}.")
+                            ->body("Part {$record->part_number} ({$record->part_name}) dari periode {$record->quarter} {$record->year} disalin ke {$targetQuarter} {$targetYear} ({$sheetInfo}).")
                             ->success()
                             ->send();
                     } else {
@@ -369,7 +380,7 @@ class CreateStampingPart extends CreateRecord
                             ?? MaterialSteel::where('year', $year)->where('quarter', $quarter)->latest('id')->first();
 
                         if ($currentSteel) {
-                            $this->applyMaterialSteelFallback($raw, $currentSteel, $data['exchange_rate'] ?? null, $hrMt, $crMt);
+                            $this->applyMaterialSteelFallback($raw, $currentSteel, $data['exchange_rate'] ?? null, $hrMt, $crMt, $sheetOverride);
                             $this->form->fill($raw);
 
                             Notification::make()
@@ -390,13 +401,17 @@ class CreateStampingPart extends CreateRecord
     }
 
     /**
-     * Terapkan data acuan Material Steel beserta kurs dan gap baja ke state form.
+     * Terapkan data acuan Material Steel beserta kurs dan harga baja ke state form Stamping Part.
      */
-    protected function applyMaterialSteelFallback(array &$raw, MaterialSteel $steel, mixed $modalRate, float $hrMt, float $crMt): void
+    protected function applyMaterialSteelFallback(array &$raw, MaterialSteel $steel, mixed $modalRate, float $hrMt, float $crMt, ?float $sheetOverride = null): void
     {
         $gap = QuarterlyPullHelper::resolveSteelGap(StampingPart::determineSteelType($steel->steel_spec), $hrMt, $crMt);
         $rate = QuarterlyPullHelper::resolveAppliedRate($modalRate, (float) $steel->exchange_rate, (float) ($raw['exchange_rate'] ?? 0));
-        $sim = QuarterlyPullHelper::computeMaterialSteelSimulation($steel, $rate, $gap['applied_kg']);
+        $basePrimary = (float) ($steel->sheet_price > 0 ? $steel->sheet_price : $steel->coil_price);
+        $appliedKg = $sheetOverride !== null && $basePrimary > 0
+            ? round($sheetOverride - $basePrimary, 4)
+            : $gap['applied_kg'];
+        $sim = QuarterlyPullHelper::computeMaterialSteelSimulation($steel, $rate, $appliedKg);
 
         $raw['steel_spec'] = $steel->steel_spec;
         $raw['double_thickness'] = $steel->double_thickness;
@@ -414,14 +429,14 @@ class CreateStampingPart extends CreateRecord
         $raw['hr_steel_usd'] = $hrMt;
         $raw['cr_steel_usd'] = $crMt;
         $raw['gap_steel_usd'] = $gap['applied_mt'];
-        $raw['gap_steel_kg_usd'] = $gap['applied_kg'];
-        $raw['fluktuasi_jfe'] = $gap['applied_kg'];
+        $raw['gap_steel_kg_usd'] = $appliedKg;
+        $raw['fluktuasi_jfe'] = $appliedKg;
 
         $raw['coil_price'] = $sim['new_coil'];
-        $raw['sheet_price'] = $sim['new_sheet'];
+        $raw['sheet_price'] = $sheetOverride ?? $sim['new_sheet'];
         $raw['exchange_rate'] = $rate;
-        $raw['coil_price_idr'] = $sim['coil_price_idr'];
-        $raw['sheet_price_idr'] = $sim['sheet_price_idr'];
+        $raw['coil_price_idr'] = round((float) $raw['coil_price'] * $rate, 2);
+        $raw['sheet_price_idr'] = round((float) $raw['sheet_price'] * $rate, 2);
 
         $raw['berat'] = null;
         $raw['scrap_weight'] = 0;
