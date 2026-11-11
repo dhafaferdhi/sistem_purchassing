@@ -6,10 +6,14 @@
         if (! $model) {
             return null;
         }
-        $r = (float) ($model->exchange_rate ?? 16000);
-        $coil = (float) ($model->coil_price_idr ?? round((float) ($model->coil_price ?? 0) * $r));
-        $sheet = (float) ($model->sheet_price_idr ?? round((float) ($model->sheet_price ?? 0) * $r));
-        $steel = $sheet > 0 ? $sheet : ($coil > 0 ? $coil : round((float) ($model->sheet_price ?? $model->coil_price ?? 0) * $r));
+        $r = (float) ($model->exchange_rate ?? 0);
+        $coilUsd = (float) ($model->coil_price ?? 0);
+        $sheetUsd = (float) ($model->sheet_price ?? 0);
+        $coilIdrRaw = (float) ($model->coil_price_idr ?? 0);
+        $sheetIdrRaw = (float) ($model->sheet_price_idr ?? 0);
+        $coil = $coilIdrRaw > 0 ? $coilIdrRaw : round($coilUsd * $r, 2);
+        $sheet = $sheetIdrRaw > 0 ? $sheetIdrRaw : round($sheetUsd * $r, 2);
+        $steel = $sheet > 0 ? $sheet : ($coil > 0 ? $coil : round(($sheetUsd > 0 ? $sheetUsd : $coilUsd) * $r, 2));
         $berat = (float) ($model->berat ?? 0);
         $grossMat = (float) ($model->gross_material_cost ?? ($berat * $steel));
         $scrap = (float) ($model->scrap_cost ?? 0);
@@ -28,6 +32,9 @@
             'record' => $model,
             'year' => $model->year,
             'quarter' => $model->quarter,
+            'double_thickness' => (float) ($model->double_thickness ?? 0),
+            'wide' => (float) ($model->wide ?? 0),
+            'pitch' => (float) ($model->pitch ?? 0),
             'rate' => $r,
             'sheet_price' => (float) ($model->sheet_price ?? 0),
             'steel_rate' => $steel,
@@ -62,10 +69,14 @@
     $scoreFn = fn ($y, $q) => ((int) $y * 10) + $qNum($q);
     $currentScore = $scoreFn($record->year, $record->quarter);
 
-    // Cari seluruh record lain untuk part_number yang sama
-    $otherQuarters = StampingPart::where('part_number', $record->part_number)
-        ->where('id', '!=', $record->id)
-        ->get();
+    // Cari seluruh record lain untuk part_number yang sama (jika part_number tersedia)
+    $otherQuarters = ! empty($record->part_number)
+        ? StampingPart::where('part_number', $record->part_number)
+            ->where('id', '!=', $record->id)
+            ->get()
+        : collect();
+
+    $fmtYield = fn ($val) => rtrim(rtrim(number_format((float) ($val ?: 1), 2, ',', '.'), '0'), ',');
 
     // Kuartal sebelum kuartal berjalan (Earlier / Lama)
     $earlierQuarter = $otherQuarters->filter(fn ($q) => $scoreFn($q->year, $q->quarter) < $currentScore)
@@ -202,13 +213,17 @@
             </div>
             <div class="rounded-lg bg-gray-100 p-3 border border-gray-300 dark:bg-gray-800 dark:border-gray-700">
                 <span class="text-[11px] font-bold uppercase text-gray-700 dark:text-gray-300 block">Model & Vol</span>
-                <span class="font-black text-gray-950 dark:text-white text-sm mt-0.5 block">{{ $current->model_name ?: 'D26A' }} / {{ number_format($current->monthly_volume ?: 16500, 0, ',', '.') }} pcs/bln</span>
+                <span class="font-black text-gray-950 dark:text-white text-sm mt-0.5 block">{{ $current->model_name ?: 'D26A' }} / {{ number_format($current->monthly_volume ?? 16500, 0, ',', '.') }} pcs/bln</span>
                 <span class="text-[10px] text-gray-600 dark:text-gray-400 block mt-0.5">ECI: {{ $current->eci_number ?: '-' }}</span>
             </div>
             <div class="rounded-lg bg-gray-100 p-3 border border-gray-300 dark:bg-gray-800 dark:border-gray-700">
                 <span class="text-[11px] font-bold uppercase text-gray-700 dark:text-gray-300 block">Kurs Acuan (IDR)</span>
                 <div class="font-mono font-black text-gray-950 dark:text-white text-sm mt-0.5 flex items-baseline justify-between">
-                    <span>Rp {{ number_format($current->exchange_rate ?: 16000, 0, ',', '.') }}</span>
+                    @php
+                        $curRate = $current->exchange_rate;
+                        $curRateDec = $curRate !== null && abs((float) $curRate - round((float) $curRate)) > 0.0001 ? 2 : 0;
+                    @endphp
+                    <span>{{ $curRate !== null ? 'Rp '.number_format((float) $curRate, $curRateDec, ',', '.') : '-' }}</span>
                     @if($right && $left)
                         @php $rateDiff = $diffFn($right['rate'], $left['rate'], true, 0); @endphp
                         @if($rateDiff['has_prev'])
@@ -216,7 +231,9 @@
                         @endif
                     @endif
                 </div>
-                <span class="text-[10px] text-gray-600 dark:text-gray-400 font-bold block mt-0.5">Drawing: {{ $current->drawing_reference ?: 'Mass Prod. Drwg' }}</span>
+                <span class="text-[10px] text-gray-600 dark:text-gray-400 font-bold block mt-0.5">
+                    Drawing: {{ $current->drawing_reference ?: 'Mass Prod. Drwg' }} | Fluct: {{ rtrim(rtrim(number_format((float) ($current->exchange_rate_fluctuation ?? 1.0), 4, '.', ''), '0'), '.') }}x
+                </span>
             </div>
         </div>
 
@@ -287,12 +304,29 @@
                             {{ $current->steel_spec ?: 'SPH440-OD' }} ({{ $current->double_thickness }} mm)
                             <span class="block text-[11px] text-gray-600 dark:text-gray-400 font-normal">Harga Sheet Baja per Kilogram (IDR)</span>
                         </td>
+                        @php
+                            $fmtDim = fn ($val) => rtrim(rtrim(number_format((float) $val, 2, ',', '.'), '0'), ',');
+                            $fmtBerat = fn ($val) => rtrim(rtrim(number_format((float) $val, 7, ',', '.'), '0'), ',');
+                            $fmtPct = fn ($val) => rtrim(rtrim(number_format((float) $val, 2, ',', '.'), '0'), ',');
+                            $dimChanged = $left && $right && (
+                                abs(($left['double_thickness'] ?? 0) - ($right['double_thickness'] ?? 0)) > 0.0001
+                                || abs(($left['wide'] ?? 0) - ($right['wide'] ?? 0)) > 0.0001
+                                || abs(($left['pitch'] ?? 0) - ($right['pitch'] ?? 0)) > 0.0001
+                                || abs(($left['yield_rate'] ?? 0) - ($right['yield_rate'] ?? 0)) > 0.0001
+                            );
+                        @endphp
                         <td class="p-3 text-center font-mono">
-                            T: {{ $current->double_thickness }}mm | W: {{ $current->wide }}mm | P: {{ $current->pitch }}mm | Yield: {{ (int)($current->yield_rate ?: 1) }}
+                            @if($dimChanged)
+                                <span class="text-gray-500">T: {{ $fmtDim($left['double_thickness']) }}mm | W: {{ $fmtDim($left['wide']) }}mm | P: {{ $fmtDim($left['pitch']) }}mm | Yield: {{ $fmtYield($left['yield_rate']) }}</span>
+                                <span class="mx-1 text-indigo-500 font-bold">➔</span>
+                                <span class="font-bold text-indigo-700 dark:text-indigo-300">T: {{ $fmtDim($right['double_thickness']) }}mm | W: {{ $fmtDim($right['wide']) }}mm | P: {{ $fmtDim($right['pitch']) }}mm | Yield: {{ $fmtYield($right['yield_rate']) }}</span>
+                            @else
+                                T: {{ $current->double_thickness }}mm | W: {{ $current->wide }}mm | P: {{ $current->pitch }}mm | Yield: {{ $fmtYield($current->yield_rate) }}
+                            @endif
                         </td>
                         <td class="p-3 text-right font-mono bg-gray-50/50 dark:bg-gray-800/40">
                             @if($left)
-                                <div>$ {{ number_format($left['sheet_price'], 4) }} /kg</div>
+                                <div>{{ $left['sheet_price'] > 0 ? '$ '.number_format($left['sheet_price'], 4).' /kg' : 'IDR Langsung' }}</div>
                                 <div class="text-[11px] text-gray-600 dark:text-gray-400 font-bold">Rp {{ number_format($left['steel_rate'], 2, ',', '.') }} /kg</div>
                             @else
                                 -
@@ -300,7 +334,7 @@
                         </td>
                         <td class="p-3 text-right font-mono bg-blue-50/40 dark:bg-blue-950/20 font-bold">
                             @if($right)
-                                <div>$ {{ number_format($right['sheet_price'], 4) }} /kg</div>
+                                <div>{{ $right['sheet_price'] > 0 ? '$ '.number_format($right['sheet_price'], 4).' /kg' : 'IDR Langsung' }}</div>
                                 <div class="text-[11px] text-blue-700 dark:text-blue-300 font-bold">Rp {{ number_format($right['steel_rate'], 2, ',', '.') }} /kg</div>
                             @else
                                 -
@@ -319,7 +353,13 @@
                             <span class="block text-[11px] text-gray-600 dark:text-gray-400 font-normal">Gross Material Cost = Berat (kg) × Harga Sheet IDR</span>
                         </td>
                         <td class="p-3 text-center font-mono font-bold">
-                            {{ number_format((float) $current->berat, 4, ',', '.') }} kg / pcs
+                            @if($left && $right && abs($left['berat'] - $right['berat']) > 0.0000001)
+                                <span class="text-gray-500 font-normal">{{ $fmtBerat($left['berat']) }}</span>
+                                <span class="mx-1 text-indigo-500">➔</span>
+                                <span class="text-indigo-700 dark:text-indigo-300">{{ $fmtBerat($right['berat']) }} kg/pcs</span>
+                            @else
+                                {{ $fmtBerat((float) $current->berat) }} kg / pcs
+                            @endif
                         </td>
                         <td class="p-3 text-right font-mono bg-gray-50/50 dark:bg-gray-800/40 font-bold">
                             {{ $left ? 'Rp ' . number_format($left['gross_mat'], 2, ',', '.') : '-' }}
@@ -340,7 +380,13 @@
                             <span class="block text-[11px] text-gray-600 dark:text-gray-400 font-normal">Nilai pengembalian sisa potongan plat baja</span>
                         </td>
                         <td class="p-3 text-center font-mono text-gray-600 dark:text-gray-400">
-                            Berat: {{ number_format((float) $current->scrap_weight, 4, ',', '.') }} kg @ Rp {{ number_format((float) $current->scrap_price_per_kg, 0) }}/kg
+                            @if($left && $right && (abs($left['scrap_weight'] - $right['scrap_weight']) > 0.0000001 || abs($left['scrap_price'] - $right['scrap_price']) > 0.01))
+                                <span class="text-gray-500">{{ $fmtBerat($left['scrap_weight']) }} kg @ Rp {{ number_format($left['scrap_price'], 0, ',', '.') }}/kg</span>
+                                <span class="mx-1 text-indigo-500 font-bold">➔</span>
+                                <span class="font-bold text-indigo-700 dark:text-indigo-300">{{ $fmtBerat($right['scrap_weight']) }} kg @ Rp {{ number_format($right['scrap_price'], 0, ',', '.') }}/kg</span>
+                            @else
+                                Berat: {{ $fmtBerat((float) $current->scrap_weight) }} kg @ Rp {{ number_format((float) $current->scrap_price_per_kg, 0, ',', '.') }}/kg
+                            @endif
                         </td>
                         <td class="p-3 text-right font-mono bg-gray-50/50 dark:bg-gray-800/40 font-bold text-amber-800 dark:text-amber-400">
                             {{ $left ? 'Rp ' . number_format($left['scrap_cost'], 2, ',', '.') : '-' }}
@@ -406,7 +452,11 @@
                     <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                         <td class="p-3 font-bold">{{ $current->process_name ?: '1. PROGRESSIVE 250T' }}</td>
                         <td class="p-3 text-gray-600 dark:text-gray-400">
-                            Man-hour: {{ $current->process_man_hour ?: 9 }} | Charge: {{ $current->process_charge ?: 45 }} | Yield: {{ (int)($current->yield_rate ?: 1) }}
+                            @if($left && $right && (abs($left['process_man_hour'] - $right['process_man_hour']) > 0.01 || abs($left['process_charge'] - $right['process_charge']) > 0.01 || abs($left['yield_rate'] - $right['yield_rate']) > 0.01))
+                                Lama: {{ $left['process_man_hour'] }}×{{ $left['process_charge'] }}/{{ $fmtYield($left['yield_rate']) }} | Baru: {{ $right['process_man_hour'] }}×{{ $right['process_charge'] }}/{{ $fmtYield($right['yield_rate']) }}
+                            @else
+                                Man-hour: {{ $current->process_man_hour ?: 9 }} | Charge: {{ $current->process_charge ?: 45 }} | Yield: {{ $fmtYield($current->yield_rate) }}
+                            @endif
                         </td>
                         <td class="p-3 text-right font-mono bg-gray-50/50 dark:bg-gray-800/40 font-bold">
                             {{ $left ? 'Rp ' . number_format($left['proc_total'], 2, ',', '.') : '-' }}
@@ -498,7 +548,12 @@
                     </tr>
                     <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                         <td class="p-3 font-semibold">
-                            (4) : O/H & Profit supplied portion ({{ $current->overhead_supplied_percent ?: 11 }}% dari Proses)
+                            (4) : O/H & Profit supplied portion
+                            @if($left && $right && abs($left['oh_supplied_pct'] - $right['oh_supplied_pct']) > 0.001)
+                                ({{ $fmtPct($left['oh_supplied_pct']) }}% ➔ {{ $fmtPct($right['oh_supplied_pct']) }}% dari Proses)
+                            @else
+                                ({{ $fmtPct($current->overhead_supplied_percent ?? 11) }}% dari Proses)
+                            @endif
                         </td>
                         <td class="p-3 text-right font-mono bg-gray-50/50 dark:bg-gray-800/40">
                             {{ $left ? 'Rp ' . number_format($left['oh_supplied'], 2, ',', '.') : '-' }}
@@ -511,7 +566,12 @@
                     </tr>
                     <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                         <td class="p-3 font-semibold">
-                            (5) : O/H & Profit self-procuring portion ({{ $current->overhead_self_percent ?: 4 }}% dari Material)
+                            (5) : O/H & Profit self-procuring portion
+                            @if($left && $right && abs($left['oh_self_pct'] - $right['oh_self_pct']) > 0.001)
+                                ({{ $fmtPct($left['oh_self_pct']) }}% ➔ {{ $fmtPct($right['oh_self_pct']) }}% dari Material)
+                            @else
+                                ({{ $fmtPct($current->overhead_self_percent ?? 4) }}% dari Material)
+                            @endif
                         </td>
                         <td class="p-3 text-right font-mono bg-gray-50/50 dark:bg-gray-800/40">
                             {{ $left ? 'Rp ' . number_format($left['oh_self'], 2, ',', '.') : '-' }}
@@ -615,15 +675,30 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                        @php $sumTotalKrp = 0.0; $sumDeprPc = 0.0; @endphp
                         @foreach($current->tooling_details as $tool)
+                            @php
+                                $itemKrp = (float) ($tool['total_cost_krp'] ?? 0);
+                                $itemDepr = (float) ($tool['depreciation_per_pc'] ?? $tool['depreciation'] ?? 0);
+                                $sumTotalKrp += $itemKrp;
+                                $sumDeprPc += $itemDepr;
+                            @endphp
                             <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                                 <td class="p-2.5 font-bold">{{ $tool['contents'] ?? 'DIE STAMPING' }}</td>
-                                <td class="p-2.5 text-right font-mono">{{ number_format((float) ($tool['total_cost_krp'] ?? 0), 0, ',', '.') }}</td>
+                                <td class="p-2.5 text-right font-mono">{{ number_format($itemKrp, 0, ',', '.') }}</td>
                                 <td class="p-2.5 text-right font-mono">{{ number_format((float) ($tool['monthly_volume'] ?? 16500), 0, ',', '.') }}</td>
-                                <td class="p-2.5 text-right font-mono font-bold text-cyan-700 dark:text-cyan-300">Rp {{ number_format((float) ($tool['depreciation_per_pc'] ?? 0), 2, ',', '.') }}</td>
+                                <td class="p-2.5 text-right font-mono font-bold text-cyan-700 dark:text-cyan-300">Rp {{ number_format($itemDepr, 2, ',', '.') }}</td>
                             </tr>
                         @endforeach
                     </tbody>
+                    <tfoot class="bg-gray-100 dark:bg-gray-800 font-black border-t-2 border-gray-300 dark:border-gray-700">
+                        <tr>
+                            <td class="p-2.5 uppercase">Total Tooling</td>
+                            <td class="p-2.5 text-right font-mono">{{ number_format($sumTotalKrp, 0, ',', '.') }}</td>
+                            <td class="p-2.5 text-right text-gray-500">-</td>
+                            <td class="p-2.5 text-right font-mono text-cyan-800 dark:text-cyan-200">Rp {{ number_format($sumDeprPc, 2, ',', '.') }}</td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
         </div>
@@ -667,10 +742,13 @@
 
     <!-- 6. RELASI SUB-ASSEMBLY JIKA DIGUNAKAN SEBAGAI CHILD PART -->
     @php $subAssies = $current->used_in_sub_assemblies; @endphp
-    @if(!empty($subAssies))
+    @if($subAssies->isNotEmpty())
         <div class="rounded-xl border border-indigo-200 bg-indigo-50/50 p-4 dark:border-indigo-800 dark:bg-indigo-950/40">
             <div class="flex items-center gap-2 text-xs font-bold text-indigo-900 dark:text-indigo-200 mb-2">
-                <span>🧩</span> Komponen ini Terpasang Pada Sub-Assembly Berikut:
+                <svg class="h-4 w-4 text-indigo-600 dark:text-indigo-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 16.875h3.375m0 0h3.375m-3.375 0V13.5m0 3.375v3.375M6 10.5h2.25a2.25 2.25 0 0 0 2.25-2.25V6a2.25 2.25 0 0 0-2.25-2.25H6A2.25 2.25 0 0 0 3.75 6v2.25A2.25 2.25 0 0 0 6 10.5Zm0 9.75h2.25A2.25 2.25 0 0 0 10.5 18v-2.25a2.25 2.25 0 0 0-2.25-2.25H6a2.25 2.25 0 0 0-2.25 2.25V18A2.25 2.25 0 0 0 6 20.25Zm9.75-9.75H18a2.25 2.25 0 0 0 2.25-2.25V6A2.25 2.25 0 0 0 18 3.75h-2.25A2.25 2.25 0 0 0 13.5 6v2.25a2.25 2.25 0 0 0 2.25 2.25Z" />
+                </svg>
+                Komponen ini Terpasang Pada Sub-Assembly Berikut:
             </div>
             <div class="flex flex-wrap gap-2 text-xs">
                 @foreach($subAssies as $sa)

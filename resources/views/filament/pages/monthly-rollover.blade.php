@@ -11,7 +11,7 @@
                         Menu Salin & Update Bulanan (Monthly Rollover & Copy Data)
                     </h3>
                     <p class="text-xs text-gray-600 dark:text-gray-300">
-                        Fitur ini digunakan setiap 1 bulan sekali (atau kuartalan) untuk menduplikasi seluruh data <strong>Kurs Mata Uang (Currency)</strong>, <strong>Material Steel</strong>, dan <strong>Stamping Part</strong> dari periode acuan ke periode baru, serta memperbarui nilai tukar (kurs $) dan rumus harga secara serentak tanpa perlu input manual satu per satu.
+                        Fitur ini digunakan setiap 1 bulan sekali (atau kuartalan) untuk menduplikasi seluruh data <strong>Kurs Mata Uang (Currency)</strong>, <strong>Material Steel</strong>, <strong>Stamping Part</strong>, dan <strong>Fasteners</strong> dari periode acuan ke periode baru, serta memperbarui nilai tukar (kurs $) dan rumus harga secara serentak tanpa perlu input manual satu per satu.
                     </p>
                 </div>
             </div>
@@ -57,6 +57,15 @@
 
             <button
                 type="button"
+                wire:click="setTab('fastener')"
+                class="flex items-center gap-2 rounded-lg px-4 py-2.5 text-xs font-bold transition {{ $activeTab === 'fastener' ? 'bg-primary-600 text-white shadow' : 'bg-white text-gray-700 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700' }}"
+            >
+                <x-heroicon-o-cog-6-tooth class="h-4 w-4" />
+                <span>Fasteners</span>
+            </button>
+
+            <button
+                type="button"
                 wire:click="setTab('history')"
                 class="flex items-center gap-2 rounded-lg px-4 py-2.5 text-xs font-bold transition {{ $activeTab === 'history' ? 'bg-primary-600 text-white shadow' : 'bg-white text-gray-700 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700' }}"
             >
@@ -69,7 +78,7 @@
         @if ($activeTab === 'all')
             <div class="space-y-6">
                 <!-- Status Preview Cards -->
-                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
                     <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
                         <span class="text-xs font-medium text-gray-500 dark:text-gray-400">Sumber: Material Steel</span>
                         <div class="mt-1 flex items-baseline justify-between">
@@ -87,9 +96,17 @@
                     </div>
 
                     <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                        <span class="text-xs font-medium text-gray-500 dark:text-gray-400">Sumber: Fasteners</span>
+                        <div class="mt-1 flex items-baseline justify-between">
+                            <span class="text-2xl font-black text-gray-900 dark:text-white">{{ $this->sourceCounts['fasteners'] }}</span>
+                            <span class="text-xs font-semibold text-primary-600 dark:text-primary-400">{{ $sourceYear }} - {{ $sourceQuarter }}</span>
+                        </div>
+                    </div>
+
+                    <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
                         <span class="text-xs font-medium text-gray-500 dark:text-gray-400">Target: Sudah Ada di Target</span>
                         <div class="mt-1 flex items-baseline justify-between">
-                            <span class="text-2xl font-black text-gray-900 dark:text-white">{{ $this->targetCounts['material_steels'] + $this->targetCounts['stamping_parts'] }}</span>
+                            <span class="text-2xl font-black text-gray-900 dark:text-white">{{ $this->targetCounts['material_steels'] + $this->targetCounts['stamping_parts'] + $this->targetCounts['fasteners'] }}</span>
                             <span class="text-xs font-semibold text-gray-500">{{ $targetYear }} - {{ $targetQuarter }}</span>
                         </div>
                     </div>
@@ -515,7 +532,102 @@
             </div>
         @endif
 
-        <!-- TAB 5: HISTORY / LOG -->
+        <!-- TAB 5: FASTENERS ONLY -->
+        @if ($activeTab === 'fastener')
+            <div class="space-y-6">
+                <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                    <div class="border-b border-gray-100 pb-4 dark:border-gray-800">
+                        <h4 class="text-base font-bold text-gray-900 dark:text-white">Salin & Update Data Fasteners</h4>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">Duplikasi seluruh data komponen Fasteners beserta kalkulasi harga Wire, Washer, Proses, & O/H Self ke periode target.</p>
+                    </div>
+
+                    <div class="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
+                        <div>
+                            <label class="text-xs font-semibold text-gray-700 dark:text-gray-300">Tahun Sumber</label>
+                            <select wire:model.live="fastSourceYear" class="mt-1 w-full rounded-lg border-gray-300 text-xs shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white">
+                                @foreach ($this->getAvailableYears() as $y)
+                                    <option value="{{ $y }}">{{ $y }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="text-xs font-semibold text-gray-700 dark:text-gray-300">Kuartal Sumber</label>
+                            <select wire:model.live="fastSourceQuarter" class="mt-1 w-full rounded-lg border-gray-300 text-xs shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white">
+                                <option value="Q1">Q1</option>
+                                <option value="Q2">Q2</option>
+                                <option value="Q3">Q3</option>
+                                <option value="Q4">Q4</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="text-xs font-semibold text-gray-700 dark:text-gray-300">Tahun Target</label>
+                            <select wire:model.live="fastTargetYear" class="mt-1 w-full rounded-lg border-gray-300 text-xs shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white">
+                                @foreach ($this->getAvailableYears() as $y)
+                                    <option value="{{ $y }}">{{ $y }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="text-xs font-semibold text-gray-700 dark:text-gray-300">Kuartal Target</label>
+                            <select wire:model.live="fastTargetQuarter" class="mt-1 w-full rounded-lg border-gray-300 text-xs shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white">
+                                <option value="Q1">Q1</option>
+                                <option value="Q2">Q2</option>
+                                <option value="Q3">Q3</option>
+                                <option value="Q4">Q4</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div>
+                            <label class="text-xs font-semibold text-gray-700 dark:text-gray-300">Kurs $ Baru (Rp)</label>
+                            <input
+                                type="number"
+                                step="0.0001"
+                                wire:model="fastExchangeRate"
+                                placeholder="Contoh: 16465"
+                                class="mt-1 w-full rounded-lg border-gray-300 text-xs shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                            />
+                        </div>
+
+                        <div>
+                            <label class="text-xs font-semibold text-gray-700 dark:text-gray-300">Filter Supplier (Opsional)</label>
+                            <select wire:model="fastSupplierId" class="mt-1 w-full rounded-lg border-gray-300 text-xs shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white">
+                                <option value="">Semua Supplier</option>
+                                @foreach ($this->suppliers as $sup)
+                                    <option value="{{ $sup->id }}">{{ $sup->name }} ({{ $sup->code }})</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="mt-4">
+                        <label class="flex items-center gap-2 text-xs font-semibold text-gray-700 dark:text-gray-300">
+                            <input type="checkbox" wire:model="fastSyncFromSteel" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+                            <span>Sinkronkan harga kawat/coil dari Material Steel periode target jika ada</span>
+                        </label>
+                    </div>
+
+                    <div class="mt-6 flex items-center justify-end border-t border-gray-100 pt-4 dark:border-gray-800">
+                        <button
+                            type="button"
+                            wire:click="executeFastenerRollover"
+                            wire:loading.attr="disabled"
+                            wire:confirm="Yakin ingin menyalin data Fasteners ke {{ $fastTargetYear }} {{ $fastTargetQuarter }}?"
+                            class="flex items-center gap-1.5 rounded-xl bg-primary-600 px-5 py-2.5 text-xs font-bold text-white shadow-md transition hover:bg-primary-700 disabled:opacity-50"
+                        >
+                            <x-heroicon-o-cog-6-tooth class="h-4 w-4" />
+                            <span>Salin Data Fasteners</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        @endif
+
+        <!-- TAB 6: HISTORY / LOG -->
         @if ($activeTab === 'history')
             <div class="space-y-4">
                 <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
@@ -535,6 +647,7 @@
                                     <th class="px-4 py-3 text-right">Kurs $</th>
                                     <th class="px-4 py-3 text-center">Baja Disalin</th>
                                     <th class="px-4 py-3 text-center">Stamping Disalin</th>
+                                    <th class="px-4 py-3 text-center">Fastener Disalin</th>
                                     <th class="px-4 py-3">Pelaksana</th>
                                 </tr>
                             </thead>
@@ -550,12 +663,14 @@
                                                 {{ $log->type === 'currency' ? 'bg-warning-50 text-warning-700 dark:bg-warning-950/60 dark:text-warning-300' : '' }}
                                                 {{ $log->type === 'material_steel' ? 'bg-info-50 text-info-700 dark:bg-info-950/60 dark:text-info-300' : '' }}
                                                 {{ $log->type === 'stamping_part' ? 'bg-success-50 text-success-700 dark:bg-success-950/60 dark:text-success-300' : '' }}
+                                                {{ $log->type === 'fastener' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300' : '' }}
                                             ">
                                                 {{ match($log->type) {
                                                     'all' => 'All-in-One',
                                                     'currency' => 'Currency',
                                                     'material_steel' => 'Material Steel',
                                                     'stamping_part' => 'Stamping Part',
+                                                    'fastener' => 'Fasteners',
                                                     default => $log->type
                                                 } }}
                                             </span>
@@ -575,13 +690,18 @@
                                                 {{ $log->stamping_parts_count }}
                                             </span>
                                         </td>
+                                        <td class="px-4 py-3 text-center">
+                                            <span class="rounded bg-gray-100 px-2 py-0.5 font-bold text-gray-800 dark:bg-gray-800 dark:text-gray-200">
+                                                {{ $log->fasteners_count ?? 0 }}
+                                            </span>
+                                        </td>
                                         <td class="px-4 py-3 text-gray-500 dark:text-gray-400">
                                             {{ $log->user?->name ?? 'Admin' }}
                                         </td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="8" class="p-8 text-center text-xs text-gray-400">
+                                        <td colspan="9" class="p-8 text-center text-xs text-gray-400">
                                             Belum ada aktivitas salinan bulanan yang tercatat.
                                         </td>
                                     </tr>

@@ -223,17 +223,26 @@ class ExcelImportService
             'gap_steel_usd' => ['gap_steel_usd', 'gap/mt', 'gap/mt(usd)', 'gap_mt', 'gap_mt_usd', 'gap_usd', 'gap/mt_usd', 'gap_steel_mt', 'gap_mt_usd'],
             'gap_steel_kg_usd' => ['gap_steel_kg_usd', 'gap/kg', 'gap/kg(usd)', 'gap_kg', 'gap_kg_usd', 'gap/kg_usd', 'gap_steel_kg'],
             'exchange_rate' => ['exchange_rate', 'ex_rate', 'ex_rate(idr)', 'kurs', 'kurs_idr', 'rate', 'ex_rate_idr', 'kurs_usd', 'ex_rate_kurs', 'kurs_usd_idr'],
-            'coil_price' => ['coil_price', 'coil', 'coil(usd)', 'coil_usd', 'harga_coil', 'basic_rate', 'coil_price_usd', 'coil_usd_price', 'ar - coil ($)', 'ar - coil', 'ar_coil', 'ar_coil_usd', 'arcoilusd', 'arcoil', 'ap - coil ($)', 'ap - coil', 'ap_coil', 'ap_coil_usd', 'coil (usd)'],
+            'coil_price' => ['coil_price', 'coil', 'coil(usd)', 'coil_usd', 'harga_coil', 'basic_rate', 'coil_price_usd', 'coil_usd_price', 'ar - coil ($)', 'ar - coil', 'ar_coil', 'ar_coil_usd', 'arcoilusd', 'arcoil', 'ap - coil ($)', 'ap - coil', 'ap_coil', 'ap_coil_usd', 'coil (usd)', 'coil($)'],
             'coil_price_idr' => ['coil_price_idr', 'coil(idr)', 'coil_idr', 'harga_coil_idr', 'ar - coil (idr)', 'ar_coil_idr', 'arcoilidr', 'ap - coil (idr)', 'ap_coil_idr', 'apcoilidr'],
-            'sheet_price' => ['sheet_price', 'sheet', 'sheet(usd)', 'sheet_usd', 'harga_sheet', 'sheet_price_usd', 'sheet_usd_price', 'ar sheet ($)', 'ar - sheet ($)', 'ar sheet', 'ar_sheet', 'ar_sheet_usd', 'arsheetusd', 'arsheet', 'ap sheet ($)', 'ap - sheet ($)', 'ap sheet', 'ap_sheet', 'sheet (usd)'],
-            'sheet_price_idr' => ['sheet_price_idr', 'sheet(idr)', 'sheet_idr', 'harga_sheet_idr', 'ar - sheet (idr)', 'ar_sheet_idr', 'arsheetidr', 'ap - sheet (idr)', 'ap_sheet_idr', 'apsheetidr'],
+            'sheet_price' => ['sheet_price', 'sheet', 'sheet(usd)', 'sheet_usd', 'harga_sheet', 'sheet_price_usd', 'sheet_usd_price', 'ar sheet ($)', 'ar - sheet ($)', 'ar sheet', 'ar_sheet', 'ar_sheet_usd', 'arsheetusd', 'arsheet', 'ap sheet ($)', 'ap - sheet ($)', 'ap sheet', 'ap_sheet', 'sheet (usd)', 'sheet($)'],
+            'sheet_price_idr' => ['sheet_price_idr', 'sheet(idr)', 'sheet_idr', 'harga_sheet_idr', 'ar - sheet (idr)', 'ar_sheet_idr', 'arsheetidr', 'ap - sheet (idr)', 'ap_sheet_idr', 'apsheetidr', 'sheet (idr)'],
             'fluktuasi_jfe' => ['fluktuasi_jfe', 'jfe', 'fluktuasi', 'jfe_fluctuation'],
             'status' => ['status', 'status_kontrak'],
-            'notes' => ['notes', 'catatan', 'keterangan', 'remark', 'remarks'],
+            'notes' => ['notes', 'catatan', 'keterangan'],
+            'comments' => ['comments', 'comment', 'coments'],
+            'remarks' => ['remarks', 'remark'],
+            'alteration' => ['alteration', 'perubahan_eci'],
+            'etc_contents' => ['etc_contents', 'etc', 'etc_content'],
             'part_number' => ['part_number', 'part_no', 'part_num', 'no_part', 'nomor_part', 'partno'],
+            'old_part_number' => ['old_part_number', 'old_part_no', 'old_part', 'part_no_lama', 'no_part_lama'],
             'part_no_to_compare' => ['part_no_to_compare', 'part_number_to_compare', 'compare_part', 'part_no_compare', 'part_compare'],
             'part_name' => ['part_name', 'nama_part', 'deskripsi_part', 'item_name', 'nama_barang'],
             'model_name' => ['model_name', 'model', 'tipe_model', 'car_model'],
+            'monthly_volume' => ['monthly_volume', 'monthly_vol', 'volume_bulanan'],
+            'drawing_reference' => ['drawing_reference', 'drawing_ref', 'drawing_of_quotation'],
+            'old_exchange_rate' => ['old_exchange_rate', 'old_rate', 'old_kurs', 'old_kurs_usd', 'old_kurs_usd_rp', 'kurs_lama'],
+            'exchange_rate_fluctuation' => ['exchange_rate_fluctuation', 'exchg_fluctuation', 'exchg_flactuation', 'fluktuasi_kurs'],
             'eci_number' => ['eci_number', 'eci_no', 'eci'],
             'quotation_date' => ['quotation_date', 'tgl_quotation', 'tanggal_penawaran', 'date'],
             'wide' => ['wide', 'lebar', 'width', 'wide_mm'],
@@ -247,19 +256,23 @@ class ExcelImportService
             'overhead_supplied_percent' => ['overhead_supplied_percent', 'oh_supplied', 'oh_supplied_percent', 'oh_supplied_pct'],
             'overhead_self_percent' => ['overhead_self_percent', 'oh_self', 'oh_self_percent', 'oh_self_pct'],
             'transportation_cost' => ['transportation_cost', 'transportation', 'transport', 'ongkir', 'biaya_angkut'],
+            'cost_down' => ['cost_down', 'costdown'],
             'packing_cost' => ['packing_cost', 'packing', 'kemasan', 'biaya_packing'],
-            'tooling_depreciation' => ['tooling_depreciation', 'tooling_depr', 'depresiasi_tooling', 'tooling', 'die_jig_depreciation', 'die_depr'],
-            'wire_spec' => ['wire_spec', 'spesifikasi_kawat', 'spesifikasi_wire', 'wire'],
+            'tooling_depreciation' => ['tooling_depreciation', 'tooling_depr', 'depresiasi_tooling', 'tooling', 'die_jig_depreciation', 'die_jig_depr', 'die_depr'],
+            'tooling_details' => ['tooling_details', 'tooling_details_json', 'rincian_tooling'],
+            'wire_spec' => ['wire_spec', 'spesifikasi_kawat', 'spesifikasi_wire'],
             'gross_weight_gr' => ['gross_weight_gr', 'gross_weight', 'gross_wt', 'berat_kotor'],
             'nett_weight_gr' => ['nett_weight_gr', 'nett_weight', 'nett_wt', 'berat_bersih'],
-            'wire_price_usd_kg' => ['wire_price_usd_kg', 'wire_price_usd', 'wire_price', 'wire($/kg)', 'wire ($/kg)', 'wire_usd_kg', 'wire_usd'],
-            'washer_price' => ['washer_price', 'washer', 'harga_washer'],
+            'wire_price_usd_kg' => ['wire_price_usd_kg', 'wire_price_usd', 'wire_price', 'wire($/kg)', 'wire ($/kg)', 'wire_usd_kg', 'wire_usd', 'wire_usd_per_kg'],
+            'wire_price_idr_kg' => ['wire_price_idr_kg', 'wire_idr_kg', 'wire_rp_kg', 'wire (rp/kg)', 'wire (idr/kg)', 'wire_idr_per_kg'],
+            'material_control_percent' => ['material_control_percent', 'material_control_pct', 'mat_control_pct', 'mat_control', 'material_control'],
+            'washer_price' => ['washer_price', 'washer_price_rp', 'harga_washer'],
             'washer_weight_gr' => ['washer_weight_gr', 'washer_weight', 'berat_washer'],
-            'heading_cost' => ['heading_cost', 'heading', 'biaya_heading'],
-            'rolling_cost' => ['rolling_cost', 'rolling', 'biaya_rolling'],
-            'washing_cost_kg' => ['washing_cost_kg', 'washing_cost', 'washing', 'biaya_washing'],
-            'plating_cost_kg' => ['plating_cost_kg', 'plating_cost', 'plating', 'biaya_plating'],
-            'inspection_cost' => ['inspection_cost', 'inspection', 'final_inspection', 'pemeriksaan'],
+            'heading_cost' => ['heading_cost', 'heading', 'heading_rp', 'biaya_heading'],
+            'rolling_cost' => ['rolling_cost', 'rolling', 'rolling_rp', 'biaya_rolling'],
+            'washing_cost_kg' => ['washing_cost_kg', 'washing_cost', 'washing_rate_rp_kg', 'washing_rp_kg', 'washing', 'biaya_washing'],
+            'plating_cost_kg' => ['plating_cost_kg', 'plating_cost', 'plating_rate_rp_kg', 'plating_rp_kg', 'plating', 'biaya_plating'],
+            'inspection_cost' => ['inspection_cost', 'inspection', 'final_inspection', 'final_inspection_rp', 'pemeriksaan'],
         ];
     }
 
@@ -563,6 +576,519 @@ class ExcelImportService
     }
 
     /**
+     * Parsing format sheet Comparative Quotation Stamping Part bertumpuk vertikal
+     * dengan banyak panel periode horizontal (mis. Book1.xlsx: 73012-BZ010 Sub-Assy + 72388-X7V00-A Stamping Part).
+     * Blok Sub-Assy otomatis dilewati karena tidak memiliki subheader Spec|Thickness|Wide|Pitch|yield rate|Weight.
+     *
+     * @param  array<int, array<int, string>>  $grid
+     * @return array{header_row: int|null, column_map: array<string, int>, data_rows: array<int, array<string, mixed>>}|null
+     */
+    public static function detectComparativeQuotationStampingBlocks(array $grid, array $defaults = []): ?array
+    {
+        $rowIndices = array_keys($grid);
+        if (empty($rowIndices)) {
+            return null;
+        }
+        sort($rowIndices);
+        $maxRow = end($rowIndices);
+        $maxCol = 0;
+        foreach ($grid as $cols) {
+            if (! empty($cols)) {
+                $maxCol = max($maxCol, max(array_keys($cols)));
+            }
+        }
+
+        // Cari semua baris header material Stamping Part yang memuat kolom Spec + Thickness + Wide + Pitch
+        $specHeaderRows = [];
+        foreach ($grid as $rIdx => $cols) {
+            $hasSpecHeader = false;
+            foreach ($cols as $cIdx => $val) {
+                if (strtolower(trim((string) $val)) === 'spec') {
+                    $next1 = strtolower(trim((string) ($cols[$cIdx + 1] ?? '')));
+                    $next2 = strtolower(trim((string) ($cols[$cIdx + 2] ?? '')));
+                    $next3 = strtolower(trim((string) ($cols[$cIdx + 3] ?? '')));
+                    if (str_contains($next1, 'thick') && str_contains($next2, 'wide') && str_contains($next3, 'pitch')) {
+                        $hasSpecHeader = true;
+                        break;
+                    }
+                }
+            }
+            if ($hasSpecHeader) {
+                $specHeaderRows[] = (int) $rIdx;
+            }
+        }
+
+        if (empty($specHeaderRows)) {
+            return null;
+        }
+
+        $parseNum = static function ($raw): ?float {
+            $str = trim((string) $raw);
+            if ($str === '' || str_starts_with($str, '#') || strtoupper($str) === 'SUPPLY') {
+                return null;
+            }
+            if (is_numeric($str)) {
+                return (float) $str;
+            }
+            $cleaned = str_replace(['Rp', 'IDR', '$', ' '], '', $str);
+            // Tangani format pemisah desimal & ribuan dengan aman
+            if (preg_match('/^-?\d{1,3}(\.\d{3})+,\d+$/', $cleaned)) {
+                $cleaned = str_replace(['.', ','], ['', '.'], $cleaned);
+            } elseif (preg_match('/^-?\d{1,3}(,\d{3})+\.\d+$/', $cleaned)) {
+                $cleaned = str_replace(',', '', $cleaned);
+            } elseif (preg_match('/^-?\d+,\d+$/', $cleaned)) {
+                $cleaned = str_replace(',', '.', $cleaned);
+            } else {
+                $cleaned = str_replace(',', '', $cleaned);
+            }
+
+            return is_numeric($cleaned) ? (float) $cleaned : null;
+        };
+
+        $parsePeriodString = static function (string $text, int $defaultYear, string $defaultQuarter): ?array {
+            $t = trim($text);
+            if ($t === '') {
+                return null;
+            }
+            $lower = strtolower($t);
+            $quarter = null;
+            $year = null;
+
+            if (preg_match('/\bq([1-4])\b/i', $t, $qm)) {
+                $quarter = 'Q'.$qm[1];
+            } elseif (preg_match('/\b(jan|feb|mar|maret)\b/i', $lower)) {
+                $quarter = 'Q1';
+            } elseif (preg_match('/\b(apr|april|mei|may|jun|june|juni)\b/i', $lower)) {
+                $quarter = 'Q2';
+            } elseif (preg_match('/\b(jul|juli|july|aug|agu|agustus|sep|sept|september)\b/i', $lower)) {
+                $quarter = 'Q3';
+            } elseif (preg_match('/\b(oct|okt|oktober|october|nov|november|dec|des|december|desember)\b/i', $lower)) {
+                $quarter = 'Q4';
+            }
+
+            if (preg_match('/\b(20\d{2})\b/', $t, $ym)) {
+                $year = (int) $ym[1];
+            } elseif (preg_match('/[\'’]\s*(\d{2})\b/', $t, $ym)) {
+                $year = 2000 + (int) $ym[1];
+            }
+
+            if ($quarter === null && $year === null) {
+                return null;
+            }
+
+            return [
+                'year' => $year ?? $defaultYear,
+                'quarter' => $quarter ?? $defaultQuarter,
+            ];
+        };
+
+        $parseDateValue = static function ($raw): ?string {
+            $s = trim((string) $raw);
+            if ($s === '') {
+                return null;
+            }
+            if (is_numeric($s) && (float) $s >= 30000 && (float) $s <= 70000) {
+                try {
+                    return \Carbon\Carbon::create(1899, 12, 30)->addDays((int) round((float) $s))->toDateString();
+                } catch (\Throwable) {
+                    return null;
+                }
+            }
+            if (preg_match('/^(\d{4})-(\d{2})-(\d{2})/', $s, $m)) {
+                return "{$m[1]}-{$m[2]}-{$m[3]}";
+            }
+            if (preg_match('/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/', $s, $m)) {
+                return sprintf('%04d-%02d-%02d', (int) $m[3], (int) $m[2], (int) $m[1]);
+            }
+
+            return null;
+        };
+
+        $defaultYear = (int) ($defaults['year'] ?? now()->year);
+        $defaultQuarter = (string) ($defaults['quarter'] ?? 'Q1');
+        $dataRows = [];
+
+        foreach ($specHeaderRows as $idx => $specRow) {
+            $specRowCols = $grid[$specRow] ?? [];
+            $panelAnchors = [];
+            foreach ($specRowCols as $cIdx => $val) {
+                if (strtolower(trim((string) $val)) === 'spec') {
+                    $n1 = strtolower(trim((string) ($specRowCols[$cIdx + 1] ?? '')));
+                    $n2 = strtolower(trim((string) ($specRowCols[$cIdx + 2] ?? '')));
+                    if (str_contains($n1, 'thick') && str_contains($n2, 'wide')) {
+                        $panelAnchors[] = (int) $cIdx;
+                    }
+                }
+            }
+            sort($panelAnchors);
+
+            $prevSpecRow = $idx > 0 ? $specHeaderRows[$idx - 1] : 0;
+            $nextSpecRow = $specHeaderRows[$idx + 1] ?? ($maxRow + 16);
+            $minSearchRow = $idx > 0
+                ? max($prevSpecRow + 15, $specRow - 18, 1)
+                : max($specRow - 18, 1);
+            $blockTopRow = $minSearchRow;
+            for ($sr = $specRow - 2; $sr >= $minSearchRow; $sr--) {
+                $firstAnchorVal = strtolower(trim((string) ($grid[$sr][$panelAnchors[0]] ?? '')));
+                $secondVal = strtolower(trim((string) ($grid[$sr][$panelAnchors[0] + 1] ?? '')));
+                if (
+                    str_contains($firstAnchorVal, 'material breakdown')
+                    || str_contains($firstAnchorVal, 'process breakdown')
+                    || str_contains($firstAnchorVal, 'material total')
+                    || str_contains($firstAnchorVal, 'process total')
+                    || str_contains($firstAnchorVal, 'part cost')
+                    || str_contains($firstAnchorVal, 'die & jig')
+                    || str_contains($firstAnchorVal, 'coment')
+                    || str_contains($firstAnchorVal, 'remark')
+                    || str_contains($firstAnchorVal, 'alteration')
+                    || str_contains($firstAnchorVal, 'etc content')
+                    || str_contains($secondVal, 'drawing/eci')
+                ) {
+                    $blockTopRow = $sr + 1;
+                    break;
+                }
+            }
+            $blockBottomRow = min($nextSpecRow - 15, $maxRow);
+
+            foreach ($panelAnchors as $pIdx => $anchor) {
+                $panelEnd = isset($panelAnchors[$pIdx + 1]) ? ($panelAnchors[$pIdx + 1] - 1) : $maxCol;
+
+                // Petakan kolom pada Material Breakdown & Spec row dalam batas panel ini
+                $matRow = $specRow + 1;
+                $unitPriceCol = $anchor + 7;
+                $priceCol = $anchor + 8;
+                $valuationCol = $anchor + 10;
+                $thickCol = $anchor + 1;
+                $wideCol = $anchor + 2;
+                $pitchCol = $anchor + 3;
+                $yieldCol = $anchor + 4;
+                $weightCol = $anchor + 5;
+                $qtyCol = $anchor + 6;
+
+                foreach ($grid[$specRow] ?? [] as $c => $hVal) {
+                    if ($c < $anchor || $c > $panelEnd) {
+                        continue;
+                    }
+                    $hl = strtolower(trim((string) $hVal));
+                    if (str_contains($hl, 'thick')) {
+                        $thickCol = $c;
+                    } elseif (str_contains($hl, 'wide')) {
+                        $wideCol = $c;
+                    } elseif (str_contains($hl, 'pitch')) {
+                        $pitchCol = $c;
+                    } elseif (str_contains($hl, 'yield')) {
+                        $yieldCol = $c;
+                    } elseif (str_contains($hl, 'weight')) {
+                        $weightCol = $c;
+                    }
+                }
+
+                foreach ($grid[$specRow - 1] ?? [] as $c => $hVal) {
+                    if ($c < $anchor || $c > $panelEnd) {
+                        continue;
+                    }
+                    $hl = strtolower(trim((string) $hVal));
+                    if (str_contains($hl, 'quantity')) {
+                        $qtyCol = $c;
+                    } elseif (str_contains($hl, 'unit price')) {
+                        $unitPriceCol = $c;
+                    } elseif ($hl === 'price') {
+                        $priceCol = $c;
+                    } elseif (str_contains($hl, 'valuation')) {
+                        $valuationCol = $c;
+                    }
+                }
+
+                $steelSpec = trim((string) ($grid[$matRow][$anchor] ?? ''));
+                if ($steelSpec === '') {
+                    continue;
+                }
+
+                // Scan metadata di atas Spec row (Part No, Part Name, Period, Quotation Date, Supplier, Exchange Rate)
+                $partNumber = '';
+                $partName = '';
+                $supplierName = '';
+                $periodYear = $defaultYear;
+                $periodQuarter = $defaultQuarter;
+                $periodTitle = '';
+                $quotationDate = null;
+                $exchangeRate = null;
+                $hasExplicitZeroRate = false;
+                $modelName = '';
+                $monthlyVolume = null;
+                $drawingReference = '';
+                $eciNo = '';
+
+                for ($r = $blockTopRow; $r < $specRow; $r++) {
+                    $rowCells = $grid[$r] ?? [];
+                    foreach ($rowCells as $c => $cellVal) {
+                        if ($c < $anchor || $c > $panelEnd) {
+                            continue;
+                        }
+                        $cellStr = trim((string) $cellVal);
+                        if ($cellStr === '') {
+                            continue;
+                        }
+                        $cellLow = strtolower($cellStr);
+
+                        // Period title (biasanya di kolom anchor)
+                        if ($c === $anchor && $periodTitle === '') {
+                            $parsedPeriod = $parsePeriodString($cellStr, $defaultYear, $defaultQuarter);
+                            if ($parsedPeriod !== null) {
+                                $periodTitle = $cellStr;
+                                $periodYear = $parsedPeriod['year'];
+                                $periodQuarter = $parsedPeriod['quarter'];
+                                $quotationDate = $parseDateValue($grid[$r + 1][$anchor] ?? null);
+                                $candSup = trim((string) ($grid[$r + 2][$anchor] ?? ''));
+                                if ($candSup !== '' && ! preg_match('/^(model|drawing|part\s*no|exchange)/i', $candSup)) {
+                                    $supplierName = $candSup;
+                                }
+                            }
+                        }
+
+                        if (preg_match('/^part\s*no\.?$/i', $cellStr) && $partNumber === '') {
+                            for ($vc = $c + 1; $vc <= min($c + 4, $panelEnd); $vc++) {
+                                $v = trim((string) ($rowCells[$vc] ?? ''));
+                                if ($v !== '') {
+                                    $partNumber = $v;
+                                    break;
+                                }
+                            }
+                        } elseif (preg_match('/^part\s*name$/i', $cellStr) && $partName === '') {
+                            for ($vc = $c + 1; $vc <= min($c + 4, $panelEnd); $vc++) {
+                                $v = trim((string) ($rowCells[$vc] ?? ''));
+                                if ($v !== '') {
+                                    $partName = $v;
+                                    break;
+                                }
+                            }
+                        } elseif ($cellLow === 'model' && $modelName === '') {
+                            for ($vc = $c + 1; $vc <= min($c + 4, $panelEnd); $vc++) {
+                                $v = trim((string) ($rowCells[$vc] ?? ''));
+                                if ($v !== '' && ! str_starts_with($v, '(')) {
+                                    $modelName = $v;
+                                    break;
+                                }
+                            }
+                        } elseif (str_contains($cellLow, 'monthly volume') && $monthlyVolume === null) {
+                            for ($vc = $c + 1; $vc <= min($c + 5, $panelEnd); $vc++) {
+                                $mv = $parseNum($rowCells[$vc] ?? null);
+                                if ($mv !== null) {
+                                    $monthlyVolume = (int) round($mv);
+                                    break;
+                                }
+                            }
+                        } elseif (str_contains($cellLow, 'drawing of quotation') && $drawingReference === '') {
+                            for ($vc = $c + 1; $vc <= min($c + 4, $panelEnd); $vc++) {
+                                $v = trim((string) ($rowCells[$vc] ?? ''));
+                                if ($v !== '') {
+                                    $drawingReference = $v;
+                                    break;
+                                }
+                            }
+                        } elseif (preg_match('/^eci\s*no/i', str_replace('Ｎ', 'N', $cellStr)) && $eciNo === '') {
+                            for ($vc = $c + 1; $vc <= min($c + 4, $panelEnd); $vc++) {
+                                $v = trim((string) ($rowCells[$vc] ?? ''));
+                                if ($v !== '') {
+                                    $eciNo = $v;
+                                    break;
+                                }
+                            }
+                        } elseif (str_contains($cellLow, 'new rate')) {
+                            for ($vc = $c + 1; $vc <= min($c + 4, $panelEnd); $vc++) {
+                                $vStr = trim((string) ($rowCells[$vc] ?? ''));
+                                if ($vStr !== '' && is_numeric(str_replace(',', '', $vStr))) {
+                                    $exchangeRate = (float) $parseNum($vStr);
+                                    $hasExplicitZeroRate = ($exchangeRate == 0.0);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Fallback exchange rate ke Qtn condition jika New Rate tidak terbaca
+                if ($exchangeRate === null) {
+                    for ($r = $blockTopRow; $r < $specRow; $r++) {
+                        $rowCells = $grid[$r] ?? [];
+                        foreach ($rowCells as $c => $cellVal) {
+                            if ($c >= $anchor && $c <= $panelEnd && stripos((string) $cellVal, 'qtn condition') !== false) {
+                                for ($vc = $c + 1; $vc <= min($c + 4, $panelEnd); $vc++) {
+                                    $num = $parseNum($rowCells[$vc] ?? null);
+                                    if ($num !== null) {
+                                        $exchangeRate = $num;
+                                        break 3;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                $thickness = $parseNum($grid[$matRow][$thickCol] ?? null) ?? 0.0;
+                $wide = $parseNum($grid[$matRow][$wideCol] ?? null) ?? 0.0;
+                $pitch = $parseNum($grid[$matRow][$pitchCol] ?? null) ?? 0.0;
+                $yieldRate = $parseNum($grid[$matRow][$yieldCol] ?? null) ?: 1.0;
+                $berat = $parseNum($grid[$matRow][$weightCol] ?? null) ?? 0.0;
+                if ($berat <= 0 && $thickness > 0 && $wide > 0 && $pitch > 0) {
+                    $berat = round(($thickness * $wide * $pitch * 7.85) / (1000000 * $yieldRate), 7);
+                } else {
+                    $berat = round($berat, 7);
+                }
+
+                $sheetIdr = $parseNum($grid[$matRow][$unitPriceCol] ?? null) ?? 0.0;
+                $sheetUsd = $parseNum($grid[$matRow + 1][$unitPriceCol] ?? null) ?? 0.0;
+
+                // Deteksi label sumber steel di kolom paling kanan panel (HSSI / USCI)
+                $steelSourceTag = '';
+                for ($vc = max($valuationCol, $priceCol + 1); $vc <= min($panelEnd, $valuationCol + 2); $vc++) {
+                    $tag = trim((string) ($grid[$matRow][$vc] ?? ''));
+                    if ($tag !== '' && ! is_numeric($tag) && ! in_array(strtoupper($tag), ['OK', 'NO'])) {
+                        $steelSourceTag = $tag;
+                        break;
+                    }
+                }
+
+                // Scan ke bawah dari material row sampai blockBottomRow untuk SCRAP, Process Breakdown, dan komponen biaya (4)-(9)
+                $scrapWeight = 0.0;
+                $scrapPricePerKg = -1500.0;
+                $processName = '';
+                $processManHour = 0.0;
+                $processCharge = 0.0;
+                $ohSuppliedPct = 11.0;
+                $ohSelfPct = 4.0;
+                $transportCost = 0.0;
+                $packingCost = 0.0;
+                $toolingCost = 0.0;
+                $inProcess = false;
+
+                for ($r = $matRow + 1; $r <= $blockBottomRow; $r++) {
+                    $rowCells = $grid[$r] ?? [];
+                    $anchorLabel = trim((string) ($rowCells[$anchor] ?? ''));
+                    $anchorLow = strtolower($anchorLabel);
+
+                    // Cek SCRAP (biasanya di kolom yield/scrap sebelum Weight)
+                    foreach ($rowCells as $c => $cellVal) {
+                        if ($c >= $anchor && $c < $weightCol && strcasecmp(trim((string) $cellVal), 'SCRAP') === 0) {
+                            $sw = $parseNum($rowCells[$weightCol] ?? null);
+                            $sp = $parseNum($rowCells[$unitPriceCol] ?? null);
+                            if ($sw !== null) {
+                                $scrapWeight = $sw;
+                            }
+                            if ($sp !== null) {
+                                $scrapPricePerKg = $sp;
+                            }
+                        }
+                    }
+
+                    if (str_contains($anchorLow, 'process breakdown')) {
+                        $inProcess = true;
+                        continue;
+                    }
+
+                    if (str_starts_with($anchorLabel, '(2)')) {
+                        $inProcess = false;
+                        continue;
+                    }
+
+                    if ($inProcess && $anchorLabel !== '' && $processName === '') {
+                        $mh = $parseNum($rowCells[$qtyCol] ?? null);
+                        $chg = $parseNum($rowCells[$unitPriceCol] ?? null);
+                        if ($mh !== null || $chg !== null) {
+                            $processName = $anchorLabel;
+                            $processManHour = $mh ?? 0.0;
+                            $processCharge = $chg ?? 0.0;
+                        }
+                    }
+
+                    if (str_starts_with($anchorLabel, '(4)')) {
+                        if (preg_match('/(\d+(?:\.\d+)?)\s*[％%]/u', $anchorLabel, $pm)) {
+                            $ohSuppliedPct = (float) $pm[1];
+                        }
+                    } elseif (str_starts_with($anchorLabel, '(5)')) {
+                        if (preg_match('/(\d+(?:\.\d+)?)\s*[％%]/u', $anchorLabel, $pm)) {
+                            $ohSelfPct = (float) $pm[1];
+                        }
+                    } elseif (str_starts_with($anchorLabel, '(6)')) {
+                        $val = $parseNum($rowCells[$priceCol] ?? null);
+                        if ($val !== null) {
+                            $transportCost = $val;
+                        }
+                    } elseif (str_starts_with($anchorLabel, '(7)')) {
+                        $val = $parseNum($rowCells[$priceCol] ?? null);
+                        if ($val !== null) {
+                            $packingCost = $val;
+                        }
+                    } elseif (str_starts_with($anchorLabel, '(9)')) {
+                        $val = $parseNum($rowCells[$priceCol] ?? null);
+                        if ($val !== null) {
+                            $toolingCost = $val;
+                        }
+                    }
+                }
+
+                $isDirectIdr = ($sheetUsd <= 0.0 && $sheetIdr > 0.0);
+                $finalRate = $exchangeRate !== null
+                    ? $exchangeRate
+                    : ($isDirectIdr ? 0.0 : (float) ($defaults['exchange_rate'] ?? 0));
+
+                $noteParts = array_filter([
+                    $periodTitle ? "Periode: {$periodTitle}" : null,
+                    $steelSourceTag ? "Steel Source: {$steelSourceTag}" : null,
+                    $eciNo ? "ECI: {$eciNo}" : null,
+                ]);
+
+                $dataRows[] = [
+                    'year' => $periodYear,
+                    'quarter' => $periodQuarter,
+                    'quotation_date' => $quotationDate,
+                    'supplier_name' => $supplierName ?: ($steelSourceTag ?: ($defaults['supplier_name'] ?? 'PT. POSMI STEEL INDONESIA')),
+                    'vendor_code' => $defaults['vendor_code'] ?? null,
+                    'part_number' => $partNumber ?: null,
+                    'part_name' => $partName ?: null,
+                    'model_name' => $modelName ?: null,
+                    'monthly_volume' => $monthlyVolume,
+                    'drawing_reference' => $drawingReference ?: null,
+                    'eci_number' => $eciNo ?: null,
+                    'steel_spec' => $steelSpec,
+                    'double_thickness' => $thickness,
+                    'wide' => $wide,
+                    'pitch' => $pitch,
+                    'yield_rate' => $yieldRate,
+                    'berat' => $berat,
+                    'exchange_rate' => $hasExplicitZeroRate ? 0.0 : $finalRate,
+                    'coil_price' => 0.0,
+                    'coil_price_idr' => $sheetIdr,
+                    'sheet_price' => $isDirectIdr ? 0.0 : $sheetUsd,
+                    'sheet_price_idr' => $sheetIdr > 0 ? $sheetIdr : ($finalRate > 0 ? round($sheetUsd * $finalRate, 2) : 0.0),
+                    'scrap_weight' => $scrapWeight,
+                    'scrap_price_per_kg' => $scrapPricePerKg,
+                    'process_name' => $processName ?: '1. PROGRESSIVE',
+                    'process_man_hour' => $processManHour,
+                    'process_charge' => $processCharge,
+                    'overhead_supplied_percent' => $ohSuppliedPct,
+                    'overhead_self_percent' => $ohSelfPct,
+                    'transportation_cost' => $transportCost,
+                    'packing_cost' => $packingCost,
+                    'tooling_depreciation' => $toolingCost,
+                    'status' => 'Active',
+                    'notes' => ! empty($noteParts) ? implode(' | ', $noteParts) : 'Diimpor dari Comparative Quotation Sheet',
+                ];
+            }
+        }
+
+        if (empty($dataRows)) {
+            return null;
+        }
+
+        return [
+            'header_row' => $specHeaderRows[0],
+            'column_map' => ['steel_spec' => 1],
+            'data_rows' => $dataRows,
+        ];
+    }
+
+    /**
      * Deteksi posisi baris header dan pemetaan kolom dari matriks Excel
      *
      * @param  array<int, array<int, string>>  $grid
@@ -584,7 +1110,9 @@ class ExcelImportService
         // Scan 15 baris pertama untuk menemukan baris header terbaik dengan kunci atribut UNIK terbanyak
         foreach (array_slice($grid, 0, 15, true) as $rIdx => $rowCols) {
             $currentMap = [];
+            $usedCols = [];
 
+            // Pass 1: exact normalized match lebih dulu agar header spesifik (seperti "Old Part No.", "Wire Spec", "OH Self %") tidak direbut alias pendek
             foreach ($rowCols as $colIdx => $cellValue) {
                 $cleaned = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', (string) $cellValue));
                 if (empty($cleaned)) {
@@ -598,19 +1126,49 @@ class ExcelImportService
 
                     foreach ($keywords as $kw) {
                         $cleanedKw = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $kw));
-                        // Keyword pendek (<= 2 karakter seperti 't' atau 'q') harus exact match
-                        if (strlen($cleanedKw) <= 2) {
-                            if ($cleaned === $cleanedKw) {
-                                $currentMap[$fieldKey] = $colIdx;
-                                break;
-                            }
-                        } else {
-                            if ($cleaned === $cleanedKw || str_contains($cleaned, $cleanedKw)) {
-                                $currentMap[$fieldKey] = $colIdx;
-                                break;
-                            }
+                        if ($cleaned === $cleanedKw) {
+                            $currentMap[$fieldKey] = $colIdx;
+                            $usedCols[$colIdx] = true;
+                            break 2;
                         }
                     }
+                }
+            }
+
+            // Pass 2: substring match untuk kolom dan field yang belum terpetakan (prioritaskan alias terpanjang)
+            foreach ($rowCols as $colIdx => $cellValue) {
+                if (isset($usedCols[$colIdx])) {
+                    continue;
+                }
+
+                $cleaned = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', (string) $cellValue));
+                if (empty($cleaned)) {
+                    continue;
+                }
+
+                $bestField = null;
+                $bestLen = 0;
+
+                foreach ($aliases as $fieldKey => $keywords) {
+                    if (isset($currentMap[$fieldKey])) {
+                        continue;
+                    }
+
+                    foreach ($keywords as $kw) {
+                        $cleanedKw = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $kw));
+                        if (strlen($cleanedKw) <= 2) {
+                            continue;
+                        }
+                        if (str_contains($cleaned, $cleanedKw) && strlen($cleanedKw) > $bestLen) {
+                            $bestField = $fieldKey;
+                            $bestLen = strlen($cleanedKw);
+                        }
+                    }
+                }
+
+                if ($bestField !== null) {
+                    $currentMap[$bestField] = $colIdx;
+                    $usedCols[$colIdx] = true;
                 }
             }
 
@@ -662,12 +1220,32 @@ class ExcelImportService
                     $rowRecord['supplier_name'] = $lastVendor;
                 }
 
-                if (empty($rowRecord['steel_spec']) && empty($rowRecord['coil_price']) && empty($rowRecord['sheet_price'])) {
+                if (
+                    empty($rowRecord['steel_spec'])
+                    && empty($rowRecord['wire_spec'])
+                    && empty($rowRecord['part_number'])
+                    && empty($rowRecord['coil_price'])
+                    && empty($rowRecord['sheet_price'])
+                    && empty($rowRecord['coil_price_idr'])
+                    && empty($rowRecord['sheet_price_idr'])
+                    && empty($rowRecord['wire_price_usd_kg'])
+                    && empty($rowRecord['wire_price_idr_kg'])
+                ) {
                     continue;
                 }
 
                 $cleanedRow = static::cleanRowValues($rowRecord, $defaults);
-                if (! empty($cleanedRow['steel_spec']) || $cleanedRow['coil_price'] > 0 || $cleanedRow['sheet_price'] > 0) {
+                if (
+                    ! empty($cleanedRow['steel_spec'])
+                    || ! empty($cleanedRow['wire_spec'])
+                    || ! empty($cleanedRow['part_number'])
+                    || $cleanedRow['coil_price'] > 0
+                    || $cleanedRow['sheet_price'] > 0
+                    || $cleanedRow['coil_price_idr'] > 0
+                    || $cleanedRow['sheet_price_idr'] > 0
+                    || (! empty($cleanedRow['wire_price_usd_kg']) && $cleanedRow['wire_price_usd_kg'] > 0)
+                    || (! empty($cleanedRow['wire_price_idr_kg']) && $cleanedRow['wire_price_idr_kg'] > 0)
+                ) {
                     $dataRows[] = $cleanedRow;
                 }
             }
@@ -821,9 +1399,13 @@ class ExcelImportService
         // Bersihkan angka ketebalan dan satuan mm dari spec
         $spec = MaterialSteel::cleanSteelSpec($spec);
 
-        // Ambil Kurs Exchange Rate
+        // Ambil Kurs Exchange Rate (izinkan 0 jika harga IDR langsung diisi & kurs memang ditulis 0)
+        $hasDirectIdr = static::cleanNumeric($row['sheet_price_idr'] ?? null) > 0
+            || static::cleanNumeric($row['coil_price_idr'] ?? null) > 0
+            || static::cleanNumeric($row['wire_price_idr_kg'] ?? null) > 0;
+        $hasExplicitRate = isset($row['exchange_rate']) && $row['exchange_rate'] !== '' && $row['exchange_rate'] !== null;
         $rate = static::cleanNumeric($row['exchange_rate'] ?? null);
-        if ($rate <= 0) {
+        if ($rate <= 0 && ! ($hasDirectIdr && $hasExplicitRate)) {
             $rate = (float) ($defaults['exchange_rate'] ?? 16000);
             if ($rate <= 0) {
                 $rate = (float) (Currency::where('code', 'USD')->where('year', $year)->value('exchange_rate_to_idr') ?? 16000);
@@ -893,8 +1475,19 @@ class ExcelImportService
 
         $steelPrice = (float) ($row['steel_price'] ?? ($coilPrice ?: $sheetPrice ?: 0));
         $berat = static::cleanNumeric($row['berat'] ?? $row['weight'] ?? null);
+        $isFastener = ($defaults['module'] ?? null) === 'fastener';
 
-        return [
+        $quotationDate = null;
+        if (! empty($row['quotation_date'])) {
+            $rawDate = trim((string) $row['quotation_date']);
+            if (is_numeric($rawDate) && (float) $rawDate > 25000) {
+                $quotationDate = gmdate('Y-m-d', (int) (((float) $rawDate - 25569) * 86400));
+            } else {
+                $quotationDate = $rawDate;
+            }
+        }
+
+        $cleaned = [
             'year' => $year,
             'quarter' => $quarter,
             'supplier_name' => $supplierName,
@@ -918,13 +1511,20 @@ class ExcelImportService
             'gap_steel_kg_usd' => $gapKgUsd,
             'fluktuasi_jfe' => static::cleanNumeric($row['fluktuasi_jfe'] ?? $gapKgUsd),
             'status' => ! empty($row['status']) ? trim((string) $row['status']) : 'Active',
-            'notes' => trim((string) ($row['notes'] ?? 'Diimpor otomatis via Excel')),
+            'notes' => ! empty($row['notes']) ? trim((string) $row['notes']) : 'Diimpor otomatis via Excel',
             'part_number' => trim((string) ($row['part_number'] ?? '')),
             'part_no_to_compare' => trim((string) ($row['part_no_to_compare'] ?? '')),
             'part_name' => trim((string) ($row['part_name'] ?? '')),
             'model_name' => trim((string) ($row['model_name'] ?? ($row['model'] ?? ''))),
+            'monthly_volume' => isset($row['monthly_volume']) && $row['monthly_volume'] !== '' ? (int) static::cleanNumeric($row['monthly_volume']) : ($isFastener ? 20000 : 16500),
+            'drawing_reference' => ! empty($row['drawing_reference']) ? trim((string) $row['drawing_reference']) : ($isFastener ? 'Official Dwg (supplier selection)' : 'Mass Prod. Drwg'),
             'eci_number' => trim((string) ($row['eci_number'] ?? '')),
-            'quotation_date' => ! empty($row['quotation_date']) ? $row['quotation_date'] : null,
+            'quotation_date' => $quotationDate,
+            'exchange_rate_fluctuation' => isset($row['exchange_rate_fluctuation']) && $row['exchange_rate_fluctuation'] !== '' ? static::cleanNumeric($row['exchange_rate_fluctuation']) : 1.0,
+            'comments' => trim((string) ($row['comments'] ?? '')),
+            'remarks' => trim((string) ($row['remarks'] ?? '')),
+            'alteration' => trim((string) ($row['alteration'] ?? '')),
+            'etc_contents' => trim((string) ($row['etc_contents'] ?? '')),
             'wide' => isset($row['wide']) ? static::cleanNumeric($row['wide']) : null,
             'pitch' => isset($row['pitch']) ? static::cleanNumeric($row['pitch']) : null,
             'yield_rate' => isset($row['yield_rate']) ? static::cleanNumeric($row['yield_rate']) : 1,
@@ -933,12 +1533,45 @@ class ExcelImportService
             'process_name' => ! empty($row['process_name']) ? trim((string) $row['process_name']) : '1. PROGRESSIVE 250T',
             'process_man_hour' => isset($row['process_man_hour']) ? static::cleanNumeric($row['process_man_hour']) : 9,
             'process_charge' => isset($row['process_charge']) ? static::cleanNumeric($row['process_charge']) : 45,
-            'overhead_supplied_percent' => isset($row['overhead_supplied_percent']) ? static::cleanNumeric($row['overhead_supplied_percent']) : 11,
-            'overhead_self_percent' => isset($row['overhead_self_percent']) ? static::cleanNumeric($row['overhead_self_percent']) : 4,
-            'transportation_cost' => isset($row['transportation_cost']) ? static::cleanNumeric($row['transportation_cost']) : 0,
-            'packing_cost' => isset($row['packing_cost']) ? static::cleanNumeric($row['packing_cost']) : 0,
-            'tooling_depreciation' => isset($row['tooling_depreciation']) ? static::cleanNumeric($row['tooling_depreciation']) : 0,
+            'overhead_supplied_percent' => isset($row['overhead_supplied_percent']) && $row['overhead_supplied_percent'] !== '' ? static::cleanNumeric($row['overhead_supplied_percent']) : ($isFastener ? 0 : 11),
+            'overhead_self_percent' => isset($row['overhead_self_percent']) && $row['overhead_self_percent'] !== '' ? static::cleanNumeric($row['overhead_self_percent']) : ($isFastener ? 14.3 : 4),
+            'transportation_cost' => isset($row['transportation_cost']) && $row['transportation_cost'] !== '' ? static::cleanNumeric($row['transportation_cost']) : 0,
+            'packing_cost' => isset($row['packing_cost']) && $row['packing_cost'] !== '' ? static::cleanNumeric($row['packing_cost']) : ($isFastener ? 3 : 0),
+            'tooling_depreciation' => isset($row['tooling_depreciation']) && $row['tooling_depreciation'] !== '' ? static::cleanNumeric($row['tooling_depreciation']) : 0,
         ];
+
+        // Teruskan field khusus Fastener jika tersedia di baris input
+        if (! empty($row['old_part_number'])) {
+            $cleaned['old_part_number'] = trim((string) $row['old_part_number']);
+        }
+        if (isset($row['old_exchange_rate']) && $row['old_exchange_rate'] !== '') {
+            $cleaned['old_exchange_rate'] = static::cleanNumeric($row['old_exchange_rate']);
+        }
+        if (! empty($row['wire_spec'])) {
+            $cleaned['wire_spec'] = trim((string) $row['wire_spec']);
+        }
+        foreach ([
+            'nett_weight_gr', 'gross_weight_gr', 'wire_price_usd_kg', 'wire_price_idr_kg',
+            'material_control_percent', 'washer_price', 'washer_weight_gr',
+            'heading_cost', 'rolling_cost', 'washing_cost_kg', 'plating_cost_kg',
+            'inspection_cost', 'cost_down',
+        ] as $fNumKey) {
+            if (isset($row[$fNumKey]) && $row[$fNumKey] !== '') {
+                $cleaned[$fNumKey] = static::cleanNumeric($row[$fNumKey]);
+            }
+        }
+        if (! empty($row['tooling_details'])) {
+            if (is_array($row['tooling_details'])) {
+                $cleaned['tooling_details'] = $row['tooling_details'];
+            } elseif (is_string($row['tooling_details'])) {
+                $decoded = json_decode($row['tooling_details'], true);
+                if (is_array($decoded)) {
+                    $cleaned['tooling_details'] = $decoded;
+                }
+            }
+        }
+
+        return $cleaned;
     }
 
     /**
@@ -1087,7 +1720,9 @@ class ExcelImportService
             return ['imported' => 0, 'updated' => 0, 'total' => 0, 'errors' => ['File tidak dapat dibaca atau kosong.']];
         }
 
-        $detection = static::detectColumnsAndData($grid, $defaults);
+        $detection = (($defaults['module'] ?? 'stamping_part') === 'stamping_part'
+            ? static::detectComparativeQuotationStampingBlocks($grid, $defaults)
+            : null) ?? static::detectColumnsAndData($grid, $defaults);
         $rows = $detection['data_rows'];
 
         $imported = 0;
@@ -1131,7 +1766,8 @@ class ExcelImportService
                         $updated++;
                     }
                 } else {
-                    StampingPart::create($row);
+                    $createData = array_filter($row, fn ($val) => $val !== null && $val !== '');
+                    StampingPart::create($createData);
                     $imported++;
                 }
             } catch (\Throwable $e) {
@@ -1159,7 +1795,7 @@ class ExcelImportService
             return ['imported' => 0, 'updated' => 0, 'total' => 0, 'errors' => ['File tidak dapat dibaca atau kosong.']];
         }
 
-        $detection = static::detectColumnsAndData($grid, $defaults);
+        $detection = static::detectColumnsAndData($grid, array_merge($defaults, ['module' => 'fastener']));
         $rows = $detection['data_rows'];
 
         $imported = 0;
@@ -1168,8 +1804,23 @@ class ExcelImportService
 
         foreach ($rows as $idx => $row) {
             try {
-                if (empty($row['steel_spec'])) {
+                if (empty($row['steel_spec']) && empty($row['wire_spec']) && empty($row['part_number'])) {
                     continue;
+                }
+
+                if (empty($row['steel_spec']) && ! empty($row['wire_spec'])) {
+                    if (preg_match('/\[([^\]]+)\]/', (string) $row['wire_spec'], $m)) {
+                        $row['steel_spec'] = Fastener::cleanSteelSpec($m[1]);
+                    } else {
+                        $row['steel_spec'] = Fastener::cleanSteelSpec((string) $row['wire_spec']);
+                    }
+                } elseif (empty($row['steel_spec'])) {
+                    $row['steel_spec'] = 'SWCH';
+                }
+
+                // Auto Gross Weight = Nett Weight * 1.1 sesuai Excel R16 jika hanya Nett yang diisi
+                if (empty($row['gross_weight_gr']) && ! empty($row['nett_weight_gr']) && (float) $row['nett_weight_gr'] > 0) {
+                    $row['gross_weight_gr'] = round((float) $row['nett_weight_gr'] * 1.1, 4);
                 }
 
                 // Cari atau buat Supplier otomatis
@@ -1203,8 +1854,8 @@ class ExcelImportService
                         $updateData = [
                             'vendor_code' => $row['vendor_code'] ?? $existing->vendor_code,
                             'supplier_name' => $row['supplier_name'] ?? $existing->supplier_name,
-                            'double_thickness' => $row['double_thickness'] ?? $existing->double_thickness,
-                            'diameter' => $row['diameter'] ?? $existing->diameter,
+                            'double_thickness' => $row['double_thickness'] ?: $existing->double_thickness,
+                            'diameter' => $row['diameter'] ?: $existing->diameter,
                             'exchange_rate' => $row['exchange_rate'] ?? $existing->exchange_rate,
                             'coil_price' => $row['coil_price'] ?? $existing->coil_price,
                             'coil_price_idr' => $row['coil_price_idr'] ?? $existing->coil_price_idr,
@@ -1216,14 +1867,17 @@ class ExcelImportService
                         ];
 
                         foreach ([
-                            'part_number', 'part_name', 'model_name', 'wire_spec',
-                            'gross_weight_gr', 'nett_weight_gr', 'wire_price_usd_kg',
-                            'material_control_percent', 'washer_price', 'washer_weight_gr',
-                            'heading_cost', 'rolling_cost', 'washing_cost_kg',
-                            'plating_cost_kg', 'inspection_cost', 'packing_cost',
-                            'overhead_self_percent', 'tooling_depreciation', 'status', 'notes',
+                            'part_number', 'old_part_number', 'part_name', 'model_name', 'monthly_volume',
+                            'drawing_reference', 'eci_number', 'quotation_date', 'old_exchange_rate',
+                            'exchange_rate_fluctuation', 'wire_spec', 'gross_weight_gr', 'nett_weight_gr',
+                            'wire_price_usd_kg', 'wire_price_idr_kg', 'material_control_percent',
+                            'washer_price', 'washer_weight_gr', 'heading_cost', 'rolling_cost',
+                            'washing_cost_kg', 'plating_cost_kg', 'inspection_cost', 'packing_cost',
+                            'overhead_supplied_percent', 'overhead_self_percent', 'transportation_cost',
+                            'cost_down', 'tooling_depreciation', 'tooling_details',
+                            'status', 'notes', 'comments', 'remarks', 'alteration', 'etc_contents',
                         ] as $fKey) {
-                            if (isset($row[$fKey])) {
+                            if (array_key_exists($fKey, $row) && $row[$fKey] !== null && $row[$fKey] !== '') {
                                 $updateData[$fKey] = $row[$fKey];
                             }
                         }
@@ -1260,7 +1914,9 @@ class ExcelImportService
             return null;
         }
 
-        $detection = static::detectColumnsAndData($grid, $defaults);
+        $detection = (($defaults['module'] ?? 'stamping_part') === 'stamping_part'
+            ? static::detectComparativeQuotationStampingBlocks($grid, $defaults)
+            : null) ?? static::detectColumnsAndData($grid, $defaults);
         $rows = $detection['data_rows'];
 
         return $rows[0] ?? null;

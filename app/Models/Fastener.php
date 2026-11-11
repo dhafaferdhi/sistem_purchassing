@@ -41,12 +41,18 @@ class Fastener extends Model
         'packing_cost',
         'process_total',
         'subtotal',
+        'overhead_supplied_percent',
+        'overhead_supplied_cost',
         'overhead_self_percent',
         'overhead_self_cost',
+        'transportation_cost',
+        'cost_down',
+        'part_cost_excluding_tooling',
         'tooling_depreciation',
         'tooling_details',
         'drawing_reference',
         'eci_number',
+        'quotation_date',
         'old_exchange_rate',
         'exchange_rate_fluctuation',
         'part_cost',
@@ -66,6 +72,10 @@ class Fastener extends Model
         'fluktuasi_jfe',
         'status',
         'notes',
+        'comments',
+        'remarks',
+        'alteration',
+        'etc_contents',
         'created_by',
     ];
 
@@ -90,7 +100,13 @@ class Fastener extends Model
         'inspection_cost' => 5,
         'packing_cost' => 3,
         'process_total' => 225.45,
+        'overhead_supplied_percent' => 0,
+        'overhead_supplied_cost' => 0,
         'overhead_self_percent' => 14.3,
+        'transportation_cost' => 0,
+        'cost_down' => 0,
+        'part_cost_excluding_tooling' => 0,
+        'exchange_rate_fluctuation' => 1.0,
         'currency_code' => 'USD',
         'exchange_rate' => 16000,
         'gap_steel_usd' => 0,
@@ -110,6 +126,7 @@ class Fastener extends Model
         return [
             'year' => 'integer',
             'monthly_volume' => 'integer',
+            'quotation_date' => 'date',
             'nett_weight_gr' => 'decimal:4',
             'gross_weight_gr' => 'decimal:4',
             'wire_price_usd_kg' => 'decimal:4',
@@ -130,8 +147,13 @@ class Fastener extends Model
             'packing_cost' => 'decimal:2',
             'process_total' => 'decimal:4',
             'subtotal' => 'decimal:4',
+            'overhead_supplied_percent' => 'decimal:2',
+            'overhead_supplied_cost' => 'decimal:4',
             'overhead_self_percent' => 'decimal:2',
             'overhead_self_cost' => 'decimal:4',
+            'transportation_cost' => 'decimal:2',
+            'cost_down' => 'decimal:2',
+            'part_cost_excluding_tooling' => 'decimal:4',
             'old_exchange_rate' => 'decimal:2',
             'exchange_rate_fluctuation' => 'decimal:6',
             'tooling_depreciation' => 'decimal:4',
@@ -234,7 +256,7 @@ class Fastener extends Model
 
             $sheetPrice = (float) ($model->sheet_price ?? 0);
             $coilPrice = (float) ($model->coil_price ?? 0);
-            $rate = (float) ($model->exchange_rate ?? 1);
+            $rate = $model->exchange_rate !== null ? (float) $model->exchange_rate : 1.0;
 
             // Perhitungan Rumus Gap Steel:
             // Gap / MT (USD) dan Gap / Kg (USD) [Rumus Perusahaan: Gap / Kg = Gap / MT / 1000]
@@ -250,16 +272,49 @@ class Fastener extends Model
             }
 
             // Perhitungan Harga Coil & Sheet dalam Rupiah (IDR)
-            $model->coil_price_idr = round($coilPrice * $rate, 2);
-            $model->sheet_price_idr = round($sheetPrice * $rate, 2);
+            $dirtyDirectCoilIdr = $model->isDirty('coil_price_idr') && ! $model->isDirty(['coil_price', 'exchange_rate']);
+            $dirtyDirectSheetIdr = $model->isDirty('sheet_price_idr') && ! $model->isDirty(['sheet_price', 'exchange_rate']);
+            $dirtyDirectWireIdr = $model->isDirty('wire_price_idr_kg') && ! $model->isDirty(['wire_price_usd_kg', 'coil_price', 'exchange_rate']);
 
-            // Perhitungan Biaya Wire, Washer, & Proses Fastener Sesuai Excel
-            $wireUsdKg = (float) ($model->wire_price_usd_kg ?: ($coilPrice > 0 ? $coilPrice : 1.66));
-            $model->wire_price_usd_kg = $wireUsdKg;
-            $wireIdrKg = round($wireUsdKg * $rate, 2);
+            if ($coilPrice > 0 && $rate > 0 && ! $dirtyDirectCoilIdr) {
+                $model->coil_price_idr = round($coilPrice * $rate, 2);
+            } elseif ($coilPrice <= 0 && ! $dirtyDirectCoilIdr) {
+                $model->coil_price_idr = round((float) ($model->coil_price_idr ?? 0), 2);
+            }
+
+            if ($sheetPrice > 0 && $rate > 0 && ! $dirtyDirectSheetIdr) {
+                $model->sheet_price_idr = round($sheetPrice * $rate, 2);
+            } elseif ($sheetPrice <= 0 && ! $dirtyDirectSheetIdr) {
+                $model->sheet_price_idr = round((float) ($model->sheet_price_idr ?? 0), 2);
+            }
+
+            // Perhitungan Biaya Wire, Washer, & Proses Fastener Sesuai Excel (5. 90041-19960)
+            $wireUsdInput = (float) ($model->wire_price_usd_kg ?? 0);
+            $wireIdrInput = (float) ($model->wire_price_idr_kg ?? 0);
+
+            if ($dirtyDirectWireIdr || ($wireUsdInput <= 0 && $wireIdrInput > 0)) {
+                $wireUsdKg = $wireUsdInput > 0 ? $wireUsdInput : ($rate > 0 ? round($wireIdrInput / $rate, 4) : 0.0);
+                $model->wire_price_usd_kg = $wireUsdKg;
+                $wireIdrKg = round($wireIdrInput, 2);
+            } else {
+                $wireUsdKg = $wireUsdInput > 0 ? $wireUsdInput : ($coilPrice > 0 ? $coilPrice : 1.66);
+                $model->wire_price_usd_kg = $wireUsdKg;
+                $wireIdrKg = $rate > 0 ? round($wireUsdKg * $rate, 2) : round($wireIdrInput, 2);
+            }
             $model->wire_price_idr_kg = $wireIdrKg;
 
-            $grossGr = (float) ($model->gross_weight_gr ?? 4.84);
+            $nettGr = (float) ($model->nett_weight_gr ?? 4.4);
+            $grossGr = (float) ($model->gross_weight_gr ?? 0);
+            $shouldAutoGross = $grossGr <= 0.0
+                || ($model->exists && $model->isDirty('nett_weight_gr') && ! $model->isDirty('gross_weight_gr'));
+            if ($shouldAutoGross && $nettGr > 0) {
+                $grossGr = round($nettGr * 1.1, 4);
+                $model->gross_weight_gr = $grossGr;
+            } elseif ($grossGr <= 0.0) {
+                $grossGr = 4.84;
+                $model->gross_weight_gr = $grossGr;
+            }
+
             $wirePc = round(($grossGr / 1000) * $wireIdrKg, 4);
             $model->wire_price_pc = $wirePc;
 
@@ -269,7 +324,6 @@ class Fastener extends Model
             $washerPrice = (float) ($model->washer_price ?? 198);
             $model->material_total = round($wirePc + $model->material_control_cost + $washerPrice, 4);
 
-            $nettGr = (float) ($model->nett_weight_gr ?? 4.4);
             $washerGr = (float) ($model->washer_weight_gr ?? 4.5);
             $totalPartWeightKg = ($nettGr + $washerGr) / 1000;
 
@@ -291,22 +345,43 @@ class Fastener extends Model
 
             $model->subtotal = round((float) $model->material_total + (float) $model->process_total, 4);
 
+            $ohSuppliedPct = (float) ($model->overhead_supplied_percent ?? 0);
+            $model->overhead_supplied_cost = round(($ohSuppliedPct / 100) * (float) $model->subtotal, 4);
+
             $ohSelfPct = (float) ($model->overhead_self_percent ?? 14.3);
             $model->overhead_self_cost = round(($ohSelfPct / 100) * (float) $model->subtotal, 4);
+
+            $transCost = (float) ($model->transportation_cost ?? 0);
+            $costDown = (float) ($model->cost_down ?? 0);
+
+            $model->part_cost_excluding_tooling = round(
+                (float) $model->subtotal
+                + (float) $model->overhead_supplied_cost
+                + (float) $model->overhead_self_cost
+                + $transCost
+                + $costDown,
+                4
+            );
+
+            if ($model->exists && $model->isDirty('exchange_rate') && ! $model->isDirty('old_exchange_rate')) {
+                $origRate = (float) ($model->getOriginal('exchange_rate') ?? 0);
+                if ($origRate > 0 && abs($origRate - $rate) > 0.0001) {
+                    $model->old_exchange_rate = $origRate;
+                }
+            }
 
             if ($model->old_exchange_rate !== null && (float) $model->old_exchange_rate > 0 && $rate > 0) {
                 $model->exchange_rate_fluctuation = round($rate / (float) $model->old_exchange_rate, 6);
             }
 
             if (! empty($model->tooling_details) && is_array($model->tooling_details)) {
-                $calcTooling = QuarterlyPullHelper::sumToolingDepreciation($model->tooling_details);
-                if ($calcTooling > 0 && ((float) ($model->tooling_depreciation ?? 0) == 0.0)) {
-                    $model->tooling_depreciation = $calcTooling;
-                }
+                $model->tooling_depreciation = QuarterlyPullHelper::sumToolingDepreciation($model->tooling_details);
+            } elseif ($model->exists && $model->isDirty('tooling_details') && ! $model->isDirty('tooling_depreciation')) {
+                $model->tooling_depreciation = 0;
             }
 
             $tooling = (float) ($model->tooling_depreciation ?? 0);
-            $model->part_cost = round((float) $model->subtotal + (float) $model->overhead_self_cost + $tooling, 4);
+            $model->part_cost = round((float) $model->part_cost_excluding_tooling + $tooling, 4);
 
             // Sinkronisasi fluktuasi_jfe jika kosong
             if ((empty($model->fluktuasi_jfe) || (float) $model->fluktuasi_jfe == 0.0) && $model->gap_steel_kg_usd) {
@@ -364,24 +439,41 @@ class Fastener extends Model
      *
      * @return array<string, mixed>|null
      */
-    public static function findPreviousQuarterData(string $quarter, int $year, ?int $supplierId = null, ?string $spec = null): ?array
+    public static function findPreviousQuarterData(string $quarter, int $year, ?int $supplierId = null, ?string $spec = null, ?string $partNumber = null): ?array
     {
         $info = static::getPreviousQuarterInfo($quarter, $year);
         $prevQuarter = $info['prev_quarter'];
         $prevYear = $info['prev_year'];
 
-        // 1. Coba cari di Fastener
-        $query = static::where('year', $prevYear)->where('quarter', $prevQuarter);
-        if ($supplierId) {
-            $query->where('supplier_id', $supplierId);
-        }
-        if ($spec) {
-            $spec = static::cleanSteelSpec($spec);
-            $query->where('steel_spec', $spec);
-        }
-        $record = $query->latest('id')->first();
+        // 1. Coba cari di Fastener (prioritaskan kecocokan part_number agar tidak salah tarik item)
+        $cleanPartNo = $partNumber ? trim($partNumber) : null;
+        $record = null;
 
-        if (! $record && $supplierId) {
+        if ($cleanPartNo) {
+            $partQuery = static::where('year', $prevYear)
+                ->where('quarter', $prevQuarter)
+                ->where('part_number', $cleanPartNo);
+            if ($supplierId) {
+                $record = (clone $partQuery)->where('supplier_id', $supplierId)->latest('id')->first();
+            }
+            if (! $record) {
+                $record = $partQuery->latest('id')->first();
+            }
+        }
+
+        if (! $record) {
+            $query = static::where('year', $prevYear)->where('quarter', $prevQuarter);
+            if ($supplierId) {
+                $query->where('supplier_id', $supplierId);
+            }
+            if ($spec) {
+                $spec = static::cleanSteelSpec($spec);
+                $query->where('steel_spec', $spec);
+            }
+            $record = $query->latest('id')->first();
+        }
+
+        if (! $record && $supplierId && ! $cleanPartNo) {
             $record = static::where('year', $prevYear)
                 ->where('quarter', $prevQuarter)
                 ->where('supplier_id', $supplierId)
@@ -420,6 +512,7 @@ class Fastener extends Model
                 'coil_price' => (float) $record->coil_price,
                 'sheet_price' => (float) $record->sheet_price,
                 'wire_price_usd_kg' => (float) ($record->wire_price_usd_kg ?? 0),
+                'wire_price_idr_kg' => (float) ($record->wire_price_idr_kg ?? 0),
                 'gross_weight_gr' => (float) ($record->gross_weight_gr ?? 4.84),
                 'nett_weight_gr' => (float) ($record->nett_weight_gr ?? 4.40),
                 'material_control_percent' => (float) ($record->material_control_percent ?? 5),
@@ -431,15 +524,26 @@ class Fastener extends Model
                 'plating_cost_kg' => (float) ($record->plating_cost_kg ?? 10000),
                 'inspection_cost' => (float) ($record->inspection_cost ?? 5),
                 'packing_cost' => (float) ($record->packing_cost ?? 3),
+                'overhead_supplied_percent' => (float) ($record->overhead_supplied_percent ?? 0),
                 'overhead_self_percent' => (float) ($record->overhead_self_percent ?? 14.3),
+                'transportation_cost' => (float) ($record->transportation_cost ?? 0),
+                'cost_down' => (float) ($record->cost_down ?? 0),
                 'drawing_reference' => $record->drawing_reference,
                 'eci_number' => $record->eci_number,
+                'quotation_date' => $record->quotation_date?->format('Y-m-d'),
                 'tooling_depreciation' => (float) ($record->tooling_depreciation ?? 0),
+                'tooling_details' => $record->tooling_details,
                 'old_exchange_rate' => (float) ($record->old_exchange_rate ?? $record->exchange_rate),
                 'exchange_rate_fluctuation' => (float) ($record->exchange_rate_fluctuation ?? 1.0),
                 'supplier_id' => $record->supplier_id,
                 'vendor_code' => $record->vendor_code,
                 'supplier_name' => $record->supplier_name,
+                'notes' => $record->notes,
+                'comments' => $record->comments,
+                'remarks' => $record->remarks,
+                'alteration' => $record->alteration,
+                'etc_contents' => $record->etc_contents,
+                'status' => $record->status,
             ];
         }
 
@@ -499,9 +603,9 @@ class Fastener extends Model
      *
      * @return array<string, mixed>|null
      */
-    public static function autoFillFromPreviousQuarter(?int $supplierId, ?string $spec, string $quarter, int $year): ?array
+    public static function autoFillFromPreviousQuarter(?int $supplierId, ?string $spec, string $quarter, int $year, ?string $partNumber = null): ?array
     {
-        return static::findPreviousQuarterData($quarter, $year, $supplierId, $spec);
+        return static::findPreviousQuarterData($quarter, $year, $supplierId, $spec, $partNumber);
     }
 
     public function supplier(): BelongsTo

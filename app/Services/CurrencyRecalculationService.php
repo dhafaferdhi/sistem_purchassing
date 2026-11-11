@@ -184,8 +184,12 @@ class CurrencyRecalculationService
             $coil = (float) ($part->coil_price ?? 0);
             $sheet = (float) ($part->sheet_price ?? 0);
 
-            $part->coil_price_idr = round($coil * $rate, 2);
-            $part->sheet_price_idr = round($sheet * $rate, 2);
+            if ($coil > 0) {
+                $part->coil_price_idr = round($coil * $rate, 2);
+            }
+            if ($sheet > 0) {
+                $part->sheet_price_idr = round($sheet * $rate, 2);
+            }
 
             $part->save();
             $updatedCount++;
@@ -233,15 +237,24 @@ class CurrencyRecalculationService
         $rate = (float) $currency->exchange_rate_to_idr;
 
         foreach ($fasteners as $fastener) {
+            $prevRate = (float) ($fastener->exchange_rate ?? 0);
+            if ($prevRate > 0 && abs($prevRate - $rate) > 0.0001) {
+                $fastener->old_exchange_rate = $prevRate;
+            }
+
             $fastener->currency_id = $currency->id;
             $fastener->currency_code = $currency->code;
             $fastener->exchange_rate = $rate;
 
             $coil = (float) ($fastener->coil_price ?? 0);
             $sheet = (float) ($fastener->sheet_price ?? 0);
+            $wireUsd = (float) ($fastener->wire_price_usd_kg ?? 0);
 
             $fastener->coil_price_idr = round($coil * $rate, 2);
             $fastener->sheet_price_idr = round($sheet * $rate, 2);
+            if ($wireUsd > 0) {
+                $fastener->wire_price_idr_kg = round($wireUsd * $rate, 2);
+            }
 
             $fastener->save();
             $updatedCount++;

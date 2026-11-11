@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Filament\Pages\MonthlyRollover;
 use App\Models\Currency;
+use App\Models\Fastener;
 use App\Models\MaterialSteel;
 use App\Models\StampingPart;
 use App\Models\Supplier;
@@ -184,6 +185,24 @@ class MonthlyDataRolloverTest extends TestCase
             'exchange_rate' => 15000.0,
         ]);
 
+        Fastener::create([
+            'year' => 2026,
+            'quarter' => 'Q4',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'part_number' => 'FAST-ALL-IN-ONE',
+            'part_name' => 'BOLT ALL IN ONE',
+            'steel_spec' => 'SWCH-45K',
+            'wire_spec' => 'WIRE OF RIVET [SWCH-45K]',
+            'wire_price_usd_kg' => 2.02,
+            'coil_price' => 2.02,
+            'sheet_price' => 2.02,
+            'currency_id' => $this->usd2026->id,
+            'currency_code' => 'USD',
+            'exchange_rate' => 15000.0,
+        ]);
+
         $result = MonthlyDataRolloverService::rolloverAll(
             2026,
             'Q4',
@@ -218,11 +237,20 @@ class MonthlyDataRolloverTest extends TestCase
             'exchange_rate' => 16200.0,
         ]);
 
+        $this->assertDatabaseHas('fasteners', [
+            'year' => 2027,
+            'quarter' => 'Q1',
+            'part_number' => 'FAST-ALL-IN-ONE',
+            'old_exchange_rate' => 15000.0,
+            'exchange_rate' => 16200.0,
+        ]);
+
         $this->assertDatabaseHas('monthly_rollover_logs', [
             'type' => 'all',
             'source_period' => '2026-Q4',
             'target_period' => '2027-Q1',
             'exchange_rate' => 16200.0,
+            'fasteners_count' => 1,
         ]);
     }
 
@@ -265,5 +293,121 @@ class MonthlyDataRolloverTest extends TestCase
         $this->assertDatabaseHas('monthly_rollover_logs', [
             'target_period' => '2027-Q1',
         ]);
+    }
+
+    public function test_rollover_fasteners_duplicates_and_recalculates_prices(): void
+    {
+        Fastener::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'part_number' => '90041-ROLLOVER',
+            'part_name' => 'BOLT,W/WASHER',
+            'steel_spec' => 'SWCH-45K',
+            'wire_spec' => 'WIRE OF RIVET [SWCH-45K]',
+            'nett_weight_gr' => 4.4,
+            'gross_weight_gr' => 4.84,
+            'wire_price_usd_kg' => 2.02,
+            'washer_price' => 198,
+            'washer_weight_gr' => 4.5,
+            'overhead_self_percent' => 14.3,
+            'exchange_rate' => 16465.0,
+        ]);
+
+        $stats = MonthlyDataRolloverService::rolloverFasteners(
+            2026,
+            'Q1',
+            2026,
+            'Q2',
+            16725.0,
+            null,
+            'Active',
+            'overwrite'
+        );
+
+        $this->assertEquals(1, $stats['copied']);
+
+        $q2 = Fastener::where('year', 2026)->where('quarter', 'Q2')->where('part_number', '90041-ROLLOVER')->first();
+        $this->assertNotNull($q2);
+        $this->assertEquals(16465.0, (float) $q2->old_exchange_rate);
+        $this->assertEquals(16725.0, (float) $q2->exchange_rate);
+        $this->assertEqualsWithDelta(round(16725 / 16465, 6), (float) $q2->exchange_rate_fluctuation, 0.000001);
+        $this->assertEquals(33784.50, (float) $q2->wire_price_idr_kg);
+        $this->assertEqualsWithDelta(680.2483, (float) $q2->part_cost, 0.01);
+    }
+
+    public function test_rollover_stamping_parts_preserves_direct_idr_prices_and_skips_usd_steel_sync(): void
+    {
+        MaterialSteel::create([
+            'year' => 2026,
+            'quarter' => 'Q4',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'steel_spec' => 'SPH440-OD',
+            'double_thickness' => '2.6',
+            'currency_id' => $this->usd2026->id,
+            'currency_code' => 'USD',
+            'coil_price' => 1.2500,
+            'sheet_price' => 1.3500,
+            'exchange_rate' => 17000.0,
+        ]);
+
+        StampingPart::create([
+            'year' => 2026,
+            'quarter' => 'Q3',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'part_number' => '72388-DIRECT-IDR',
+            'part_name' => 'BRKT DIRECT IDR',
+            'steel_spec' => 'SPH440-OD',
+            'double_thickness' => '2.6',
+            'wide' => 390,
+            'pitch' => 148,
+            'yield_rate' => 2,
+            'berat' => 0.5890326,
+            'scrap_weight' => 0.2780,
+            'scrap_price_per_kg' => -1500,
+            'process_man_hour' => 9,
+            'process_charge' => 45,
+            'overhead_supplied_percent' => 11,
+            'overhead_self_percent' => 4,
+            'exchange_rate' => 17796.0,
+            'coil_price' => 0,
+            'sheet_price' => 0,
+            'coil_price_idr' => 17689.0,
+            'sheet_price_idr' => 17689.0,
+        ]);
+
+        $stats = MonthlyDataRolloverService::rolloverStampingParts(
+            2026,
+            'Q3',
+            2026,
+            'Q4',
+            17000.0,
+            null,
+            'Active',
+            'overwrite',
+            null,
+            true
+        );
+
+        $this->assertEquals(1, $stats['copied']);
+
+        $rolled = StampingPart::where('year', 2026)
+            ->where('quarter', 'Q4')
+            ->where('part_number', '72388-DIRECT-IDR')
+            ->first();
+
+        $this->assertNotNull($rolled);
+        $this->assertEquals(0.0, (float) $rolled->coil_price);
+        $this->assertEquals(0.0, (float) $rolled->sheet_price);
+        $this->assertEquals(17689.0, (float) $rolled->sheet_price_idr);
+        $this->assertEquals(17689.0, (float) $rolled->coil_price_idr);
+        $this->assertEqualsWithDelta(0.5890326, (float) $rolled->berat, 0.0000001);
+        $this->assertEqualsWithDelta(10627.28, (float) $rolled->part_cost, 0.02);
     }
 }

@@ -150,7 +150,7 @@ class ListStampingParts extends ListRecords
                     ]),
                 ])
                 ->action(function (array $data) {
-                    $query = StampingPart::query()->with(['supplier', 'materialSteel']);
+                    $query = StampingPart::query()->with(['supplier']);
                     if (($data['year'] ?? 'all') !== 'all') {
                         $query->where('year', (int) $data['year']);
                     }

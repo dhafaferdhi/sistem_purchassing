@@ -114,7 +114,7 @@ class StampingPart extends Model
             'wide' => 'decimal:2',
             'pitch' => 'decimal:2',
             'yield_rate' => 'decimal:2',
-            'berat' => 'decimal:4',
+            'berat' => 'decimal:7',
             'gross_material_cost' => 'decimal:2',
             'scrap_weight' => 'decimal:4',
             'scrap_price_per_kg' => 'decimal:2',
@@ -220,7 +220,7 @@ class StampingPart extends Model
 
             $sheetPrice = (float) ($model->sheet_price ?? 0);
             $coilPrice = (float) ($model->coil_price ?? 0);
-            $rate = (float) ($model->exchange_rate ?? 1);
+            $rate = (float) ($model->exchange_rate ?? 0);
 
             // Perhitungan Rumus Gap Steel:
             // Gap / MT (USD) dan Gap / Kg (USD) [Rumus Excel: Gap / Kg = Gap / MT / 1000]
@@ -235,27 +235,49 @@ class StampingPart extends Model
                 $model->gap_steel_kg_usd = 0;
             }
 
-            // Perhitungan Harga Coil & Sheet dalam Rupiah (IDR)
-            $model->coil_price_idr = round($coilPrice * $rate, 2);
-            $model->sheet_price_idr = round($sheetPrice * $rate, 2);
+            // Perhitungan Harga Coil & Sheet dalam Rupiah (IDR):
+            // Hitung dari USD x Kurs jika harga USD & Kurs > 0; jika USD = 0 atau user input langsung IDR/kg, pertahankan nilai IDR tersebut.
+            $dirtyDirectCoilIdr = $model->isDirty('coil_price_idr') && ! $model->isDirty(['coil_price', 'exchange_rate']);
+            $dirtyDirectSheetIdr = $model->isDirty('sheet_price_idr') && ! $model->isDirty(['sheet_price', 'exchange_rate']);
+
+            if ($coilPrice > 0 && $rate > 0 && ! $dirtyDirectCoilIdr) {
+                $model->coil_price_idr = round($coilPrice * $rate, 2);
+            } elseif ($coilPrice > 0 && $rate <= 0 && ($model->coil_price_idr === null || (float) $model->coil_price_idr == 0.0)) {
+                $model->coil_price_idr = 0;
+            }
+
+            if ($sheetPrice > 0 && $rate > 0 && ! $dirtyDirectSheetIdr) {
+                $model->sheet_price_idr = round($sheetPrice * $rate, 2);
+            } elseif ($sheetPrice > 0 && $rate <= 0 && ($model->sheet_price_idr === null || (float) $model->sheet_price_idr == 0.0)) {
+                $model->sheet_price_idr = 0;
+            }
 
             // Perhitungan Biaya Material & Proses Stamping Part Sesuai Excel
             $berat = (float) ($model->berat ?? 0);
 
-            // Auto calculate berat jika kosong tetapi dimensi blank tersedia
-            if ($berat <= 0.0) {
+            // Auto calculate berat jika kosong atau dimensi/yield berubah pada update tanpa mengubah berat manual
+            $shouldRecalcBerat = $berat <= 0.0
+                || ($model->exists && $model->isDirty(['double_thickness', 'wide', 'pitch', 'yield_rate']) && ! $model->isDirty('berat'));
+
+            if ($shouldRecalcBerat) {
                 $thk = (float) ($model->double_thickness ?? 0);
                 $wide = (float) ($model->wide ?? 0);
                 $pitch = (float) ($model->pitch ?? 0);
                 $yr = (float) ($model->yield_rate ?: 1);
                 $yr = $yr > 0 ? $yr : 1;
                 if ($thk > 0 && $wide > 0 && $pitch > 0) {
-                    $berat = round(($thk * $wide * $pitch * 7.85) / (1000000 * $yr), 4);
+                    $berat = round(($thk * $wide * $pitch * 7.85) / (1000000 * $yr), 7);
                     $model->berat = $berat;
                 }
             }
 
-            $steelRate = (float) ($model->sheet_price_idr ?: ($model->coil_price_idr ?: round((float) ($sheetPrice ?: $coilPrice) * $rate, 2)));
+            $sheetIdrVal = (float) ($model->sheet_price_idr ?? 0);
+            $coilIdrVal = (float) ($model->coil_price_idr ?? 0);
+            $steelRate = $sheetIdrVal > 0
+                ? $sheetIdrVal
+                : ($coilIdrVal > 0
+                    ? $coilIdrVal
+                    : round(($sheetPrice > 0 ? $sheetPrice : $coilPrice) * $rate, 2));
 
             if ($berat > 0 && $steelRate > 0) {
                 $model->gross_material_cost = round($berat * $steelRate, 2);
@@ -296,12 +318,11 @@ class StampingPart extends Model
                 4
             );
 
-            // Jika ada rincian tooling_details, otomatis hitung total depresiasi
+            // Jika ada rincian tooling_details, selalu sinkronkan total depresiasi tooling (termasuk update/reset)
             if (! empty($model->tooling_details) && is_array($model->tooling_details)) {
-                $calcTooling = QuarterlyPullHelper::sumToolingDepreciation($model->tooling_details);
-                if ($calcTooling > 0 && ((float) ($model->tooling_depreciation ?? 0) == 0.0)) {
-                    $model->tooling_depreciation = $calcTooling;
-                }
+                $model->tooling_depreciation = QuarterlyPullHelper::sumToolingDepreciation($model->tooling_details);
+            } elseif ($model->exists && $model->isDirty('tooling_details') && ! $model->isDirty('tooling_depreciation')) {
+                $model->tooling_depreciation = 0;
             }
 
             $tooling = (float) ($model->tooling_depreciation ?? 0);
@@ -311,6 +332,14 @@ class StampingPart extends Model
                 (float) $model->part_cost_excluding_tooling + $tooling,
                 4
             );
+
+            // Auto-update exchange_rate_fluctuation jika kurs berubah tanpa ubah manual fluctuation
+            if ($model->exists && $model->isDirty('exchange_rate') && ! $model->isDirty('exchange_rate_fluctuation')) {
+                $origRate = (float) ($model->getOriginal('exchange_rate') ?? 0);
+                if ($origRate > 0 && $rate > 0 && abs($origRate - $rate) > 0.0001) {
+                    $model->exchange_rate_fluctuation = round($rate / $origRate, 6);
+                }
+            }
 
             // Sinkronisasi fluktuasi_jfe jika kosong
             if ((empty($model->fluktuasi_jfe) || (float) $model->fluktuasi_jfe == 0.0) && $model->gap_steel_kg_usd) {
@@ -365,9 +394,9 @@ class StampingPart extends Model
 
     /**
      * Cari data acuan dari kuartal sebelumnya (misal Q1 2027 mengambil dari Q4 2026)
-     * Mencari dari StampingPart terlebih dahulu, kemudian fallback ke MaterialSteel
+     * Mencari dari StampingPart terlebih dahulu (utamakan part_number jika tersedia), kemudian fallback ke MaterialSteel
      */
-    public static function findPreviousQuarterData(string $quarter, int $year, ?int $supplierId = null, ?string $spec = null): ?array
+    public static function findPreviousQuarterData(string $quarter, int $year, ?int $supplierId = null, ?string $spec = null, ?string $partNumber = null): ?array
     {
         $info = static::getPreviousQuarterInfo($quarter, $year);
         $prevQuarter = $info['prev_quarter'];
@@ -382,15 +411,26 @@ class StampingPart extends Model
             $spec = static::cleanSteelSpec($spec);
             $query->where('steel_spec', $spec);
         }
-        $record = $query->latest('id')->first();
 
-        // Jika tidak spesifik spec, cari berdasarkan supplier saja di kuartal sebelumnya
-        if (! $record && $supplierId) {
-            $record = static::where('year', $prevYear)
-                ->where('quarter', $prevQuarter)
-                ->where('supplier_id', $supplierId)
-                ->latest('id')
-                ->first();
+        if (! empty($partNumber)) {
+            $cleanPart = trim($partNumber);
+            $record = (clone $query)->where('part_number', $cleanPart)->latest('id')->first()
+                ?? static::where('year', $prevYear)
+                    ->where('quarter', $prevQuarter)
+                    ->where('part_number', $cleanPart)
+                    ->latest('id')
+                    ->first();
+        } else {
+            $record = $query->latest('id')->first();
+
+            // Jika tidak spesifik spec, cari berdasarkan supplier saja di kuartal sebelumnya
+            if (! $record && $supplierId) {
+                $record = static::where('year', $prevYear)
+                    ->where('quarter', $prevQuarter)
+                    ->where('supplier_id', $supplierId)
+                    ->latest('id')
+                    ->first();
+            }
         }
 
         // Jika ditemukan di StampingPart
@@ -408,10 +448,13 @@ class StampingPart extends Model
                 'prev_year' => $prevYear,
                 'prev_quarter' => $prevQuarter,
                 'label' => $info['label'],
+                'part_id' => $record->part_id,
                 'part_number' => $record->part_number,
+                'part_no_to_compare' => $record->part_no_to_compare,
                 'part_name' => $record->part_name,
                 'model_name' => $record->model_name,
                 'monthly_volume' => $record->monthly_volume,
+                'quotation_date' => $record->quotation_date?->format('Y-m-d'),
                 'steel_spec' => $record->steel_spec,
                 'double_thickness' => $record->double_thickness,
                 'wide' => $record->wide,
@@ -433,7 +476,11 @@ class StampingPart extends Model
                 'overhead_supplied_cost' => (float) $record->overhead_supplied_cost,
                 'overhead_self_percent' => (float) ($record->overhead_self_percent ?? 4),
                 'overhead_self_cost' => (float) $record->overhead_self_cost,
+                'transportation_cost' => (float) ($record->transportation_cost ?? 0),
+                'packing_cost' => (float) ($record->packing_cost ?? 0),
+                'part_cost_excluding_tooling' => (float) ($record->part_cost_excluding_tooling ?? 0),
                 'tooling_depreciation' => (float) ($record->tooling_depreciation ?? 0),
+                'tooling_details' => $record->tooling_details,
                 'drawing_reference' => $record->drawing_reference,
                 'eci_number' => $record->eci_number,
                 'part_cost' => (float) $record->part_cost,
@@ -442,11 +489,20 @@ class StampingPart extends Model
                 'hr_steel_usd' => (float) ($record->hr_steel_usd ?? ($gapUsd != 0 && static::determineSteelType($record->steel_spec) === 'HR' ? $gapUsd : 0)),
                 'cr_steel_usd' => (float) ($record->cr_steel_usd ?? ($gapUsd != 0 && static::determineSteelType($record->steel_spec) === 'CR' ? $gapUsd : 0)),
                 'exchange_rate' => (float) $record->exchange_rate,
+                'exchange_rate_fluctuation' => (float) ($record->exchange_rate_fluctuation ?? 1.0),
                 'coil_price' => (float) $record->coil_price,
+                'coil_price_idr' => (float) $record->coil_price_idr,
                 'sheet_price' => (float) $record->sheet_price,
+                'sheet_price_idr' => (float) $record->sheet_price_idr,
                 'supplier_id' => $record->supplier_id,
                 'vendor_code' => $record->vendor_code,
                 'supplier_name' => $record->supplier_name,
+                'comments' => $record->comments,
+                'remarks' => $record->remarks,
+                'alteration' => $record->alteration,
+                'etc_contents' => $record->etc_contents,
+                'notes' => $record->notes,
+                'status' => $record->status,
             ];
         }
 

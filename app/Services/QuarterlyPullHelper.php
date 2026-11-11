@@ -263,19 +263,13 @@ class QuarterlyPullHelper
                     ->placeholder('0')
                     ->live(onBlur: true)
                     ->afterStateUpdated(function (Forms\Get $get, Forms\Set $set) {
-                        $sum = static::sumToolingDepreciation($get('../../tooling_details'));
-                        if ($sum > 0) {
-                            $set('../../tooling_depreciation', $sum);
-                        }
+                        $set('../../tooling_depreciation', static::sumToolingDepreciation($get('../../tooling_details')));
                     })
                     ->columnSpan(1),
             ])
             ->live()
             ->afterStateUpdated(function ($state, Forms\Set $set) {
-                $sum = static::sumToolingDepreciation($state);
-                if ($sum > 0) {
-                    $set('tooling_depreciation', $sum);
-                }
+                $set('tooling_depreciation', static::sumToolingDepreciation($state));
             })
             ->columns(5)
             ->collapsible()
@@ -323,6 +317,20 @@ class QuarterlyPullHelper
     }
 
     /**
+     * Format nilai kurs agar angka bulat tampil sebagai integer dan angka desimal tetap presisi.
+     */
+    public static function normalizeRate(mixed $rate): int|float|null
+    {
+        if ($rate === null || $rate === '' || (float) $rate <= 0) {
+            return null;
+        }
+
+        $floatRate = (float) $rate;
+
+        return $floatRate == round($floatRate) ? (int) round($floatRate) : $floatRate;
+    }
+
+    /**
      * Hitung simulasi biaya lengkap untuk Material Steel acuan yang dipilih di modal.
      *
      * @return array<string, float>
@@ -357,15 +365,23 @@ class QuarterlyPullHelper
         $basePrimary = $baseSheet > 0 ? $baseSheet : $baseCoil;
 
         $hasExplicitSheet = $overrideSheetUsd !== null && $overrideSheetUsd > 0;
-        $deltaUsd = $hasExplicitSheet ? round($overrideSheetUsd - $basePrimary, 4) : $appliedKg;
+        $isUnchangedSheet = $hasExplicitSheet && abs($overrideSheetUsd - $basePrimary) < 0.00001;
+        $deltaUsd = $isUnchangedSheet
+            ? 0.0
+            : ($hasExplicitSheet ? round($overrideSheetUsd - $basePrimary, 4) : $appliedKg);
 
-        $newSheet = $hasExplicitSheet
-            ? round($overrideSheetUsd, 4)
-            : ($baseSheet > 0 ? round($baseSheet + $appliedKg, 4) : 0.0);
-        $newCoil = $baseCoil > 0 ? round($baseCoil + $deltaUsd, 4) : 0.0;
+        if ($isUnchangedSheet) {
+            $newSheet = $baseSheet;
+            $newCoil = $baseCoil;
+        } else {
+            $newSheet = $hasExplicitSheet
+                ? round($overrideSheetUsd, 4)
+                : ($baseSheet > 0 ? round($baseSheet + $appliedKg, 4) : 0.0);
+            $newCoil = $baseCoil > 0 ? round($baseCoil + $deltaUsd, 4) : 0.0;
+        }
 
-        $coilIdr = round($newCoil * $rate, 2);
-        $sheetIdr = round($newSheet * $rate, 2);
+        $coilIdr = $newCoil > 0 ? round($newCoil * $rate, 2) : (float) ($rec->coil_price_idr ?? 0);
+        $sheetIdr = $newSheet > 0 ? round($newSheet * $rate, 2) : (float) ($rec->sheet_price_idr ?? 0);
         $steelRate = (float) ($sheetIdr > 0 ? $sheetIdr : $coilIdr);
 
         $thk = (float) ($rec->double_thickness ?? 0);
@@ -376,7 +392,7 @@ class QuarterlyPullHelper
 
         $berat = (float) ($rec->berat ?? 0);
         if ($berat <= 0.0 && $thk > 0 && $wide > 0 && $pitch > 0) {
-            $berat = round(($thk * $wide * $pitch * 7.85) / (1000000 * $yieldRate), 4);
+            $berat = round(($thk * $wide * $pitch * 7.85) / (1000000 * $yieldRate), 7);
         }
 
         $grossMat = $berat > 0 && $steelRate > 0 ? round($berat * $steelRate, 2) : 0.0;
@@ -433,11 +449,20 @@ class QuarterlyPullHelper
         $baseWire = (float) ($rec->wire_price_usd_kg ?: ($baseCoil > 0 ? $baseCoil : 1.66));
 
         $hasExplicitWire = $overrideWireUsd !== null && $overrideWireUsd > 0;
-        $newWireUsd = $hasExplicitWire ? round($overrideWireUsd, 4) : round($baseWire + $appliedKg, 4);
-        $deltaWireUsd = $hasExplicitWire ? round($newWireUsd - $baseWire, 4) : $appliedKg;
+        $isUnchangedWire = $hasExplicitWire && abs($overrideWireUsd - $baseWire) < 0.00001;
 
-        $newCoil = $baseCoil > 0 ? round($baseCoil + $deltaWireUsd, 4) : 0.0;
-        $newSheet = $baseSheet > 0 ? round($baseSheet + $deltaWireUsd, 4) : 0.0;
+        if ($isUnchangedWire) {
+            $newWireUsd = $baseWire;
+            $deltaWireUsd = 0.0;
+            $newCoil = $baseCoil;
+            $newSheet = $baseSheet;
+        } else {
+            $newWireUsd = $hasExplicitWire ? round($overrideWireUsd, 4) : round($baseWire + $appliedKg, 4);
+            $deltaWireUsd = $hasExplicitWire ? round($newWireUsd - $baseWire, 4) : $appliedKg;
+
+            $newCoil = $baseCoil > 0 ? round($baseCoil + $deltaWireUsd, 4) : 0.0;
+            $newSheet = $baseSheet > 0 ? round($baseSheet + $deltaWireUsd, 4) : 0.0;
+        }
 
         $coilIdr = round($newCoil * $rate, 2);
         $sheetIdr = round($newSheet * $rate, 2);
@@ -471,10 +496,15 @@ class QuarterlyPullHelper
         );
 
         $subtotal = round($matTotal + $procTotal, 4);
+        $ohSuppliedPct = (float) ($rec->overhead_supplied_percent ?? 0);
+        $ohSuppliedCost = round(($ohSuppliedPct / 100) * $subtotal, 4);
         $ohSelfPct = (float) ($rec->overhead_self_percent ?? 14.3);
         $ohSelfCost = round(($ohSelfPct / 100) * $subtotal, 4);
+        $transCost = (float) ($rec->transportation_cost ?? 0);
+        $costDown = (float) ($rec->cost_down ?? 0);
+        $partCostExcl = round($subtotal + $ohSuppliedCost + $ohSelfCost + $transCost + $costDown, 4);
         $toolingDepr = (float) ($rec->tooling_depreciation ?? 0);
-        $partCost = round($subtotal + $ohSelfCost + $toolingDepr, 4);
+        $partCost = round($partCostExcl + $toolingDepr, 4);
 
         return [
             'base_coil' => $baseCoil,
@@ -493,7 +523,11 @@ class QuarterlyPullHelper
             'plating_cost' => $platingCost,
             'process_total' => $procTotal,
             'subtotal' => $subtotal,
+            'overhead_supplied_cost' => $ohSuppliedCost,
             'overhead_self_cost' => $ohSelfCost,
+            'transportation_cost' => $transCost,
+            'cost_down' => $costDown,
+            'part_cost_excluding_tooling' => $partCostExcl,
             'part_cost' => $partCost,
             'old_part_cost' => (float) ($rec->part_cost ?? 0),
             'old_rate' => $oldRate,

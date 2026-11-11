@@ -40,37 +40,45 @@ class CreateStampingPart extends CreateRecord
         $year = (int) ($raw['year'] ?? date('Y'));
         $supplierId = $raw['supplier_id'] ?? null;
         $spec = $raw['steel_spec'] ?? null;
+        $partNumber = $raw['part_number'] ?? null;
 
-        $prevData = StampingPart::findPreviousQuarterData($quarter, $year, $supplierId ? (int) $supplierId : null, $spec);
+        $prevData = StampingPart::findPreviousQuarterData($quarter, $year, $supplierId ? (int) $supplierId : null, $spec, $partNumber);
         if ($prevData) {
             foreach ([
-                'part_number', 'part_name', 'model_name', 'monthly_volume',
-                'wide', 'pitch', 'yield_rate', 'steel_spec', 'double_thickness',
-                'size', 'berat', 'scrap_weight', 'scrap_price_per_kg',
-                'process_name', 'process_man_hour', 'process_charge',
+                'part_id', 'part_number', 'part_no_to_compare', 'part_name', 'model_name',
+                'monthly_volume', 'quotation_date', 'wide', 'pitch', 'yield_rate',
+                'steel_spec', 'double_thickness', 'size', 'berat', 'scrap_weight',
+                'scrap_price_per_kg', 'process_name', 'process_man_hour', 'process_charge',
                 'overhead_supplied_percent', 'overhead_self_percent',
                 'gap_steel_usd', 'gap_steel_kg_usd', 'coil_price', 'sheet_price',
                 'drawing_reference', 'eci_number', 'tooling_depreciation',
-                'part_no_to_compare', 'transportation_cost', 'packing_cost',
+                'transportation_cost', 'packing_cost', 'exchange_rate_fluctuation',
                 'comments', 'remarks', 'alteration', 'etc_contents', 'tooling_details',
+                'notes', 'status',
             ] as $field) {
-                if ((! isset($raw[$field]) || $raw[$field] === '' || $raw[$field] === null) && isset($prevData[$field])) {
+                if (array_key_exists($field, $prevData) && $prevData[$field] !== null) {
                     $raw[$field] = $prevData[$field];
                 }
             }
 
-            if (empty($raw['supplier_id']) && ! empty($prevData['supplier_id'])) {
+            if (! empty($prevData['supplier_id'])) {
                 $raw['supplier_id'] = $prevData['supplier_id'];
                 $raw['vendor_code'] = $prevData['vendor_code'];
                 $raw['supplier_name'] = $prevData['supplier_name'];
             }
 
-            $rate = (float) ($raw['exchange_rate'] ?? $prevData['exchange_rate'] ?? 16000);
-            $raw['exchange_rate'] = $rate;
-            $raw['coil_price_idr'] = round((float) ($raw['coil_price'] ?? 0) * $rate, 2);
-            $raw['sheet_price_idr'] = round((float) ($raw['sheet_price'] ?? 0) * $rate, 2);
+            $rawRate = ! empty($prevData['exchange_rate']) ? $prevData['exchange_rate'] : ($raw['exchange_rate'] ?? 16000);
+            $rate = (float) $rawRate;
+            $raw['exchange_rate'] = QuarterlyPullHelper::normalizeRate($rawRate) ?? 0;
 
-            $steelRate = (float) ($raw['sheet_price_idr'] ?: $raw['coil_price_idr']);
+            $coilUsd = (float) ($raw['coil_price'] ?? 0);
+            $sheetUsd = (float) ($raw['sheet_price'] ?? 0);
+            $raw['coil_price_idr'] = $coilUsd > 0 && $rate > 0 ? round($coilUsd * $rate, 2) : (float) ($prevData['coil_price_idr'] ?? 0);
+            $raw['sheet_price_idr'] = $sheetUsd > 0 && $rate > 0 ? round($sheetUsd * $rate, 2) : (float) ($prevData['sheet_price_idr'] ?? 0);
+
+            $coilIdrVal = (float) ($raw['coil_price_idr'] ?? 0);
+            $sheetIdrVal = (float) ($raw['sheet_price_idr'] ?? 0);
+            $steelRate = $sheetIdrVal > 0 ? $sheetIdrVal : $coilIdrVal;
             $thk = (float) ($raw['double_thickness'] ?? $prevData['double_thickness'] ?? 0);
             $wide = (float) ($raw['wide'] ?? $prevData['wide'] ?? 0);
             $pitch = (float) ($raw['pitch'] ?? $prevData['pitch'] ?? 0);
@@ -79,7 +87,7 @@ class CreateStampingPart extends CreateRecord
 
             $berat = (float) ($raw['berat'] ?? $prevData['berat'] ?? 0);
             if ($berat <= 0.0 && $thk > 0 && $wide > 0 && $pitch > 0) {
-                $berat = round(($thk * $wide * $pitch * 7.85) / (1000000 * $yieldRate), 4);
+                $berat = round(($thk * $wide * $pitch * 7.85) / (1000000 * $yieldRate), 7);
                 $raw['berat'] = $berat;
             }
 
@@ -108,7 +116,11 @@ class CreateStampingPart extends CreateRecord
             $ohSelf = round(((float) ($raw['overhead_self_percent'] ?? 4) / 100) * $matTotal, 2);
             $raw['overhead_self_cost'] = $ohSelf;
 
-            $raw['part_cost'] = round($subtotal + $ohSupp + $ohSelf, 4);
+            $transCost = (float) ($raw['transportation_cost'] ?? 0);
+            $packCost = (float) ($raw['packing_cost'] ?? 0);
+            $partCostExcl = round($subtotal + $ohSupp + $ohSelf + $transCost + $packCost, 4);
+            $raw['part_cost_excluding_tooling'] = $partCostExcl;
+            $raw['part_cost'] = round($partCostExcl + (float) ($raw['tooling_depreciation'] ?? 0), 4);
 
             $this->form->fill($raw);
         }
@@ -195,8 +207,8 @@ class CreateStampingPart extends CreateRecord
                                     if ($sheetVal > 0) {
                                         $set('sheet_price', $sheetVal);
                                     }
-                                    if (empty($get('exchange_rate')) && $rec->exchange_rate) {
-                                        $set('exchange_rate', (int) round((float) $rec->exchange_rate));
+                                    if ($rec->exchange_rate && (float) $rec->exchange_rate > 0) {
+                                        $set('exchange_rate', QuarterlyPullHelper::normalizeRate($rec->exchange_rate));
                                     }
                                 }
                             }),
@@ -296,7 +308,8 @@ class CreateStampingPart extends CreateRecord
                     if (! $record) {
                         $supplierId = $raw['supplier_id'] ?? null;
                         $spec = $raw['steel_spec'] ?? null;
-                        $prevData = StampingPart::findPreviousQuarterData($quarter, $year, $supplierId ? (int) $supplierId : null, $spec);
+                        $partNumber = $raw['part_number'] ?? null;
+                        $prevData = StampingPart::findPreviousQuarterData($quarter, $year, $supplierId ? (int) $supplierId : null, $spec, $partNumber);
                         if ($prevData && ($prevData['source'] ?? '') === 'StampingPart') {
                             $record = StampingPart::where('year', $prevData['prev_year'])
                                 ->where('quarter', $prevData['prev_quarter'])
@@ -308,25 +321,22 @@ class CreateStampingPart extends CreateRecord
 
                     if ($record) {
                         foreach ([
-                            'part_number', 'part_name', 'model_name', 'monthly_volume',
-                            'wide', 'pitch', 'yield_rate', 'steel_spec', 'double_thickness',
-                            'size', 'berat', 'scrap_weight', 'scrap_price_per_kg',
+                            'part_id', 'supplier_id', 'vendor_code', 'supplier_name',
+                            'part_number', 'part_no_to_compare', 'part_name', 'model_name',
+                            'monthly_volume', 'wide', 'pitch', 'yield_rate', 'steel_spec',
+                            'double_thickness', 'size', 'berat', 'scrap_weight', 'scrap_price_per_kg',
                             'process_name', 'process_man_hour', 'process_charge',
                             'overhead_supplied_percent', 'overhead_self_percent',
                             'drawing_reference', 'eci_number', 'tooling_depreciation',
-                            'part_no_to_compare', 'transportation_cost', 'packing_cost',
+                            'transportation_cost', 'packing_cost', 'exchange_rate_fluctuation',
                             'comments', 'remarks', 'alteration', 'etc_contents', 'tooling_details',
+                            'notes',
                         ] as $field) {
-                            if (isset($record->{$field})) {
-                                $raw[$field] = $record->{$field};
-                            }
+                            $raw[$field] = $record->{$field};
                         }
 
-                        if (! empty($record->supplier_id)) {
-                            $raw['supplier_id'] = $record->supplier_id;
-                            $raw['vendor_code'] = $record->vendor_code;
-                            $raw['supplier_name'] = $record->supplier_name;
-                        }
+                        $raw['quotation_date'] = $record->quotation_date?->format('Y-m-d');
+                        $raw['status'] = $record->status ?: 'Active';
 
                         $gap = QuarterlyPullHelper::resolveSteelGap(StampingPart::determineSteelType($record->steel_spec), $hrMt, $crMt);
                         $rate = QuarterlyPullHelper::resolveAppliedRate($data['exchange_rate'] ?? null, (float) $record->exchange_rate, (float) ($raw['exchange_rate'] ?? 0));
@@ -338,6 +348,11 @@ class CreateStampingPart extends CreateRecord
                         $raw['prev_record_found'] = true;
                         $raw['prev_quarter_label'] = "{$record->quarter} {$record->year}";
 
+                        $oldRate = (float) ($record->exchange_rate ?? 0);
+                        if ($oldRate > 0 && $rate > 0 && abs($rate - $oldRate) > 0.0001) {
+                            $raw['exchange_rate_fluctuation'] = round($rate / $oldRate, 6);
+                        }
+
                         $raw['hr_steel_usd'] = $hrMt;
                         $raw['cr_steel_usd'] = $crMt;
                         $raw['gap_steel_usd'] = $gap['applied_mt'];
@@ -346,7 +361,7 @@ class CreateStampingPart extends CreateRecord
 
                         $raw['coil_price'] = $sim['new_coil'];
                         $raw['sheet_price'] = $sim['new_sheet'];
-                        $raw['exchange_rate'] = $rate;
+                        $raw['exchange_rate'] = QuarterlyPullHelper::normalizeRate($rate) ?? 0;
                         $raw['coil_price_idr'] = $sim['coil_price_idr'];
                         $raw['sheet_price_idr'] = $sim['sheet_price_idr'];
                         $raw['berat'] = $sim['berat'];
@@ -408,9 +423,12 @@ class CreateStampingPart extends CreateRecord
         $gap = QuarterlyPullHelper::resolveSteelGap(StampingPart::determineSteelType($steel->steel_spec), $hrMt, $crMt);
         $rate = QuarterlyPullHelper::resolveAppliedRate($modalRate, (float) $steel->exchange_rate, (float) ($raw['exchange_rate'] ?? 0));
         $basePrimary = (float) ($steel->sheet_price > 0 ? $steel->sheet_price : $steel->coil_price);
-        $appliedKg = $sheetOverride !== null && $basePrimary > 0
-            ? round($sheetOverride - $basePrimary, 4)
-            : $gap['applied_kg'];
+        $isUnchangedOverride = $sheetOverride !== null && $sheetOverride > 0 && abs($sheetOverride - $basePrimary) < 0.00001;
+        $appliedKg = $isUnchangedOverride
+            ? 0.0
+            : ($sheetOverride !== null && $basePrimary > 0
+                ? round($sheetOverride - $basePrimary, 4)
+                : $gap['applied_kg']);
         $sim = QuarterlyPullHelper::computeMaterialSteelSimulation($steel, $rate, $appliedKg);
 
         $raw['steel_spec'] = $steel->steel_spec;
@@ -432,8 +450,8 @@ class CreateStampingPart extends CreateRecord
         $raw['gap_steel_kg_usd'] = $appliedKg;
         $raw['fluktuasi_jfe'] = $appliedKg;
 
-        $raw['coil_price'] = $sim['new_coil'];
-        $raw['sheet_price'] = $sheetOverride ?? $sim['new_sheet'];
+        $raw['coil_price'] = $isUnchangedOverride ? (float) ($steel->coil_price ?? 0) : $sim['new_coil'];
+        $raw['sheet_price'] = $isUnchangedOverride ? (float) ($steel->sheet_price ?? 0) : ($sheetOverride ?? $sim['new_sheet']);
         $raw['exchange_rate'] = $rate;
         $raw['coil_price_idr'] = round((float) $raw['coil_price'] * $rate, 2);
         $raw['sheet_price_idr'] = round((float) $raw['sheet_price'] * $rate, 2);

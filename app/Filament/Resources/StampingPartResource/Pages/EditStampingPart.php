@@ -52,6 +52,10 @@ class EditStampingPart extends EditRecord
 
     protected function getRedirectUrl(): string
     {
+        if ($this->record && $this->record->year) {
+            return static::getResource()::getUrl('index', ['selectedYear' => (string) $this->record->year]);
+        }
+
         return static::getResource()::getUrl('index');
     }
     

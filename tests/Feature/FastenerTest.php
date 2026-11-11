@@ -566,6 +566,92 @@ class FastenerTest extends TestCase
         ]);
     }
 
+    public function test_fastener_pull_previous_copies_all_sections_one_to_three_identically(): void
+    {
+        $this->actingAs($this->admin);
+
+        $q1 = Fastener::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'part_number' => '90041-19960',
+            'old_part_number' => '90041-19959',
+            'part_name' => 'BOLT, W/WASHER CUSTOM',
+            'model_name' => 'D99Z',
+            'monthly_volume' => 35000,
+            'drawing_reference' => 'Official Dwg R3',
+            'eci_number' => 'ECI-FAST-09',
+            'steel_spec' => 'SWCH-45K',
+            'double_thickness' => '8.0',
+            'diameter' => '8.0',
+            'wire_spec' => 'CUSTOM WIRE SPEC',
+            'gross_weight_gr' => 5.5,
+            'nett_weight_gr' => 5.0,
+            'wire_price_usd_kg' => 2.15,
+            'coil_price' => 2.15,
+            'material_control_percent' => 7.0,
+            'washer_price' => 250,
+            'washer_weight_gr' => 4.0,
+            'heading_cost' => 55,
+            'rolling_cost' => 85,
+            'washing_cost_kg' => 600,
+            'plating_cost_kg' => 12000,
+            'inspection_cost' => 10,
+            'packing_cost' => 6,
+            'overhead_self_percent' => 15.0,
+            'tooling_depreciation' => 20.0,
+            'tooling_details' => [
+                ['contents' => 'HEADING DIE', 'total_cost_krp' => 15000, 'monthly_volume' => 35000, 'depreciation_per_pc' => 20],
+            ],
+            'exchange_rate' => 17150.0,
+            'notes' => 'Nitto Alam agreement 2026',
+        ]);
+
+        Livewire::test(CreateFastener::class)
+            ->mountAction('pull_previous')
+            ->set('mountedActionsData.0.source_year', 2026)
+            ->set('mountedActionsData.0.source_quarter', 'Q1')
+            ->set('mountedActionsData.0.target_year', 2026)
+            ->set('mountedActionsData.0.target_quarter', 'Q2')
+            ->set('mountedActionsData.0.source_record_id', 'fastener:'.$q1->id)
+            ->assertSet('mountedActionsData.0.exchange_rate', 17150)
+            ->assertSet('mountedActionsData.0.wire_price_usd_kg', 2.15)
+            ->callMountedAction()
+            // Section 1
+            ->assertSet('data.supplier_id', $this->supplier->id)
+            ->assertSet('data.part_number', '90041-19960')
+            ->assertSet('data.old_part_number', '90041-19959')
+            ->assertSet('data.part_name', 'BOLT, W/WASHER CUSTOM')
+            ->assertSet('data.model_name', 'D99Z')
+            ->assertSet('data.monthly_volume', 35000)
+            ->assertSet('data.drawing_reference', 'Official Dwg R3')
+            ->assertSet('data.eci_number', 'ECI-FAST-09')
+            ->assertSet('data.steel_spec', 'SWCH-45K')
+            ->assertSet('data.double_thickness', '8.0')
+            ->assertSet('data.wire_spec', 'CUSTOM WIRE SPEC')
+            // Section 2
+            ->assertSet('data.exchange_rate', 17150.0)
+            ->assertSet('data.wire_price_usd_kg', 2.15)
+            ->assertSet('data.wire_price_idr_kg', (float) $q1->wire_price_idr_kg)
+            // Section 3
+            ->assertSet('data.gross_weight_gr', 5.5)
+            ->assertSet('data.nett_weight_gr', 5.0)
+            ->assertSet('data.material_control_percent', 7.0)
+            ->assertSet('data.washer_price', 250.0)
+            ->assertSet('data.washer_weight_gr', 4.0)
+            ->assertSet('data.heading_cost', 55.0)
+            ->assertSet('data.rolling_cost', 85.0)
+            ->assertSet('data.washing_cost_kg', 600.0)
+            ->assertSet('data.plating_cost_kg', 12000.0)
+            ->assertSet('data.inspection_cost', 10.0)
+            ->assertSet('data.packing_cost', 6.0)
+            ->assertSet('data.overhead_self_percent', 15.0)
+            ->assertSet('data.tooling_depreciation', 20.0)
+            ->assertSet('data.part_cost', (float) $q1->part_cost);
+    }
+
     public function test_fastener_excel_template_and_export_download(): void
     {
         $fastener = Fastener::create([
@@ -632,5 +718,202 @@ class FastenerTest extends TestCase
             ->assertSuccessful();
 
         $this->assertDatabaseMissing('fasteners', ['id' => $fastener->id]);
+    }
+
+    public function test_fastener_book2_excel_q1_to_q4_2026_and_extended_breakdown_formulas(): void
+    {
+        // Verifikasi Q1 2026 Book2.xlsx (5. 90041-19960): Kurs 16465, Wire 2.02 -> Rp 677,20
+        $q1 = Fastener::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => 'PT. NITTO ALAM INDONESIA',
+            'part_number' => '90041-19960',
+            'part_name' => 'BOLT,W/WASHER',
+            'steel_spec' => 'SWCH-45K',
+            'wire_spec' => 'WIRE OF RIVET [SWCH-45K](TAIWAN)',
+            'nett_weight_gr' => 4.4,
+            'gross_weight_gr' => 0, // Otomatis terhitung Nett * 1.1 = 4.84
+            'wire_price_usd_kg' => 2.02,
+            'material_control_percent' => 5,
+            'washer_price' => 198,
+            'washer_weight_gr' => 4.5,
+            'heading_cost' => 48,
+            'rolling_cost' => 76,
+            'washing_cost_kg' => 500,
+            'plating_cost_kg' => 10000,
+            'inspection_cost' => 5,
+            'packing_cost' => 3,
+            'overhead_self_percent' => 14.3,
+            'old_exchange_rate' => 16321,
+            'exchange_rate' => 16465,
+        ]);
+
+        $this->assertEqualsWithDelta(4.84, (float) $q1->gross_weight_gr, 0.0001);
+        $this->assertEquals(33259.30, (float) $q1->wire_price_idr_kg);
+        $this->assertEqualsWithDelta(160.9750, (float) $q1->wire_price_pc, 0.001);
+        $this->assertEqualsWithDelta(367.0238, (float) $q1->material_total, 0.002);
+        $this->assertEqualsWithDelta(225.45, (float) $q1->process_total, 0.001);
+        $this->assertEqualsWithDelta(592.4738, (float) $q1->subtotal, 0.002);
+        $this->assertEqualsWithDelta(84.7238, (float) $q1->overhead_self_cost, 0.002);
+        $this->assertEqualsWithDelta(677.1976, (float) $q1->part_cost_excluding_tooling, 0.01);
+        $this->assertEqualsWithDelta(677.1976, (float) $q1->part_cost, 0.01);
+
+        // Uji komponen tambahan (4) OH Supplied, (6) Transport, (7) Cost Down, dan update Nett -> Gross auto * 1.1
+        $q1->update([
+            'nett_weight_gr' => 5.0,
+            'overhead_supplied_percent' => 5.0,
+            'transportation_cost' => 12.0,
+            'cost_down' => -7.0,
+            'tooling_depreciation' => 10.0,
+        ]);
+
+        $q1->refresh();
+        $this->assertEqualsWithDelta(5.5, (float) $q1->gross_weight_gr, 0.0001);
+        $this->assertEqualsWithDelta((0.05 * (float) $q1->subtotal), (float) $q1->overhead_supplied_cost, 0.01);
+        $this->assertEqualsWithDelta(
+            (float) $q1->subtotal + (float) $q1->overhead_supplied_cost + (float) $q1->overhead_self_cost + 12.0 - 7.0,
+            (float) $q1->part_cost_excluding_tooling,
+            0.01
+        );
+        $this->assertEqualsWithDelta((float) $q1->part_cost_excluding_tooling + 10.0, (float) $q1->part_cost, 0.01);
+    }
+
+    public function test_fastener_direct_idr_input_and_part_number_quarter_lookup(): void
+    {
+        Fastener::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'part_number' => 'PART-A',
+            'steel_spec' => 'SWCH-45K',
+            'wire_price_usd_kg' => 1.80,
+            'exchange_rate' => 16000,
+        ]);
+
+        Fastener::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'part_number' => 'PART-B',
+            'steel_spec' => 'SWCH-45K',
+            'wire_price_usd_kg' => 2.50,
+            'exchange_rate' => 16000,
+        ]);
+
+        $lookupA = Fastener::findPreviousQuarterData('Q2', 2026, $this->supplier->id, 'SWCH-45K', 'PART-A');
+        $this->assertNotNull($lookupA);
+        $this->assertEquals('PART-A', $lookupA['part_number']);
+        $this->assertEquals(1.80, $lookupA['wire_price_usd_kg']);
+
+        // Input harga IDR langsung tanpa USD
+        $directIdr = Fastener::create([
+            'year' => 2026,
+            'quarter' => 'Q2',
+            'supplier_id' => $this->supplier->id,
+            'part_number' => 'DIRECT-IDR-01',
+            'steel_spec' => 'SWCH-45K',
+            'exchange_rate' => 0,
+            'wire_price_usd_kg' => 0,
+            'wire_price_idr_kg' => 35000.00,
+            'nett_weight_gr' => 4.0,
+            'gross_weight_gr' => 4.4,
+        ]);
+
+        $this->assertEquals(35000.00, (float) $directIdr->wire_price_idr_kg);
+        $this->assertEqualsWithDelta(154.0, (float) $directIdr->wire_price_pc, 0.01);
+    }
+
+    public function test_excel_import_fastener_preserves_all_fastener_fields(): void
+    {
+        $csvContent = implode("\n", [
+            'Kuartal,Tahun,Supplier,Part Number,Old Part No.,Part Name,Model,Monthly Volume,Wire Spec,Nett Weight,Gross Weight,Old Rate,Kurs USD,Wire ($/kg),Mat Control (%),Washer Price,Washer Weight,Heading Cost,Rolling Cost,Washing Cost/kg,Plating Cost/kg,Inspection Cost,Packing Cost,OH Supplied %,OH Self %,Transportation Cost,Cost Down,Comments,Remarks',
+            'Q1,2026,PT. NITTO ALAM INDONESIA,90041-19960,90041-OLD,BOLT W/WASHER,D26A,20000,WIRE OF RIVET [SWCH-45K](TAIWAN),4.4,4.84,16321,16465,2.02,5,198,4.5,48,76,500,10000,5,3,0,14.3,0,-5,Nitto Quote Q1,Kurs BoI',
+        ]);
+
+        $tempPath = tempnam(sys_get_temp_dir(), 'fastener_full_import').'.csv';
+        file_put_contents($tempPath, $csvContent);
+
+        $result = ExcelImportService::importFastener($tempPath, ['year' => 2026, 'quarter' => 'Q1']);
+        @unlink($tempPath);
+
+        $this->assertEquals(1, $result['imported']);
+        $imported = Fastener::where('part_number', '90041-19960')->where('quarter', 'Q1')->where('year', 2026)->first();
+        $this->assertNotNull($imported);
+        $this->assertEquals('90041-OLD', $imported->old_part_number);
+        $this->assertEquals(20000, (int) $imported->monthly_volume);
+        $this->assertEquals('WIRE OF RIVET [SWCH-45K](TAIWAN)', $imported->wire_spec);
+        $this->assertEquals(2.02, (float) $imported->wire_price_usd_kg);
+        $this->assertEquals(14.3, (float) $imported->overhead_self_percent);
+        $this->assertEquals(-5.0, (float) $imported->cost_down);
+        $this->assertEquals(16321.0, (float) $imported->old_exchange_rate);
+        $this->assertEquals('Nitto Quote Q1', $imported->comments);
+        $this->assertEquals('Kurs BoI', $imported->remarks);
+        $this->assertEqualsWithDelta(672.1976, (float) $imported->part_cost, 0.02);
+    }
+
+    public function test_fastener_sheet_modal_renders_complete_breakdown_and_safe_empty_part_number(): void
+    {
+        // Dua record dengan part_number kosong TIDAK boleh saling dibandingkan di modal
+        $emptyPart = Fastener::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'part_number' => null,
+            'steel_spec' => 'SWMB',
+            'overhead_self_percent' => 15.0,
+        ]);
+        Fastener::create([
+            'year' => 2026,
+            'quarter' => 'Q2',
+            'supplier_id' => $this->supplier->id,
+            'part_number' => null,
+            'steel_spec' => 'SWRCH10A',
+            'overhead_self_percent' => 14.3,
+        ]);
+
+        $emptyHtml = view('filament.resources.fasteners.sheet-modal', ['record' => $emptyPart])->render();
+        $this->assertStringContainsString('Belum ada data kuartal pembanding', $emptyHtml);
+
+        // Dua record dengan part_number sama dan beda O/H Self % (15% vs 14.3%), footer & heading die total
+        $q1 = Fastener::create([
+            'year' => 2025,
+            'quarter' => 'Q4',
+            'supplier_id' => $this->supplier->id,
+            'part_number' => '90041-MODAL',
+            'part_name' => 'BOLT MODAL TEST',
+            'steel_spec' => 'SWCH-45K',
+            'overhead_self_percent' => 15.0,
+            'exchange_rate' => 14752,
+        ]);
+        $q2 = Fastener::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'part_number' => '90041-MODAL',
+            'part_name' => 'BOLT MODAL TEST',
+            'steel_spec' => 'SWCH-45K',
+            'overhead_self_percent' => 14.3,
+            'old_exchange_rate' => 14752,
+            'exchange_rate' => 16465,
+            'transportation_cost' => 10,
+            'cost_down' => -5,
+            'comments' => 'Valid Q1 Comment',
+            'remarks' => 'Valid Q1 Remark',
+            'tooling_details' => [
+                ['contents' => 'Heading Die', 'total_cost_krp' => 20000, 'monthly_volume' => 20000, 'depreciation_per_pc' => 10],
+            ],
+        ]);
+
+        $modalHtml = view('filament.resources.fasteners.sheet-modal', ['record' => $q2])->render();
+        $this->assertStringContainsString('15% ➔ 14.3%', $modalHtml);
+        $this->assertStringContainsString('(4) : O/H &amp; Profit supplied portion', $modalHtml);
+        $this->assertStringContainsString('(6) : Transportation or others', $modalHtml);
+        $this->assertStringContainsString('(7) : Cost Down', $modalHtml);
+        $this->assertStringContainsString('(8) : Part Cost (excluding tooling cost)', $modalHtml);
+        $this->assertStringContainsString('Total Tooling', $modalHtml);
+        $this->assertStringContainsString('Valid Q1 Comment', $modalHtml);
+        $this->assertStringContainsString('Valid Q1 Remark', $modalHtml);
     }
 }

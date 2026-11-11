@@ -8,36 +8,60 @@
         }
 
         $r = (float) ($model->exchange_rate ?? 16000);
+        $oldR = (float) ($model->old_exchange_rate ?? 0);
         $wUsd = (float) ($model->wire_price_usd_kg ?? 0);
-        $wIdr = (float) ($model->wire_price_idr_kg ?? round($wUsd * $r, 2));
+        $wIdrRaw = (float) ($model->wire_price_idr_kg ?? 0);
+        $wIdr = $wIdrRaw > 0 ? $wIdrRaw : round($wUsd * $r, 2);
         $grossW = (float) ($model->gross_weight_gr ?? 0);
         $nettW = (float) ($model->nett_weight_gr ?? 0);
         $washerW = (float) ($model->washer_weight_gr ?? 0);
-        $wCostPc = (float) ($model->wire_price_pc ?? round(($grossW / 1000) * $wIdr, 2));
-        $matCtrlPct = (float) ($model->material_control_percent ?? 5);
-        $matCtrlCost = (float) ($model->material_control_cost ?? round(($wCostPc * $matCtrlPct) / 100, 2));
+        $wCostPc = $model->wire_price_pc !== null && (float) $model->wire_price_pc > 0
+            ? (float) $model->wire_price_pc
+            : round(($grossW / 1000) * $wIdr, 4);
+        $matCtrlPct = $model->material_control_percent !== null && $model->material_control_percent !== ''
+            ? (float) $model->material_control_percent
+            : 5.0;
+        $matCtrlCost = $model->material_control_cost !== null && $model->material_control_cost !== ''
+            ? (float) $model->material_control_cost
+            : round(($wCostPc * $matCtrlPct) / 100, 4);
         $washerPrice = (float) ($model->washer_price ?? 0);
-        $matTot = (float) ($model->material_total ?? round($wCostPc + $matCtrlCost + $washerPrice, 2));
+        $matTot = $model->material_total !== null && (float) $model->material_total > 0
+            ? (float) $model->material_total
+            : round($wCostPc + $matCtrlCost + $washerPrice, 4);
 
-        $heading = (float) ($model->heading_cost ?? 48);
-        $rolling = (float) ($model->rolling_cost ?? 76);
-        $wash = (float) ($model->washing_cost ?? 0);
-        $plate = (float) ($model->plating_cost ?? 0);
-        $inspect = (float) ($model->inspection_cost ?? 5);
-        $pack = (float) ($model->packing_cost ?? 3);
-        $procTot = (float) ($model->process_total ?? round($heading + $rolling + $wash + $plate + $inspect + $pack, 2));
+        $heading = $model->heading_cost !== null && $model->heading_cost !== '' ? (float) $model->heading_cost : 48.0;
+        $rolling = $model->rolling_cost !== null && $model->rolling_cost !== '' ? (float) $model->rolling_cost : 76.0;
+        $washKg = $model->washing_cost_kg !== null && $model->washing_cost_kg !== '' ? (float) $model->washing_cost_kg : 500.0;
+        $wash = $model->washing_cost !== null && $model->washing_cost !== '' ? (float) $model->washing_cost : round((($nettW + $washerW) / 1000) * $washKg, 4);
+        $plateKg = $model->plating_cost_kg !== null && $model->plating_cost_kg !== '' ? (float) $model->plating_cost_kg : 10000.0;
+        $plate = $model->plating_cost !== null && $model->plating_cost !== '' ? (float) $model->plating_cost : round((($nettW + $washerW) / 1000) * $plateKg, 4);
+        $inspect = $model->inspection_cost !== null && $model->inspection_cost !== '' ? (float) $model->inspection_cost : 5.0;
+        $pack = $model->packing_cost !== null && $model->packing_cost !== '' ? (float) $model->packing_cost : 3.0;
+        $procTot = $model->process_total !== null && $model->process_total !== ''
+            ? (float) $model->process_total
+            : round($heading + $rolling + $wash + $plate + $inspect + $pack, 4);
 
-        $sub = (float) ($model->subtotal ?? round($matTot + $procTot, 2));
+        $sub = $model->subtotal !== null && $model->subtotal !== '' ? (float) $model->subtotal : round($matTot + $procTot, 4);
+        $ohSuppliedPct = $model->overhead_supplied_percent !== null && $model->overhead_supplied_percent !== '' ? (float) $model->overhead_supplied_percent : 0.0;
+        $ohSupplied = $model->overhead_supplied_cost !== null && $model->overhead_supplied_cost !== '' ? (float) $model->overhead_supplied_cost : round(($sub * $ohSuppliedPct) / 100, 4);
         $ohSelfPct = $model->overhead_self_percent !== null && $model->overhead_self_percent !== '' ? (float) $model->overhead_self_percent : 14.3;
-        $ohSelf = (float) ($model->overhead_self_cost ?? round(($sub * $ohSelfPct) / 100, 2));
+        $ohSelf = $model->overhead_self_cost !== null && $model->overhead_self_cost !== '' ? (float) $model->overhead_self_cost : round(($sub * $ohSelfPct) / 100, 4);
+        $transCost = (float) ($model->transportation_cost ?? 0);
+        $costDown = (float) ($model->cost_down ?? 0);
+        $exclTooling = $model->part_cost_excluding_tooling !== null && (float) $model->part_cost_excluding_tooling != 0.0
+            ? (float) $model->part_cost_excluding_tooling
+            : round($sub + $ohSupplied + $ohSelf + $transCost + $costDown, 4);
         $tooling = (float) ($model->tooling_depreciation ?? 0);
-        $partCost = (float) ($model->part_cost ?? round($sub + $ohSelf + $tooling, 2));
+        $partCost = $model->part_cost !== null && (float) $model->part_cost != 0.0
+            ? (float) $model->part_cost
+            : round($exclTooling + $tooling, 4);
 
         return [
             'record' => $model,
             'year' => $model->year,
             'quarter' => $model->quarter,
             'rate' => $r,
+            'old_rate' => $oldR,
             'wire_price_usd' => $wUsd,
             'wire_price_idr' => $wIdr,
             'gross_weight' => $grossW,
@@ -51,15 +75,20 @@
             'heading_cost' => $heading,
             'rolling_cost' => $rolling,
             'washing_cost' => $wash,
-            'washing_cost_kg' => (float) ($model->washing_cost_kg ?: 500),
+            'washing_cost_kg' => $washKg,
             'plating_cost' => $plate,
-            'plating_cost_kg' => (float) ($model->plating_cost_kg ?: 10000),
+            'plating_cost_kg' => $plateKg,
             'inspection_cost' => $inspect,
             'packing_cost' => $pack,
             'process_total' => $procTot,
             'subtotal' => $sub,
+            'oh_supplied_pct' => $ohSuppliedPct,
+            'oh_supplied' => $ohSupplied,
             'oh_self_pct' => $ohSelfPct,
             'oh_self' => $ohSelf,
+            'trans_cost' => $transCost,
+            'cost_down' => $costDown,
+            'excl_tooling' => $exclTooling,
             'tooling' => $tooling,
             'part_cost' => $partCost,
         ];
@@ -72,10 +101,12 @@
     $scoreFn = fn ($y, $q) => ((int) $y * 10) + $qNum($q);
     $currentScore = $scoreFn($record->year, $record->quarter);
 
-    // Cari seluruh record lain untuk part_number yang sama
-    $otherQuarters = Fastener::where('part_number', $record->part_number)
-        ->where('id', '!=', $record->id)
-        ->get();
+    // Cari seluruh record lain untuk part_number yang sama (jika part_number tersedia)
+    $otherQuarters = ! empty($record->part_number)
+        ? Fastener::where('part_number', $record->part_number)
+            ->where('id', '!=', $record->id)
+            ->get()
+        : collect();
 
     // Kuartal sebelum kuartal berjalan (Earlier / Lama)
     $earlierQuarter = $otherQuarters->filter(fn ($q) => $scoreFn($q->year, $q->quarter) < $currentScore)
@@ -201,23 +232,35 @@
             <div class="rounded-lg bg-gray-100 p-3 border border-gray-300 dark:bg-gray-800 dark:border-gray-700">
                 <span class="text-[11px] font-bold uppercase text-gray-700 dark:text-gray-300 block">Part Name</span>
                 <span class="font-black text-gray-950 dark:text-white text-sm mt-0.5 truncate block" title="{{ $record->part_name }}">{{ $record->part_name ?: '-' }}</span>
+                @if($record->drawing_reference || $record->eci_number)
+                    <span class="text-[10px] text-gray-600 dark:text-gray-400 font-semibold block mt-0.5 truncate">{{ $record->drawing_reference }}{{ $record->eci_number ? " | ECI: {$record->eci_number}" : '' }}</span>
+                @endif
             </div>
             <div class="rounded-lg bg-gray-100 p-3 border border-gray-300 dark:bg-gray-800 dark:border-gray-700">
-                <span class="text-[11px] font-bold uppercase text-gray-700 dark:text-gray-300 block">Model & Vol</span>
-                <span class="font-black text-gray-950 dark:text-white text-sm mt-0.5 block">{{ $record->model_name ?: 'D26A' }} / {{ number_format($record->monthly_volume ?: 20000, 0, ',', '.') }} pcs/bln</span>
+                <span class="text-[11px] font-bold uppercase text-gray-700 dark:text-gray-300 block">Model &amp; Vol</span>
+                @php $mVol = $record->monthly_volume !== null && $record->monthly_volume !== '' ? (int) $record->monthly_volume : 20000; @endphp
+                <span class="font-black text-gray-950 dark:text-white text-sm mt-0.5 block">{{ $record->model_name ?: 'D26A' }} / {{ number_format($mVol, 0, ',', '.') }} pcs/bln</span>
+                @if($record->quotation_date)
+                    <span class="text-[10px] text-gray-600 dark:text-gray-400 font-semibold block mt-0.5">Tgl Qtn: {{ \Carbon\Carbon::parse($record->quotation_date)->format('d M Y') }}</span>
+                @endif
             </div>
             <div class="rounded-lg bg-gray-100 p-3 border border-gray-300 dark:bg-gray-800 dark:border-gray-700">
-                <span class="text-[11px] font-bold uppercase text-gray-700 dark:text-gray-300 block">Fluktuasi Kurs Acuan</span>
-                <div class="font-mono font-black text-gray-950 dark:text-white text-sm mt-0.5 flex items-baseline justify-between">
-                    <span>Rp {{ number_format($record->exchange_rate ?? 16000, 0, ',', '.') }}</span>
+                <span class="text-[11px] font-bold uppercase text-gray-700 dark:text-gray-300 block">Kurs (Old → New Rate)</span>
+                <div class="font-mono font-black text-gray-950 dark:text-white text-sm mt-0.5 flex items-baseline justify-between gap-1">
+                    <span>
+                        @if($record->old_exchange_rate && (float) $record->old_exchange_rate > 0)
+                            <span class="text-xs text-gray-500 dark:text-gray-400 font-bold">{{ number_format((float) $record->old_exchange_rate, 0, ',', '.') }} →</span>
+                        @endif
+                        Rp {{ number_format((float) ($record->exchange_rate ?? 16000), 0, ',', '.') }}
+                    </span>
                     @if($right && $left)
                         @php $rateDiff = $diffFn($right['rate'], $left['rate'], true, 0); @endphp
                         <span class="text-[11px] {{ $rateDiff['color'] }}">{{ $rateDiff['formatted'] }}</span>
                     @endif
                 </div>
-                @if($record->exchange_rate_fluctuation && (float)$record->exchange_rate_fluctuation != 1.0)
-                    <span class="text-[10px] text-gray-600 dark:text-gray-400 font-bold block mt-0.5">Exchg factor: {{ number_format((float) $record->exchange_rate_fluctuation, 6) }}</span>
-                @endif
+                <span class="text-[10px] text-gray-600 dark:text-gray-400 font-bold block mt-0.5">
+                    Exchg fluctuation: {{ number_format((float) ($record->exchange_rate_fluctuation ?: 1.0), 6) }}x
+                </span>
             </div>
         </div>
 
@@ -283,7 +326,12 @@
                             <span class="block text-[11px] text-gray-600 dark:text-gray-400 font-normal">Harga Kawat Dasar per Kilogram</span>
                         </td>
                         <td class="p-3 text-center font-mono">
-                            Gross: {{ number_format($left['gross_weight'], 2, ',', '.') }} gr | Nett: {{ number_format($left['nett_weight'], 2, ',', '.') }} gr
+                            @if($right && (abs($left['gross_weight'] - $right['gross_weight']) > 0.001 || abs($left['nett_weight'] - $right['nett_weight']) > 0.001))
+                                <div class="text-[11px]">Lama: G {{ number_format($left['gross_weight'], 2, ',', '.') }}g | N {{ number_format($left['nett_weight'], 2, ',', '.') }}g</div>
+                                <div class="text-[11px] font-bold text-blue-700 dark:text-blue-300">Baru: G {{ number_format($right['gross_weight'], 2, ',', '.') }}g | N {{ number_format($right['nett_weight'], 2, ',', '.') }}g</div>
+                            @else
+                                Gross: {{ number_format($left['gross_weight'], 2, ',', '.') }} gr | Nett: {{ number_format($left['nett_weight'], 2, ',', '.') }} gr
+                            @endif
                         </td>
                         <td class="p-3 text-right font-mono {{ $activeRecord === 'left' ? 'bg-amber-50/40 dark:bg-amber-950/20 font-bold' : 'bg-gray-50/50 dark:bg-gray-800/40' }}">
                             <div>$ {{ number_format($left['wire_price_usd'], 4) }} /kg</div>
@@ -310,7 +358,11 @@
                             <span class="block text-[11px] text-gray-600 dark:text-gray-400 font-normal">(Gross Weight / 1000) × Wire IDR/kg</span>
                         </td>
                         <td class="p-3 text-center font-mono text-gray-600 dark:text-gray-400">
-                            {{ number_format($left['gross_weight'], 2, ',', '.') }} gr / 1000
+                            @if($right && abs($left['gross_weight'] - $right['gross_weight']) > 0.001)
+                                {{ number_format($left['gross_weight'], 2, ',', '.') }}g ➔ {{ number_format($right['gross_weight'], 2, ',', '.') }}g / 1000
+                            @else
+                                {{ number_format($left['gross_weight'], 2, ',', '.') }} gr / 1000
+                            @endif
                         </td>
                         <td class="p-3 text-right font-mono {{ $activeRecord === 'left' ? 'bg-amber-50/40 dark:bg-amber-950/20 font-black' : 'bg-gray-50/50 dark:bg-gray-800/40 font-bold' }}">
                             Rp {{ number_format($left['wire_price_pc'], 2, ',', '.') }}
@@ -327,11 +379,15 @@
                     <!-- Baris 3: Material Control -->
                     <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                         <td class="p-3 font-bold text-gray-950 dark:text-white">
-                            e. Material Control ({{ $left['mat_ctrl_pct'] }}%)
-                            <span class="block text-[11px] text-gray-600 dark:text-gray-400 font-normal">{{ $left['mat_ctrl_pct'] }}% dari Biaya Kawat per piece</span>
+                            e. Material Control (@if($right && abs($left['mat_ctrl_pct'] - $right['mat_ctrl_pct']) > 0.01){{ $left['mat_ctrl_pct'] }}% ➔ {{ $right['mat_ctrl_pct'] }}%@else{{ $left['mat_ctrl_pct'] }}%@endif)
+                            <span class="block text-[11px] text-gray-600 dark:text-gray-400 font-normal">Persentase dari Biaya Kawat per piece</span>
                         </td>
                         <td class="p-3 text-center font-mono text-gray-600 dark:text-gray-400">
-                            {{ $left['mat_ctrl_pct'] }}%
+                            @if($right && abs($left['mat_ctrl_pct'] - $right['mat_ctrl_pct']) > 0.01)
+                                {{ $left['mat_ctrl_pct'] }}% ➔ {{ $right['mat_ctrl_pct'] }}%
+                            @else
+                                {{ $left['mat_ctrl_pct'] }}%
+                            @endif
                         </td>
                         <td class="p-3 text-right font-mono {{ $activeRecord === 'left' ? 'bg-amber-50/40 dark:bg-amber-950/20 font-black' : 'bg-gray-50/50 dark:bg-gray-800/40 font-bold' }}">
                             Rp {{ number_format($left['mat_ctrl_cost'], 2, ',', '.') }}
@@ -352,7 +408,11 @@
                             <span class="block text-[11px] text-gray-600 dark:text-gray-400 font-normal">Komponen ring washer pengunci</span>
                         </td>
                         <td class="p-3 text-center font-mono text-gray-600 dark:text-gray-400">
-                            Berat: {{ number_format($left['washer_weight'], 2, ',', '.') }} gr
+                            @if($right && abs($left['washer_weight'] - $right['washer_weight']) > 0.001)
+                                Berat: {{ number_format($left['washer_weight'], 2, ',', '.') }}g ➔ {{ number_format($right['washer_weight'], 2, ',', '.') }}g
+                            @else
+                                Berat: {{ number_format($left['washer_weight'], 2, ',', '.') }} gr
+                            @endif
                         </td>
                         <td class="p-3 text-right font-mono {{ $activeRecord === 'left' ? 'bg-amber-50/40 dark:bg-amber-950/20 font-black' : 'bg-gray-50/50 dark:bg-gray-800/40 font-bold' }}">
                             Rp {{ number_format($left['washer_price'], 2, ',', '.') }}
@@ -446,7 +506,14 @@
                     <!-- Washing -->
                     <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                         <td class="p-3 font-bold">c. Washing</td>
-                        <td class="p-3 text-gray-600 dark:text-gray-400">({{ number_format($left['nett_weight'], 1) }}g + {{ number_format($left['washer_weight'], 1) }}g) / 1000 × Rp {{ number_format($left['washing_cost_kg']) }}/kg</td>
+                        <td class="p-3 text-gray-600 dark:text-gray-400">
+                            @if($right && (abs($left['washing_cost_kg'] - $right['washing_cost_kg']) > 0.01 || abs($left['nett_weight'] - $right['nett_weight']) > 0.001 || abs($left['washer_weight'] - $right['washer_weight']) > 0.001))
+                                Lama: ({{ number_format($left['nett_weight'], 1) }}g+{{ number_format($left['washer_weight'], 1) }}g)/1000 × Rp {{ number_format($left['washing_cost_kg']) }} |
+                                Baru: ({{ number_format($right['nett_weight'], 1) }}g+{{ number_format($right['washer_weight'], 1) }}g)/1000 × Rp {{ number_format($right['washing_cost_kg']) }}
+                            @else
+                                ({{ number_format($left['nett_weight'], 1) }}g + {{ number_format($left['washer_weight'], 1) }}g) / 1000 × Rp {{ number_format($left['washing_cost_kg']) }}/kg
+                            @endif
+                        </td>
                         <td class="p-3 text-right font-mono {{ $activeRecord === 'left' ? 'bg-amber-50/40 dark:bg-amber-950/20 font-black' : 'bg-gray-50/50 dark:bg-gray-800/40 font-bold' }}">
                             Rp {{ number_format($left['washing_cost'], 2, ',', '.') }}
                         </td>
@@ -460,7 +527,14 @@
                     <!-- Plating -->
                     <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                         <td class="p-3 font-bold">d. Plating (MFZn-C)</td>
-                        <td class="p-3 text-gray-600 dark:text-gray-400">({{ number_format($left['nett_weight'], 1) }}g + {{ number_format($left['washer_weight'], 1) }}g) / 1000 × Rp {{ number_format($left['plating_cost_kg']) }}/kg</td>
+                        <td class="p-3 text-gray-600 dark:text-gray-400">
+                            @if($right && (abs($left['plating_cost_kg'] - $right['plating_cost_kg']) > 0.01 || abs($left['nett_weight'] - $right['nett_weight']) > 0.001 || abs($left['washer_weight'] - $right['washer_weight']) > 0.001))
+                                Lama: ({{ number_format($left['nett_weight'], 1) }}g+{{ number_format($left['washer_weight'], 1) }}g)/1000 × Rp {{ number_format($left['plating_cost_kg']) }} |
+                                Baru: ({{ number_format($right['nett_weight'], 1) }}g+{{ number_format($right['washer_weight'], 1) }}g)/1000 × Rp {{ number_format($right['plating_cost_kg']) }}
+                            @else
+                                ({{ number_format($left['nett_weight'], 1) }}g + {{ number_format($left['washer_weight'], 1) }}g) / 1000 × Rp {{ number_format($left['plating_cost_kg']) }}/kg
+                            @endif
+                        </td>
                         <td class="p-3 text-right font-mono {{ $activeRecord === 'left' ? 'bg-amber-50/40 dark:bg-amber-950/20 font-black' : 'bg-gray-50/50 dark:bg-gray-800/40 font-bold' }}">
                             Rp {{ number_format($left['plating_cost'], 2, ',', '.') }}
                         </td>
@@ -580,7 +654,32 @@
                     </tr>
                     <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                         <td class="p-3 font-semibold">
-                            (5) : O/H & Profit self-procuring portion ({{ $left['oh_self_pct'] }}%)
+                            (4) : O/H &amp; Profit supplied portion (
+                            @if($right && abs($left['oh_supplied_pct'] - $right['oh_supplied_pct']) > 0.01)
+                                {{ $left['oh_supplied_pct'] }}% ➔ {{ $right['oh_supplied_pct'] }}%
+                            @else
+                                {{ $left['oh_supplied_pct'] }}%
+                            @endif
+                            )
+                        </td>
+                        <td class="p-3 text-right font-mono {{ $activeRecord === 'left' ? 'bg-amber-50/30 dark:bg-amber-950/20 font-bold' : 'bg-gray-50/50 dark:bg-gray-800/40' }}">
+                            Rp {{ number_format($left['oh_supplied'], 2, ',', '.') }}
+                        </td>
+                        <td class="p-3 text-right font-mono {{ $activeRecord === 'right' ? 'bg-emerald-50/30 dark:bg-emerald-950/20 font-bold' : 'bg-gray-50/50 dark:bg-gray-800/40' }}">
+                            {{ $right ? 'Rp ' . number_format($right['oh_supplied'], 2, ',', '.') : '-' }}
+                        </td>
+                        @php $ohSuppliedDiff = $diffFn($right ? $right['oh_supplied'] : null, $left['oh_supplied'], true, 2); @endphp
+                        <td class="p-3 text-right font-mono {{ $ohSuppliedDiff['color'] }}">{{ $ohSuppliedDiff['formatted'] }}</td>
+                    </tr>
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                        <td class="p-3 font-semibold">
+                            (5) : O/H &amp; Profit self-procuring portion (
+                            @if($right && abs($left['oh_self_pct'] - $right['oh_self_pct']) > 0.01)
+                                {{ $left['oh_self_pct'] }}% ➔ {{ $right['oh_self_pct'] }}%
+                            @else
+                                {{ $left['oh_self_pct'] }}%
+                            @endif
+                            )
                         </td>
                         <td class="p-3 text-right font-mono {{ $activeRecord === 'left' ? 'bg-amber-50/30 dark:bg-amber-950/20 font-bold' : 'bg-gray-50/50 dark:bg-gray-800/40' }}">
                             Rp {{ number_format($left['oh_self'], 2, ',', '.') }}
@@ -592,7 +691,42 @@
                         <td class="p-3 text-right font-mono {{ $ohSelfDiff['color'] }}">{{ $ohSelfDiff['formatted'] }}</td>
                     </tr>
                     <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                        <td class="p-3 font-semibold">(9) : Die & Jig depreciation (Tooling)</td>
+                        <td class="p-3 font-semibold">(6) : Transportation or others</td>
+                        <td class="p-3 text-right font-mono {{ $activeRecord === 'left' ? 'bg-amber-50/30 dark:bg-amber-950/20 font-bold' : 'bg-gray-50/50 dark:bg-gray-800/40' }}">
+                            Rp {{ number_format($left['trans_cost'], 2, ',', '.') }}
+                        </td>
+                        <td class="p-3 text-right font-mono {{ $activeRecord === 'right' ? 'bg-emerald-50/30 dark:bg-emerald-950/20 font-bold' : 'bg-gray-50/50 dark:bg-gray-800/40' }}">
+                            {{ $right ? 'Rp ' . number_format($right['trans_cost'], 2, ',', '.') : '-' }}
+                        </td>
+                        @php $transDiff = $diffFn($right ? $right['trans_cost'] : null, $left['trans_cost'], true, 2); @endphp
+                        <td class="p-3 text-right font-mono {{ $transDiff['color'] }}">{{ $transDiff['formatted'] }}</td>
+                    </tr>
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                        <td class="p-3 font-semibold">(7) : Cost Down</td>
+                        <td class="p-3 text-right font-mono {{ $activeRecord === 'left' ? 'bg-amber-50/30 dark:bg-amber-950/20 font-bold' : 'bg-gray-50/50 dark:bg-gray-800/40' }}">
+                            Rp {{ number_format($left['cost_down'], 2, ',', '.') }}
+                        </td>
+                        <td class="p-3 text-right font-mono {{ $activeRecord === 'right' ? 'bg-emerald-50/30 dark:bg-emerald-950/20 font-bold' : 'bg-gray-50/50 dark:bg-gray-800/40' }}">
+                            {{ $right ? 'Rp ' . number_format($right['cost_down'], 2, ',', '.') : '-' }}
+                        </td>
+                        @php $costDownDiff = $diffFn($right ? $right['cost_down'] : null, $left['cost_down'], true, 2); @endphp
+                        <td class="p-3 text-right font-mono {{ $costDownDiff['color'] }}">{{ $costDownDiff['formatted'] }}</td>
+                    </tr>
+                    <tr class="bg-amber-100/90 dark:bg-amber-950/60 font-bold border-y-2 border-amber-400 dark:border-amber-700">
+                        <td class="p-3 font-black text-amber-950 dark:text-amber-100">
+                            (8) : Part Cost (excluding tooling cost)
+                        </td>
+                        <td class="p-3 text-right font-mono font-black text-amber-900 dark:text-amber-200">
+                            Rp {{ number_format($left['excl_tooling'], 2, ',', '.') }}
+                        </td>
+                        <td class="p-3 text-right font-mono font-black text-amber-950 dark:text-amber-100 text-sm">
+                            {{ $right ? 'Rp ' . number_format($right['excl_tooling'], 2, ',', '.') : '-' }}
+                        </td>
+                        @php $exclToolDiff = $diffFn($right ? $right['excl_tooling'] : null, $left['excl_tooling'], true, 2); @endphp
+                        <td class="p-3 text-right font-mono font-black text-sm {{ $exclToolDiff['color'] }}">{{ $exclToolDiff['formatted'] }}</td>
+                    </tr>
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                        <td class="p-3 font-semibold">(9) : Die &amp; Jig depreciation (Tooling)</td>
                         <td class="p-3 text-right font-mono {{ $activeRecord === 'left' ? 'bg-amber-50/30 dark:bg-amber-950/20 font-bold' : 'bg-gray-50/50 dark:bg-gray-800/40' }}">
                             Rp {{ number_format($left['tooling'], 2, ',', '.') }}
                         </td>
@@ -650,16 +784,67 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                        @php $sumTotalKrp = 0.0; $sumDeprPc = 0.0; @endphp
                         @foreach($record->tooling_details as $tool)
+                            @php
+                                $itemKrp = (float) ($tool['total_cost_krp'] ?? 0);
+                                $itemDepr = (float) ($tool['depreciation_per_pc'] ?? $tool['depreciation'] ?? 0);
+                                $sumTotalKrp += $itemKrp;
+                                $sumDeprPc += $itemDepr;
+                            @endphp
                             <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                                 <td class="p-2.5 font-bold">{{ $tool['contents'] ?? 'HEADING DIE' }}</td>
-                                <td class="p-2.5 text-right font-mono">{{ number_format((float) ($tool['total_cost_krp'] ?? 0), 0, ',', '.') }}</td>
+                                <td class="p-2.5 text-right font-mono">{{ number_format($itemKrp, 0, ',', '.') }}</td>
                                 <td class="p-2.5 text-right font-mono">{{ number_format((float) ($tool['monthly_volume'] ?? 20000), 0, ',', '.') }}</td>
-                                <td class="p-2.5 text-right font-mono font-bold text-cyan-700 dark:text-cyan-300">Rp {{ number_format((float) ($tool['depreciation_per_pc'] ?? 0), 2, ',', '.') }}</td>
+                                <td class="p-2.5 text-right font-mono font-bold text-cyan-700 dark:text-cyan-300">Rp {{ number_format($itemDepr, 2, ',', '.') }}</td>
                             </tr>
                         @endforeach
                     </tbody>
+                    <tfoot class="bg-gray-100 dark:bg-gray-800 font-black border-t-2 border-gray-300 dark:border-gray-700">
+                        <tr>
+                            <td class="p-2.5 uppercase">Total Tooling</td>
+                            <td class="p-2.5 text-right font-mono">{{ number_format($sumTotalKrp, 0, ',', '.') }}</td>
+                            <td class="p-2.5 text-right text-gray-500">-</td>
+                            <td class="p-2.5 text-right font-mono text-cyan-800 dark:text-cyan-200">Rp {{ number_format($sumDeprPc, 2, ',', '.') }}</td>
+                        </tr>
+                    </tfoot>
                 </table>
+            </div>
+        </div>
+    @endif
+
+    <!-- 5. FOOTER EXCEL: COMMENTS, REMARKS & ALTERATIONS -->
+    @if($record->comments || $record->remarks || $record->alteration || $record->etc_contents)
+        <div class="rounded-xl border border-gray-300 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+            <h3 class="text-sm font-black text-gray-950 dark:text-white flex items-center gap-2 border-b border-gray-200 pb-3 dark:border-gray-800 mb-3">
+                <span class="flex h-6 w-6 items-center justify-center rounded-full bg-slate-600 text-xs font-black text-white shadow-sm">5</span>
+                Catatan Resmi &amp; Ketentuan Komersial Penawaran (Excel Footer)
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                @if($record->alteration)
+                    <div class="rounded-lg bg-gray-50 dark:bg-gray-800 p-3 border border-gray-200 dark:border-gray-700">
+                        <strong class="text-gray-900 dark:text-white block font-bold uppercase text-[11px] mb-1">ALTERATION / ECI CHANGES:</strong>
+                        <p class="text-gray-700 dark:text-gray-300 whitespace-pre-line">{{ $record->alteration }}</p>
+                    </div>
+                @endif
+                @if($record->etc_contents)
+                    <div class="rounded-lg bg-gray-50 dark:bg-gray-800 p-3 border border-gray-200 dark:border-gray-700">
+                        <strong class="text-gray-900 dark:text-white block font-bold uppercase text-[11px] mb-1">ETC. CONTENTS:</strong>
+                        <p class="text-gray-700 dark:text-gray-300 whitespace-pre-line">{{ $record->etc_contents }}</p>
+                    </div>
+                @endif
+                @if($record->comments)
+                    <div class="rounded-lg bg-blue-50/60 dark:bg-blue-950/30 p-3 border border-blue-200 dark:border-blue-800">
+                        <strong class="text-blue-900 dark:text-blue-200 block font-bold uppercase text-[11px] mb-1">COMMENTS:</strong>
+                        <p class="text-blue-950 dark:text-blue-100 whitespace-pre-line">{{ $record->comments }}</p>
+                    </div>
+                @endif
+                @if($record->remarks)
+                    <div class="rounded-lg bg-purple-50/60 dark:bg-purple-950/30 p-3 border border-purple-200 dark:border-purple-800">
+                        <strong class="text-purple-900 dark:text-purple-200 block font-bold uppercase text-[11px] mb-1">REMARKS:</strong>
+                        <p class="text-purple-950 dark:text-purple-100 whitespace-pre-line">{{ $record->remarks }}</p>
+                    </div>
+                @endif
             </div>
         </div>
     @endif

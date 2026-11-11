@@ -222,8 +222,8 @@ class SubAssemblyPartTest extends TestCase
         $this->assertEquals('Mass Prod. Drwg', $part->drawing_reference);
         $this->assertEquals('F1225', $part->eci_number);
         $this->assertEquals(50.0, (float) $part->tooling_depreciation);
-        // Base part_cost (10582.94) + tooling_depreciation (50.0) = 10632.94
-        $this->assertEqualsWithDelta(10632.94, (float) $part->part_cost, 0.05);
+        // Base part_cost 7-desimal Excel (10583.5294) + tooling_depreciation (50.0) = 10633.53
+        $this->assertEqualsWithDelta(10633.53, (float) $part->part_cost, 0.05);
     }
 
     public function test_fastener_supports_tooling_depreciation_and_exchange_fluctuation(): void
@@ -299,5 +299,43 @@ class SubAssemblyPartTest extends TestCase
             ->set('data.material_breakdown.2.part_number', 'SPH270C-OD')
             ->assertSet('data.material_breakdown.2.part_name', 'RAW STEEL SPH270C-OD')
             ->assertSet('data.material_breakdown.2.unit_price', (float) $steel->sheet_price_idr);
+    }
+
+    public function test_sub_assembly_lookup_prioritizes_matching_quarter_over_latest_record(): void
+    {
+        $this->actingAs($this->admin);
+
+        $q1Stamping = StampingPart::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplierTcf->id,
+            'supplier_name' => $this->supplierTcf->name,
+            'vendor_code' => $this->supplierTcf->code,
+            'part_number' => '72388-X7V00-A',
+            'part_name' => 'BRKT Q1',
+            'steel_spec' => 'SPH440-OD',
+            'berat' => 0.5890,
+            'sheet_price_idr' => 16000,
+        ]);
+
+        StampingPart::create([
+            'year' => 2026,
+            'quarter' => 'Q2',
+            'supplier_id' => $this->supplierTcf->id,
+            'supplier_name' => $this->supplierTcf->name,
+            'vendor_code' => $this->supplierTcf->code,
+            'part_number' => '72388-X7V00-A',
+            'part_name' => 'BRKT Q2',
+            'steel_spec' => 'SPH440-OD',
+            'berat' => 0.5890,
+            'sheet_price_idr' => 22000,
+        ]);
+
+        Livewire::test(CreateSubAssemblyPart::class)
+            ->set('data.year', 2026)
+            ->set('data.quarter', 'Q1')
+            ->set('data.material_breakdown.0.part_number', '72388-X7V00-A')
+            ->assertSet('data.material_breakdown.0.part_name', 'BRKT Q1')
+            ->assertSet('data.material_breakdown.0.unit_price', (float) $q1Stamping->part_cost);
     }
 }

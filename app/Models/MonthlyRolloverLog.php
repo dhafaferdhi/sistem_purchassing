@@ -15,6 +15,7 @@ class MonthlyRolloverLog extends Model
         'currencies_count',
         'material_steels_count',
         'stamping_parts_count',
+        'fasteners_count',
         'details',
         'notes',
         'user_id',
@@ -27,6 +28,7 @@ class MonthlyRolloverLog extends Model
             'currencies_count' => 'integer',
             'material_steels_count' => 'integer',
             'stamping_parts_count' => 'integer',
+            'fasteners_count' => 'integer',
             'details' => 'array',
         ];
     }

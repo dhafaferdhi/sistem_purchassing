@@ -52,6 +52,65 @@ class SubAssemblyPartResource extends Resource
         return $prefix ? 'Rp '.$formatted : $formatted;
     }
 
+    /**
+     * Query model child berdasarkan kecocokan persis periode (year & quarter) terlebih dahulu, lalu fallback ke record terbaru.
+     */
+    protected static function queryComponentByQuarter(string $modelClass, string $column, string $clean, int $year, string $quarter): mixed
+    {
+        return $modelClass::where('year', $year)
+            ->where('quarter', $quarter)
+            ->where($column, $clean)
+            ->latest('id')
+            ->first()
+            ?? $modelClass::where('year', $year)
+                ->where('quarter', $quarter)
+                ->where($column, 'like', "%{$clean}%")
+                ->latest('id')
+                ->first()
+            ?? $modelClass::where($column, $clean)
+                ->orWhere($column, 'like', "%{$clean}%")
+                ->latest('year')
+                ->latest('id')
+                ->first();
+    }
+
+    /**
+     * Cari komponen child (StampingPart, Fastener, atau MaterialSteel) sesuai part number dengan prioritas periode Sub-Assembly yang sedang dipilih.
+     *
+     * @return array{part_name: string, unit_price: float, valuation: string}|null
+     */
+    public static function findChildComponentPricing(string $clean, int $year, string $quarter): ?array
+    {
+        if ($stamping = static::queryComponentByQuarter(StampingPart::class, 'part_number', $clean, $year, $quarter)) {
+            return [
+                'part_name' => (string) ($stamping->part_name ?? ''),
+                'unit_price' => (float) ($stamping->part_cost ?: 0),
+                'valuation' => (string) ($stamping->supplier_name ?: 'Stamping'),
+            ];
+        }
+
+        if ($fastener = static::queryComponentByQuarter(Fastener::class, 'part_number', $clean, $year, $quarter)) {
+            return [
+                'part_name' => (string) ($fastener->part_name ?? ''),
+                'unit_price' => (float) ($fastener->part_cost ?: ($fastener->total_part_cost ?: 0)),
+                'valuation' => (string) ($fastener->supplier_name ?: 'Fastener'),
+            ];
+        }
+
+        if ($steel = static::queryComponentByQuarter(MaterialSteel::class, 'steel_spec', $clean, $year, $quarter)) {
+            $sheetIdr = (float) ($steel->sheet_price_idr ?? 0);
+            $coilIdr = (float) ($steel->coil_price_idr ?? 0);
+
+            return [
+                'part_name' => 'RAW STEEL '.$steel->steel_spec,
+                'unit_price' => $sheetIdr > 0 ? $sheetIdr : $coilIdr,
+                'valuation' => (string) ($steel->supplier_name ?: 'Steel'),
+            ];
+        }
+
+        return null;
+    }
+
     public static function form(Form $form): Form
     {
         return $form
@@ -200,64 +259,21 @@ class SubAssemblyPartResource extends Resource
                                                     return;
                                                 }
                                                 $clean = trim((string) $state);
-                                                $stamping = StampingPart::where('part_number', $clean)
-                                                    ->orWhere('part_number', 'like', "%{$clean}%")
-                                                    ->latest('id')
-                                                    ->first();
-                                                if ($stamping) {
-                                                    if (! empty($stamping->part_name)) {
-                                                        $set('part_name', $stamping->part_name);
+                                                $targetYear = (int) ($get('../../year') ?? date('Y'));
+                                                $targetQuarter = (string) ($get('../../quarter') ?? 'Q1');
+                                                $matched = static::findChildComponentPricing($clean, $targetYear, $targetQuarter);
+
+                                                if ($matched) {
+                                                    if ($matched['part_name'] !== '' && (! str_starts_with($matched['part_name'], 'RAW STEEL ') || empty($get('part_name')))) {
+                                                        $set('part_name', $matched['part_name']);
                                                     }
-                                                    $unitPrice = (float) ($stamping->part_cost ?: 0);
-                                                    if ($unitPrice > 0) {
-                                                        $set('unit_price', $unitPrice);
+                                                    if ($matched['unit_price'] > 0) {
+                                                        $set('unit_price', $matched['unit_price']);
                                                         $qty = (float) ($get('quantity') ?: 1);
-                                                        $set('price', round($qty * $unitPrice, 2));
+                                                        $set('price', round($qty * $matched['unit_price'], 2));
                                                     }
                                                     if (! $get('valuation') || $get('valuation') === 'TCF') {
-                                                        $set('valuation', $stamping->supplier_name ?: 'Stamping');
-                                                    }
-
-                                                    return;
-                                                }
-
-                                                $fastener = Fastener::where('part_number', $clean)
-                                                    ->orWhere('part_number', 'like', "%{$clean}%")
-                                                    ->latest('id')
-                                                    ->first();
-                                                if ($fastener) {
-                                                    if (! empty($fastener->part_name)) {
-                                                        $set('part_name', $fastener->part_name);
-                                                    }
-                                                    $unitPrice = (float) ($fastener->part_cost ?: ($fastener->total_part_cost ?: 0));
-                                                    if ($unitPrice > 0) {
-                                                        $set('unit_price', $unitPrice);
-                                                        $qty = (float) ($get('quantity') ?: 1);
-                                                        $set('price', round($qty * $unitPrice, 2));
-                                                    }
-                                                    if (! $get('valuation') || $get('valuation') === 'TCF') {
-                                                        $set('valuation', $fastener->supplier_name ?: 'Fastener');
-                                                    }
-
-                                                    return;
-                                                }
-
-                                                $steel = MaterialSteel::where('steel_spec', $clean)
-                                                    ->orWhere('steel_spec', 'like', "%{$clean}%")
-                                                    ->latest('id')
-                                                    ->first();
-                                                if ($steel) {
-                                                    if (empty($get('part_name'))) {
-                                                        $set('part_name', 'RAW STEEL '.$steel->steel_spec);
-                                                    }
-                                                    $price = (float) ($steel->sheet_price_idr ?: $steel->coil_price_idr ?: 0);
-                                                    if ($price > 0) {
-                                                        $set('unit_price', $price);
-                                                        $qty = (float) ($get('quantity') ?: 1);
-                                                        $set('price', round($qty * $price, 2));
-                                                    }
-                                                    if (! $get('valuation') || $get('valuation') === 'TCF') {
-                                                        $set('valuation', $steel->supplier_name ?: 'Steel');
+                                                        $set('valuation', $matched['valuation']);
                                                     }
                                                 }
                                             })

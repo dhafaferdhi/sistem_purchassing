@@ -66,11 +66,26 @@ class FastenersRelationManager extends RelationManager
                     ->searchable()
                     ->weight('bold'),
 
+                Tables\Columns\TextColumn::make('part_number')
+                    ->label('Part Number')
+                    ->weight('bold')
+                    ->placeholder('-')
+                    ->searchable(),
+
+                Tables\Columns\TextColumn::make('part_name')
+                    ->label('Part Name')
+                    ->placeholder('-')
+                    ->searchable(),
+
                 Tables\Columns\TextColumn::make('steel_spec')
                     ->label('Spec')
                     ->formatStateUsing(fn ($state) => Fastener::cleanSteelSpec($state))
-                    ->formatStateUsing(fn ($state) => Fastener::cleanSteelSpec($state))
                     ->searchable(),
+
+                Tables\Columns\TextColumn::make('wire_spec')
+                    ->label('Wire Spec')
+                    ->placeholder('-')
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('double_thickness')
                     ->label('Diameter/Thick(mm)')
@@ -89,24 +104,21 @@ class FastenersRelationManager extends RelationManager
                     ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 0, ',', '.') : '-')
                     ->alignRight(),
 
-                Tables\Columns\TextColumn::make('coil_price')
-                    ->label('Coil ($)')
-                    ->formatStateUsing(fn ($record) => $record->coil_price !== null && $record->coil_price !== '' ? '$'.number_format((float) $record->coil_price, 4, ',', '.') : '-')
+                Tables\Columns\TextColumn::make('wire_price_usd_kg')
+                    ->label('Wire ($/kg)')
+                    ->formatStateUsing(fn ($record) => $record->wire_price_usd_kg !== null && $record->wire_price_usd_kg !== '' ? '$ '.number_format((float) $record->wire_price_usd_kg, 4, ',', '.') : '-')
                     ->alignRight(),
 
-                Tables\Columns\TextColumn::make('coil_price_idr')
-                    ->label('Coil (Rp)')
-                    ->formatStateUsing(fn ($record) => $record->coil_price_idr !== null && $record->coil_price_idr !== '' ? 'Rp '.number_format((float) $record->coil_price_idr, 0, ',', '.') : '-')
+                Tables\Columns\TextColumn::make('wire_price_idr_kg')
+                    ->label('Wire (Rp/kg)')
+                    ->formatStateUsing(fn ($record) => $record->wire_price_idr_kg !== null && $record->wire_price_idr_kg !== '' ? 'Rp '.number_format((float) $record->wire_price_idr_kg, 2, ',', '.') : '-')
                     ->alignRight(),
 
-                Tables\Columns\TextColumn::make('sheet_price')
-                    ->label('Sheet ($)')
-                    ->formatStateUsing(fn ($record) => $record->sheet_price !== null && $record->sheet_price !== '' ? '$'.number_format((float) $record->sheet_price, 4, ',', '.') : '-')
-                    ->alignRight(),
-
-                Tables\Columns\TextColumn::make('sheet_price_idr')
-                    ->label('Sheet (Rp)')
-                    ->formatStateUsing(fn ($record) => $record->sheet_price_idr !== null && $record->sheet_price_idr !== '' ? 'Rp '.number_format((float) $record->sheet_price_idr, 0, ',', '.') : '-')
+                Tables\Columns\TextColumn::make('part_cost')
+                    ->label('Part Cost (Rp)')
+                    ->formatStateUsing(fn ($record) => $record->part_cost !== null && $record->part_cost !== '' ? 'Rp '.number_format((float) $record->part_cost, 2, ',', '.') : '-')
+                    ->weight('bold')
+                    ->color('success')
                     ->alignRight(),
             ])
             ->headerActions([

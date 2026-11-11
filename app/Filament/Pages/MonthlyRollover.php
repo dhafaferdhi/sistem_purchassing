@@ -3,10 +3,12 @@
 namespace App\Filament\Pages;
 
 use App\Models\Currency;
+use App\Models\Fastener;
 use App\Models\MaterialSteel;
 use App\Models\MonthlyRolloverLog;
 use App\Models\StampingPart;
 use App\Models\Supplier;
+use App\Models\User;
 use App\Services\MonthlyDataRolloverService;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
@@ -103,6 +105,25 @@ class MonthlyRollover extends Page implements HasForms
 
     public string $stampDuplicateHandling = 'overwrite';
 
+    // Form fields khusus tab Fasteners
+    public int $fastSourceYear = 2026;
+
+    public string $fastSourceQuarter = 'Q4';
+
+    public int $fastTargetYear = 2027;
+
+    public string $fastTargetQuarter = 'Q1';
+
+    public ?float $fastExchangeRate = null;
+
+    public ?float $fastGapUsd = null;
+
+    public ?int $fastSupplierId = null;
+
+    public bool $fastSyncFromSteel = false;
+
+    public string $fastDuplicateHandling = 'overwrite';
+
     public function mount(): void
     {
         $currentYear = (int) date('Y');
@@ -118,6 +139,9 @@ class MonthlyRollover extends Page implements HasForms
         $this->stampSourceYear = $currentYear;
         $this->stampTargetYear = $currentYear + 1;
 
+        $this->fastSourceYear = $currentYear;
+        $this->fastTargetYear = $currentYear + 1;
+
         // Ambil kurs USD aktif saat ini
         $activeUsd = Currency::where('code', 'USD')->latest('year')->first();
         if ($activeUsd) {
@@ -126,6 +150,7 @@ class MonthlyRollover extends Page implements HasForms
             $this->currUsdRate = $rate;
             $this->steelExchangeRate = $rate;
             $this->stampExchangeRate = $rate;
+            $this->fastExchangeRate = $rate;
         }
     }
 
@@ -155,11 +180,12 @@ class MonthlyRollover extends Page implements HasForms
 
             $steelsCount = $result['material_steels']['copied'] + $result['material_steels']['updated'];
             $stampsCount = $result['stamping_parts']['copied'] + $result['stamping_parts']['updated'];
+            $fastsCount = $result['fasteners']['copied'] + $result['fasteners']['updated'];
             $currsCount = $result['currencies']['total'];
 
             Notification::make()
                 ->title('Salin & Update Bulanan Berhasil!')
-                ->body("Berhasil memproses: {$currsCount} Kurs Mata Uang, {$steelsCount} Material Steel, dan {$stampsCount} Stamping Part dari {$this->sourceYear} {$this->sourceQuarter} ke {$this->targetYear} {$this->targetQuarter}.")
+                ->body("Berhasil memproses: {$currsCount} Kurs Mata Uang, {$steelsCount} Material Steel, {$stampsCount} Stamping Part, dan {$fastsCount} Fastener dari {$this->sourceYear} {$this->sourceQuarter} ke {$this->targetYear} {$this->targetQuarter}.")
                 ->success()
                 ->duration(8000)
                 ->send();
@@ -305,6 +331,52 @@ class MonthlyRollover extends Page implements HasForms
         }
     }
 
+    /**
+     * Jalankan Salin & Update Khusus Fasteners
+     */
+    public function executeFastenerRollover(): void
+    {
+        try {
+            $result = MonthlyDataRolloverService::rolloverFasteners(
+                $this->fastSourceYear,
+                $this->fastSourceQuarter,
+                $this->fastTargetYear,
+                $this->fastTargetQuarter,
+                $this->fastExchangeRate,
+                $this->fastGapUsd,
+                $this->status,
+                $this->fastDuplicateHandling,
+                $this->fastSupplierId,
+                $this->fastSyncFromSteel
+            );
+
+            MonthlyRolloverLog::create([
+                'type' => 'fastener',
+                'source_period' => "{$this->fastSourceYear}-{$this->fastSourceQuarter}",
+                'target_period' => "{$this->fastTargetYear}-{$this->fastTargetQuarter}",
+                'exchange_rate' => $this->fastExchangeRate,
+                'fasteners_count' => $result['copied'] + $result['updated'],
+                'details' => $result,
+                'notes' => "Rollover Fasteners {$this->fastSourceYear} {$this->fastSourceQuarter} -> {$this->fastTargetYear} {$this->fastTargetQuarter}",
+                'user_id' => auth()->id() ?? User::first()?->id,
+            ]);
+
+            Notification::make()
+                ->title('Fasteners Berhasil Disalin & Diperbarui!')
+                ->body("{$result['copied']} data baru disalin dan {$result['updated']} data diperbarui ({$result['skipped']} dilewati).")
+                ->success()
+                ->send();
+
+            $this->activeTab = 'history';
+        } catch (\Throwable $e) {
+            Notification::make()
+                ->title('Gagal Menyalin Fasteners')
+                ->body($e->getMessage())
+                ->danger()
+                ->send();
+        }
+    }
+
     public function getAvailableYears(): array
     {
         $current = (int) date('Y');
@@ -322,6 +394,7 @@ class MonthlyRollover extends Page implements HasForms
         return [
             'material_steels' => MaterialSteel::where('year', $this->sourceYear)->where('quarter', $this->sourceQuarter)->count(),
             'stamping_parts' => StampingPart::where('year', $this->sourceYear)->where('quarter', $this->sourceQuarter)->count(),
+            'fasteners' => Fastener::where('year', $this->sourceYear)->where('quarter', $this->sourceQuarter)->count(),
             'currencies' => Currency::where('year', $this->sourceYear)->count() ?: Currency::count(),
         ];
     }
@@ -331,6 +404,7 @@ class MonthlyRollover extends Page implements HasForms
         return [
             'material_steels' => MaterialSteel::where('year', $this->targetYear)->where('quarter', $this->targetQuarter)->count(),
             'stamping_parts' => StampingPart::where('year', $this->targetYear)->where('quarter', $this->targetQuarter)->count(),
+            'fasteners' => Fastener::where('year', $this->targetYear)->where('quarter', $this->targetQuarter)->count(),
             'currencies' => Currency::where('year', $this->targetYear)->count(),
         ];
     }

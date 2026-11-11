@@ -10,6 +10,7 @@ use App\Models\MaterialSteel;
 use App\Models\StampingPart;
 use App\Models\Supplier;
 use App\Models\User;
+use App\Services\CurrencyRecalculationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Tests\TestCase;
@@ -712,6 +713,101 @@ class StampingPartTest extends TestCase
         ]);
     }
 
+    public function test_stamping_part_pull_previous_copies_all_sections_one_to_three_identically(): void
+    {
+        $this->actingAs($this->admin);
+
+        $q1 = StampingPart::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'part_number' => '72388-X7V00-A',
+            'part_no_to_compare' => '72388-X7V00-OLD',
+            'part_name' => 'BRKT, SEAT BELT ANCHOR LH',
+            'model_name' => 'D99X',
+            'monthly_volume' => 25000,
+            'quotation_date' => '2026-01-15',
+            'drawing_reference' => 'Custom Drwg Rev2',
+            'eci_number' => 'ECI-999',
+            'steel_spec' => 'SPH440-OD',
+            'double_thickness' => '2.6',
+            'wide' => 390,
+            'pitch' => 148,
+            'yield_rate' => 2,
+            'size' => '2.6 x 390 x 148',
+            'berat' => 0.5890,
+            'scrap_weight' => 0.2780,
+            'scrap_price_per_kg' => -1750,
+            'process_name' => 'TANDEM PRESS 300T',
+            'process_man_hour' => 12,
+            'process_charge' => 60,
+            'overhead_supplied_percent' => 12,
+            'overhead_self_percent' => 5,
+            'transportation_cost' => 85,
+            'packing_cost' => 45,
+            'tooling_depreciation' => 125,
+            'tooling_details' => [
+                ['contents' => 'PROGRESSIVE DIE', 'total_cost_krp' => 50000, 'monthly_volume' => 25000, 'depreciation_per_pc' => 125],
+            ],
+            'exchange_rate' => 17250.0,
+            'exchange_rate_fluctuation' => 1.015,
+            'coil_price' => 1.2100,
+            'sheet_price' => 1.2500,
+            'comments' => 'Supplier standard note',
+            'remarks' => 'Quarterly rate term',
+            'alteration' => 'Hole resized',
+            'etc_contents' => 'Anti rust oil',
+            'notes' => 'SKH-01/2026',
+        ]);
+
+        Livewire::test(CreateStampingPart::class)
+            ->mountAction('pull_previous')
+            ->set('mountedActionsData.0.source_year', 2026)
+            ->set('mountedActionsData.0.source_quarter', 'Q1')
+            ->set('mountedActionsData.0.target_year', 2026)
+            ->set('mountedActionsData.0.target_quarter', 'Q2')
+            ->set('mountedActionsData.0.source_record_id', 'stamping:'.$q1->id)
+            ->assertSet('mountedActionsData.0.exchange_rate', 17250)
+            ->assertSet('mountedActionsData.0.sheet_price', 1.25)
+            ->callMountedAction()
+            // Section 1
+            ->assertSet('data.supplier_id', $this->supplier->id)
+            ->assertSet('data.part_number', '72388-X7V00-A')
+            ->assertSet('data.part_no_to_compare', '72388-X7V00-OLD')
+            ->assertSet('data.part_name', 'BRKT, SEAT BELT ANCHOR LH')
+            ->assertSet('data.model_name', 'D99X')
+            ->assertSet('data.monthly_volume', 25000)
+            ->assertSet('data.quotation_date', '2026-01-15')
+            ->assertSet('data.drawing_reference', 'Custom Drwg Rev2')
+            ->assertSet('data.eci_number', 'ECI-999')
+            ->assertSet('data.steel_spec', 'SPH440-OD')
+            ->assertSet('data.double_thickness', '2.6')
+            ->assertSet('data.size', '2.6 x 390 x 148')
+            // Section 2
+            ->assertSet('data.exchange_rate', 17250.0)
+            ->assertSet('data.exchange_rate_fluctuation', 1.015)
+            ->assertSet('data.coil_price', 1.21)
+            ->assertSet('data.sheet_price', 1.25)
+            // Section 3
+            ->assertSet('data.wide', 390.0)
+            ->assertSet('data.pitch', 148.0)
+            ->assertSet('data.yield_rate', 2.0)
+            ->assertSet('data.berat', 0.589)
+            ->assertSet('data.scrap_weight', 0.278)
+            ->assertSet('data.scrap_price_per_kg', -1750.0)
+            ->assertSet('data.process_name', 'TANDEM PRESS 300T')
+            ->assertSet('data.process_man_hour', 12.0)
+            ->assertSet('data.process_charge', 60.0)
+            ->assertSet('data.overhead_supplied_percent', 12.0)
+            ->assertSet('data.overhead_self_percent', 5.0)
+            ->assertSet('data.transportation_cost', 85.0)
+            ->assertSet('data.packing_cost', 45.0)
+            ->assertSet('data.tooling_depreciation', 125.0)
+            ->assertSet('data.part_cost', (float) $q1->part_cost);
+    }
+
     public function test_stamping_part_calculates_excel_nine_line_breakdown(): void
     {
         $stamping = StampingPart::create([
@@ -792,5 +888,256 @@ class StampingPartTest extends TestCase
             ->assertSuccessful();
 
         $this->assertDatabaseMissing('stamping_parts', ['id' => $stamping->id]);
+    }
+
+    public function test_stamping_part_supports_direct_idr_price_tooling_resync_and_dimension_recalc(): void
+    {
+        $part = StampingPart::create([
+            'year' => 2026,
+            'quarter' => 'Q4',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'part_number' => '72388-X7V00-A',
+            'part_name' => 'BRKT, SEAT BELT ANCHOR LH',
+            'steel_spec' => 'SPH440-OD',
+            'double_thickness' => '2.6',
+            'wide' => 390,
+            'pitch' => 148,
+            'yield_rate' => 2,
+            'scrap_weight' => 0.2780,
+            'scrap_price_per_kg' => -1500,
+            'process_man_hour' => 9,
+            'process_charge' => 45,
+            'exchange_rate' => 0.0,
+            'coil_price' => 0.0,
+            'sheet_price' => 0.0,
+            'sheet_price_idr' => 17689.00,
+            'tooling_details' => [
+                ['contents' => 'PROGRESSIVE DIE', 'total_cost_krp' => 25000, 'monthly_volume' => 16500, 'depreciation_per_pc' => 100.0],
+            ],
+        ]);
+
+        // Berat auto-calculated 7 desimal: (2.6 * 390 * 148 * 7.85) / (1,000,000 * 2) = 0.5890326
+        $this->assertEqualsWithDelta(0.5890326, (float) $part->berat, 0.0000001);
+        // Direct IDR price dipertahankan walau USD = 0 & Kurs = 0
+        $this->assertEquals(17689.00, (float) $part->sheet_price_idr);
+        $this->assertEquals(round(0.5890326 * 17689.00, 2), (float) $part->gross_material_cost);
+        $this->assertEquals(100.0000, (float) $part->tooling_depreciation);
+
+        // Update Currency tidak boleh menghapus harga IDR langsung ketika USD = 0
+        CurrencyRecalculationService::recalculateStampingPartsForCurrency($this->currency);
+        $part->refresh();
+        $this->assertEquals(17689.00, (float) $part->sheet_price_idr);
+
+        // Update tooling_details harus ikut memperbarui tooling_depreciation, lalu mereset ke 0 saat dikosongkan
+        $part->update([
+            'tooling_details' => [
+                ['contents' => 'PROGRESSIVE DIE', 'total_cost_krp' => 50000, 'monthly_volume' => 16500, 'depreciation_per_pc' => 250.0],
+            ],
+        ]);
+        $this->assertEquals(250.0, (float) $part->fresh()->tooling_depreciation);
+
+        $part->update(['tooling_details' => []]);
+        $this->assertEquals(0.0, (float) $part->fresh()->tooling_depreciation);
+
+        // Mengubah wide tanpa menyentuh berat memicu recalculation berat otomatis
+        $part->update(['wide' => 400]);
+        $expectedWeight = round((2.6 * 400 * 148 * 7.85) / (1000000 * 2), 7);
+        $this->assertEqualsWithDelta($expectedWeight, (float) $part->fresh()->berat, 0.0000001);
+    }
+
+    public function test_stamping_part_quarter_lookup_prefers_matching_part_number_and_renders_clean_modal_and_export(): void
+    {
+        $this->actingAs($this->admin);
+
+        $posmi = Supplier::create([
+            'code' => 'VND-POSMI',
+            'name' => 'PT. POSMI STEEL INDONESIA',
+            'category' => 'Steel',
+            'is_active' => true,
+        ]);
+
+        StampingPart::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $posmi->id,
+            'vendor_code' => $posmi->code,
+            'supplier_name' => $posmi->name,
+            'part_number' => 'PART-ALPHA',
+            'part_name' => 'BRACKET ALPHA',
+            'steel_spec' => 'SPH440-OD',
+            'sheet_price' => 1.2500,
+            'exchange_rate' => 16465.50,
+        ]);
+
+        StampingPart::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $posmi->id,
+            'vendor_code' => $posmi->code,
+            'supplier_name' => $posmi->name,
+            'part_number' => 'PART-BETA',
+            'part_name' => 'BRACKET BETA',
+            'steel_spec' => 'SPH440-OD',
+            'sheet_price' => 1.8500,
+            'exchange_rate' => 16465.50,
+        ]);
+
+        // Lookup dengan part_number PART-ALPHA tidak boleh tertukar ke PART-BETA walau ID PART-BETA lebih besar
+        $prev = StampingPart::findPreviousQuarterData('Q2', 2026, $posmi->id, 'SPH440-OD', 'PART-ALPHA');
+        $this->assertNotNull($prev);
+        $this->assertEquals('PART-ALPHA', $prev['part_number']);
+        $this->assertEquals(1.25, $prev['sheet_price']);
+
+        // Record tanpa part_number dan tanpa relasi Sub-Assembly tidak boleh menampilkan blok Sub-Assembly kosong
+        $standalone = StampingPart::create([
+            'year' => 2026,
+            'quarter' => 'Q2',
+            'supplier_id' => $posmi->id,
+            'vendor_code' => $posmi->code,
+            'supplier_name' => $posmi->name,
+            'steel_spec' => 'SPH440-OD',
+            'sheet_price' => 1.3000,
+            'exchange_rate' => 16465.50,
+        ]);
+
+        $modalHtml = view('filament.resources.stamping-parts.sheet-modal', ['record' => $standalone])->render();
+        $this->assertStringNotContainsString('Komponen ini Terpasang Pada Sub-Assembly Berikut', $modalHtml);
+
+        // Export Excel via header action tidak boleh error karena missing relationship materialSteel
+        Livewire::test(ListStampingParts::class)
+            ->callAction('export_excel', [
+                'format' => 'xlsx',
+                'year' => 'all',
+                'quarter' => 'all',
+            ])
+            ->assertHasNoActionErrors();
+    }
+
+    public function test_excel_exact_72388_calculations_dynamic_modal_and_stacked_csv_import(): void
+    {
+        $posmi = Supplier::create([
+            'code' => 'VND-POSMI',
+            'name' => 'PT. POSMI STEEL INDONESIA',
+            'category' => 'Steel',
+        ]);
+
+        // 1. Data Q2 2022 Posmi USD ($1.232 * 14300 = Rp 17.617,60, Berat 7 desimal 0.5890326) -> Rp 10.583,5294
+        $q2 = StampingPart::create([
+            'year' => 2022,
+            'quarter' => 'Q2',
+            'supplier_id' => $posmi->id,
+            'vendor_code' => $posmi->code,
+            'supplier_name' => $posmi->name,
+            'part_number' => '72388-X7V00-A',
+            'part_name' => 'BRKT, SEAT BELT ANCHOR LH',
+            'steel_spec' => 'SPH440-OD',
+            'double_thickness' => '2.6',
+            'wide' => 390,
+            'pitch' => 148,
+            'yield_rate' => 2,
+            'berat' => 0.5890326,
+            'scrap_weight' => 0.2780,
+            'scrap_price_per_kg' => -1500,
+            'process_name' => '1. PROGRESSIVE',
+            'process_man_hour' => 9,
+            'process_charge' => 45,
+            'overhead_supplied_percent' => 11,
+            'overhead_self_percent' => 4,
+            'exchange_rate' => 14300,
+            'sheet_price' => 1.232,
+        ]);
+
+        $this->assertEqualsWithDelta(17617.60, (float) $q2->sheet_price_idr, 0.01);
+        $this->assertEqualsWithDelta(10583.5294, (float) $q2->part_cost, 0.001);
+
+        // 2. Data Q3 2022 dengan perubahan O/H, scrap, dan wide agar sheet-modal merender diff dinamis & tanpa emoji
+        $q3 = StampingPart::create([
+            'year' => 2022,
+            'quarter' => 'Q3',
+            'supplier_id' => $posmi->id,
+            'vendor_code' => $posmi->code,
+            'supplier_name' => $posmi->name,
+            'part_number' => '72388-X7V00-A',
+            'part_name' => 'BRKT, SEAT BELT ANCHOR LH',
+            'steel_spec' => 'SPH440-OD',
+            'double_thickness' => '2.6',
+            'wide' => 400,
+            'pitch' => 148,
+            'yield_rate' => 2,
+            'scrap_weight' => 0.2900,
+            'scrap_price_per_kg' => -1600,
+            'process_name' => '1. PROGRESSIVE',
+            'process_man_hour' => 9,
+            'process_charge' => 45,
+            'overhead_supplied_percent' => 12,
+            'overhead_self_percent' => 5,
+            'exchange_rate' => 0,
+            'sheet_price' => 0,
+            'coil_price' => 0,
+            'sheet_price_idr' => 17689.00,
+        ]);
+
+        $modalHtml = view('filament.resources.stamping-parts.sheet-modal', ['record' => $q3])->render();
+        $this->assertStringNotContainsString('🧩', $modalHtml);
+        $this->assertStringContainsString('11% ➔ 12%', $modalHtml);
+        $this->assertStringContainsString('4% ➔ 5%', $modalHtml);
+        $this->assertStringContainsString('0,5890326', $modalHtml);
+
+        // 3. Import format Comparative Quotation bertumpuk (Sub-Assy block + Stamping Part block dengan New Rate=0 Direct IDR)
+        $csvPath = sys_get_temp_dir().'/stamping_comparative_stacked_test.csv';
+        $csvRows = [
+            ['Part No', '', '73012-BZ010', '', '', '', '', '', '', '', '', '', ''],
+            ['Periode Q2 April-June \'22', '', 'Part Name', '', 'BRACKET SUB-ASSY', '', '', '', '', '', '', '', ''],
+            ['Material Breakdown', '', '', '', '', '', 'Quantity.', 'Unit Price', 'Price', 'Difference', 'Valuation', '', ''],
+            ['72388-X7V00-A', 'BRKT', '', '', '', '', '1', 'SUPPLY', '0', '0', '', '', ''],
+            ['', '', '', '', '', '', '', '', '', '', '', '', ''],
+            ['', '', '', 'Part No', '', '72388-X7V00-A', '', '', '', '', '', '', 'Part No', '', '72388-X7V00-A'],
+            ['Periode Q2 April-June \'22', '', '', 'Part Name', '', 'BRKT, SEAT BELT ANCHOR LH', '', '', '', '', '', '', 'Oct-Dec\'26 Price / Pcs (Rp)', '', 'Part Name', '', 'BRKT, SEAT BELT ANCHOR LH'],
+            ['2022-03-15', '', '', '', '', '', '', '', '', '', '', '', '2026-06-01', '', '', '', ''],
+            ['PT. POSMI STEEL INDONESIA', '', '', '', '', '', '', '', '', '', '', '', 'PT. POSMI STEEL INDONESIA', '', '', '', ''],
+            ['Model', '', 'D26A', '', '(A) : Monthly Volume', '', '', '16500', '', '', '', '', 'Model', '', 'D26A', '', '(A) : Monthly Volume', '', '', '16500'],
+            ['Exchange Rate', '', 'Qtn condition', '', '14300', '', 'New Rate', '', '14300', '', '', '', 'Exchange Rate', '', '', '', '', '', 'New Rate', '', '0'],
+            ['Material Breakdown', '', '', '', '', '', 'Quantity.', 'Unit Price', 'Price', 'Difference', 'Valuation', '', 'Material Breakdown', '', '', '', '', '', 'Quantity.', 'Unit Price', 'Price', 'Difference', 'Valuation'],
+            ['Spec', 'Thickness', 'Wide', 'Pitch', 'yield rate', 'Weight', '', '', '', '', '', '', 'Spec', 'Thickness', 'Wide', 'Pitch', 'yield rate', 'Weight', '', '', '', '', ''],
+            ['SPH440-OD', '2.6', '390', '148', '2', '0.5890326', '0.5890326', '17617.6', '10377.34', '', '', '', 'SPH440-OD', '2.6', '390', '148', '2', '0.5890326', '0.5890326', '17689', '10419.40', '', 'USCI'],
+            ['', '', '', '', '', '', '', '1.232', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+            ['', '', '', '', 'SCRAP', '0.278', '', '-1500', '-417', '', '', '', '', '', '', '', 'SCRAP', '0.278', '', '-1500', '-417', '', ''],
+            ['(1) : Material Total', '', '', '', '', '', '', '', '9960.34', '', '', '', '(1) : Material Total', '', '', '', '', '', '', '', '10002.40', '', ''],
+            ['Process Breakdown', '', '', '', '', '', 'Man-hour', 'Charge', 'Price', 'Difference', 'Valuation', '', 'Process Breakdown', '', '', '', '', '', 'Man-hour', 'Charge', 'Price', 'Difference', 'Valuation'],
+            ['1. PROGRESSIVE', '', '250T', '', '', '', '9', '45', '202.5', '', '', '', '1. PROGRESSIVE', '', '250T', '', '', '', '9', '45', '202.5', '', ''],
+            ['(2) : Process Total', '', '', '', '', '', '', '', '202.5', '', '', '', '(2) : Process Total', '', '', '', '', '', '', '', '202.5', '', ''],
+            ['(4) : O/H & Profit supplied portion ( 11 %)', '', '', '', '', '', '', '', '22.28', '', '', '', '(4) : O/H & Profit supplied portion ( 11 %)', '', '', '', '', '', '', '', '22.28', '', ''],
+            ['(5) : O/H & Profit self-procuring portion ( 4 %)', '', '', '', '', '', '', '', '398.41', '', '', '', '(5) : O/H & Profit self-procuring portion ( 4 %)', '', '', '', '', '', '', '', '400.10', '', ''],
+            ['(6) : Transportation', '', '', '', '', '', '', '', '0', '', '', '', '(6) : Transportation', '', '', '', '', '', '', '', '0', '', ''],
+            ['(7) : Packing', '', '', '', '', '', '', '', '0', '', '', '', '(7) : Packing', '', '', '', '', '', '', '', '0', '', ''],
+            ['(9) : Die & Jig depreciation', '', '', '', '', '', '', '', '#REF!', '', '', '', '(9) : Die & Jig depreciation', '', '', '', '', '', '', '', '0', '', ''],
+        ];
+
+        $fp = fopen($csvPath, 'w');
+        foreach ($csvRows as $r) {
+            fputcsv($fp, $r);
+        }
+        fclose($fp);
+
+        try {
+            $res = \App\Services\ExcelImportService::importStampingPart($csvPath);
+            $this->assertEquals(0, count($res['errors']));
+            $this->assertNull(StampingPart::where('part_number', '73012-BZ010')->first());
+
+            $octDec26 = StampingPart::where('year', 2026)
+                ->where('quarter', 'Q4')
+                ->where('part_number', '72388-X7V00-A')
+                ->first();
+            $this->assertNotNull($octDec26);
+            $this->assertEquals(0.0, (float) $octDec26->exchange_rate);
+            $this->assertEquals(0.0, (float) $octDec26->sheet_price);
+            $this->assertEquals(17689.0, (float) $octDec26->sheet_price_idr);
+            $this->assertEqualsWithDelta(0.5890326, (float) $octDec26->berat, 0.0000001);
+            $this->assertEqualsWithDelta(10627.28, (float) $octDec26->part_cost, 0.02);
+        } finally {
+            @unlink($csvPath);
+        }
     }
 }

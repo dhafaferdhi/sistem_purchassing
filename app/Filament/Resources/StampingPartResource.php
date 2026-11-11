@@ -14,6 +14,7 @@ use Filament\Forms\Form;
 use Filament\Forms\Get;
 use Filament\Forms\Set;
 use Filament\Notifications\Notification;
+use Filament\Resources\Pages\EditRecord;
 use Filament\Resources\Resource;
 use Filament\Support\Enums\MaxWidth;
 use Filament\Tables;
@@ -187,6 +188,7 @@ class StampingPartResource extends Resource
         $year = (int) ($get('year') ?? date('Y'));
         $supplierId = $get('supplier_id');
         $steelSpec = $get('steel_spec');
+        $partNumber = $get('part_number');
 
         $prevQuarter = match ($quarter) {
             'Q1' => 'Q4',
@@ -199,11 +201,11 @@ class StampingPartResource extends Resource
 
         $set('prev_quarter_label', "{$prevQuarter} {$prevYear}");
 
-        if (! $supplierId && ! $steelSpec) {
+        if (! $supplierId && ! $steelSpec && ! $partNumber) {
             return;
         }
 
-        $prev = StampingPart::findPreviousQuarterData($quarter, $year, $supplierId ? (int) $supplierId : null, $steelSpec);
+        $prev = StampingPart::findPreviousQuarterData($quarter, $year, $supplierId ? (int) $supplierId : null, $steelSpec, $partNumber);
 
         if ($prev) {
             $set('prev_record_found', true);
@@ -268,6 +270,30 @@ class StampingPartResource extends Resource
             if (isset($prev['overhead_self_percent']) && empty($get('overhead_self_percent'))) {
                 $set('overhead_self_percent', $prev['overhead_self_percent']);
             }
+            if (array_key_exists('part_no_to_compare', $prev) && empty($get('part_no_to_compare'))) {
+                $set('part_no_to_compare', $prev['part_no_to_compare']);
+            }
+            if (array_key_exists('quotation_date', $prev) && empty($get('quotation_date'))) {
+                $set('quotation_date', $prev['quotation_date']);
+            }
+            if (array_key_exists('drawing_reference', $prev) && empty($get('drawing_reference'))) {
+                $set('drawing_reference', $prev['drawing_reference']);
+            }
+            if (array_key_exists('eci_number', $prev) && empty($get('eci_number'))) {
+                $set('eci_number', $prev['eci_number']);
+            }
+            if (isset($prev['transportation_cost']) && empty($get('transportation_cost'))) {
+                $set('transportation_cost', $prev['transportation_cost']);
+            }
+            if (isset($prev['packing_cost']) && empty($get('packing_cost'))) {
+                $set('packing_cost', $prev['packing_cost']);
+            }
+            if (isset($prev['tooling_depreciation']) && empty($get('tooling_depreciation'))) {
+                $set('tooling_depreciation', $prev['tooling_depreciation']);
+            }
+            if (array_key_exists('tooling_details', $prev) && empty($get('tooling_details')) && ! empty($prev['tooling_details'])) {
+                $set('tooling_details', $prev['tooling_details']);
+            }
 
             if (! empty($prev['exchange_rate']) && (float) $prev['exchange_rate'] > 0) {
                 $set('exchange_rate', (float) $prev['exchange_rate']);
@@ -326,29 +352,43 @@ class StampingPartResource extends Resource
     {
         $coil = (float) ($get('coil_price') ?? 0);
         $sheet = (float) ($get('sheet_price') ?? 0);
-        $rate = (float) ($get('exchange_rate') ?? 1);
+        $rate = (float) ($get('exchange_rate') ?? 0);
 
-        $coilIdr = round($coil * $rate);
-        $sheetIdr = round($sheet * $rate);
+        if ($coil > 0 && $rate > 0) {
+            $set('coil_price_idr', round($coil * $rate, 2));
+        }
+        if ($sheet > 0 && $rate > 0) {
+            $set('sheet_price_idr', round($sheet * $rate, 2));
+        }
 
-        $set('coil_price_idr', $coilIdr);
-        $set('sheet_price_idr', $sheetIdr);
+        $prevRate = (float) ($get('prev_rate') ?? 0);
+        if ($prevRate > 0 && $rate > 0 && abs($rate - $prevRate) > 0.0001) {
+            $set('exchange_rate_fluctuation', round($rate / $prevRate, 6));
+        }
     }
 
     public static function updatePricesFromCoil(Get $get, Set $set): void
     {
         $coil = (float) ($get('coil_price') ?? 0);
-        $rate = (float) ($get('exchange_rate') ?? 1);
+        $rate = (float) ($get('exchange_rate') ?? 0);
 
-        $set('coil_price_idr', round($coil * $rate));
+        if ($coil > 0 && $rate > 0) {
+            $set('coil_price_idr', round($coil * $rate, 2));
+        } elseif ($coil == 0.0 && $get('coil_price') !== null && $get('coil_price') !== '') {
+            $set('coil_price_idr', 0);
+        }
     }
 
     public static function updatePricesFromSheet(Get $get, Set $set): void
     {
         $sheet = (float) ($get('sheet_price') ?? 0);
-        $rate = (float) ($get('exchange_rate') ?? 1);
+        $rate = (float) ($get('exchange_rate') ?? 0);
 
-        $set('sheet_price_idr', round($sheet * $rate));
+        if ($sheet > 0 && $rate > 0) {
+            $set('sheet_price_idr', round($sheet * $rate, 2));
+        } elseif ($sheet == 0.0 && $get('sheet_price') !== null && $get('sheet_price') !== '') {
+            $set('sheet_price_idr', 0);
+        }
     }
 
     public static function calculateWeightFromDimensions(Get $get, Set $set): void
@@ -361,7 +401,7 @@ class StampingPartResource extends Resource
 
         if ($thk > 0 && $wide > 0 && $pitch > 0) {
             // Rumus Excel Posmi / Fuji Seat: (Tebal x Wide x Pitch x 7.85) / (1.000.000 x Yield)
-            $weight = round(($thk * $wide * $pitch * 7.85) / (1000000 * $yr), 4);
+            $weight = round(($thk * $wide * $pitch * 7.85) / (1000000 * $yr), 7);
             $set('berat', $weight);
 
             $currentSize = (string) ($get('size') ?? '');
@@ -443,8 +483,9 @@ class StampingPartResource extends Resource
         $year = (int) ($get('year') ?? date('Y'));
         $supplierId = $get('supplier_id');
         $spec = $get('steel_spec');
+        $partNumber = $get('part_number');
 
-        $prevData = StampingPart::findPreviousQuarterData($quarter, $year, $supplierId ? (int) $supplierId : null, $spec);
+        $prevData = StampingPart::findPreviousQuarterData($quarter, $year, $supplierId ? (int) $supplierId : null, $spec, $partNumber);
 
         if ($prevData) {
             if (! empty($prevData['steel_spec'])) {
@@ -484,53 +525,31 @@ class StampingPartResource extends Resource
                 $set('supplier_name', $prevData['supplier_name']);
             }
 
-            if (! empty($prevData['part_number'])) {
-                $set('part_number', $prevData['part_number']);
-            }
-            if (! empty($prevData['part_name'])) {
-                $set('part_name', $prevData['part_name']);
-            }
-            if (! empty($prevData['model_name'])) {
-                $set('model_name', $prevData['model_name']);
-            }
-            if (! empty($prevData['monthly_volume'])) {
-                $set('monthly_volume', $prevData['monthly_volume']);
-            }
-            if (! empty($prevData['wide'])) {
-                $set('wide', $prevData['wide']);
-            }
-            if (! empty($prevData['pitch'])) {
-                $set('pitch', $prevData['pitch']);
-            }
-            if (! empty($prevData['yield_rate'])) {
-                $set('yield_rate', $prevData['yield_rate']);
-            }
-            if (isset($prevData['scrap_weight']) && (float) $prevData['scrap_weight'] > 0) {
-                $set('scrap_weight', $prevData['scrap_weight']);
-            }
-            if (isset($prevData['scrap_price_per_kg'])) {
-                $set('scrap_price_per_kg', $prevData['scrap_price_per_kg']);
-            }
-            if (! empty($prevData['process_name'])) {
-                $set('process_name', $prevData['process_name']);
-            }
-            if (isset($prevData['process_man_hour'])) {
-                $set('process_man_hour', $prevData['process_man_hour']);
-            }
-            if (isset($prevData['process_charge'])) {
-                $set('process_charge', $prevData['process_charge']);
-            }
-            if (isset($prevData['overhead_supplied_percent'])) {
-                $set('overhead_supplied_percent', $prevData['overhead_supplied_percent']);
-            }
-            if (isset($prevData['overhead_self_percent'])) {
-                $set('overhead_self_percent', $prevData['overhead_self_percent']);
+            foreach ([
+                'part_id', 'part_number', 'part_no_to_compare', 'part_name', 'model_name',
+                'monthly_volume', 'quotation_date', 'drawing_reference', 'eci_number',
+                'wide', 'pitch', 'yield_rate', 'scrap_weight', 'scrap_price_per_kg',
+                'process_name', 'process_man_hour', 'process_charge',
+                'overhead_supplied_percent', 'overhead_self_percent',
+                'transportation_cost', 'packing_cost', 'tooling_depreciation',
+                'tooling_details', 'exchange_rate_fluctuation',
+                'comments', 'remarks', 'alteration', 'etc_contents', 'notes', 'status',
+            ] as $field) {
+                if (array_key_exists($field, $prevData)) {
+                    $set($field, $prevData[$field]);
+                }
             }
 
-            $rate = (float) ($get('exchange_rate') ?? $prevData['exchange_rate'] ?? 16000);
-            $set('exchange_rate', $rate);
-            $set('coil_price_idr', round((float) ($prevData['coil_price'] ?? 0) * $rate));
-            $set('sheet_price_idr', round((float) ($prevData['sheet_price'] ?? 0) * $rate));
+            $rawRate = ! empty($prevData['exchange_rate'])
+                ? $prevData['exchange_rate']
+                : ($get('exchange_rate') ?? 16000);
+            $rate = (float) $rawRate;
+            $set('exchange_rate', QuarterlyPullHelper::normalizeRate($rawRate) ?? 0);
+
+            $prevCoilUsd = (float) ($prevData['coil_price'] ?? 0);
+            $prevSheetUsd = (float) ($prevData['sheet_price'] ?? 0);
+            $set('coil_price_idr', $prevCoilUsd > 0 && $rate > 0 ? round($prevCoilUsd * $rate, 2) : (float) ($prevData['coil_price_idr'] ?? 0));
+            $set('sheet_price_idr', $prevSheetUsd > 0 && $rate > 0 ? round($prevSheetUsd * $rate, 2) : (float) ($prevData['sheet_price_idr'] ?? 0));
 
             $set('prev_record_found', true);
             $set('prev_quarter_label', $prevData['label'] ?? null);
@@ -583,10 +602,12 @@ class StampingPartResource extends Resource
                                     })
                                     ->required()
                                     ->live()
-                                    ->afterStateUpdated(function (Get $get, Set $set) {
+                                    ->afterStateUpdated(function (Get $get, Set $set, $livewire) {
                                         static::syncCurrencyAndPrices($get, $set);
-                                        static::pullPreviousQuarterData($get, $set, false);
-                                        static::lookupPreviousQuarterRecord($get, $set);
+                                        if (! $livewire instanceof EditRecord) {
+                                            static::pullPreviousQuarterData($get, $set, false);
+                                            static::lookupPreviousQuarterRecord($get, $set);
+                                        }
                                     })
                                     ->columnSpan(1),
 
@@ -601,10 +622,12 @@ class StampingPartResource extends Resource
                                     ->default('Q1')
                                     ->required()
                                     ->live()
-                                    ->afterStateUpdated(function (Get $get, Set $set) {
+                                    ->afterStateUpdated(function (Get $get, Set $set, $livewire) {
                                         static::syncCurrencyAndPrices($get, $set);
-                                        static::pullPreviousQuarterData($get, $set, false);
-                                        static::lookupPreviousQuarterRecord($get, $set);
+                                        if (! $livewire instanceof EditRecord) {
+                                            static::pullPreviousQuarterData($get, $set, false);
+                                            static::lookupPreviousQuarterRecord($get, $set);
+                                        }
                                     })
                                     ->columnSpan(1),
 
@@ -616,15 +639,14 @@ class StampingPartResource extends Resource
                                         modifyQueryUsing: function (Builder $query, Get $get, ?StampingPart $record) {
                                             $selectedId = $get('supplier_id') ?? $record?->supplier_id;
                                             $query->where(function ($q) use ($selectedId) {
-                                                $q->whereIn('name', ['PT HSSI', 'PT USCI'])
-                                                    ->orWhere('name', 'like', '%HSSI%')
-                                                    ->orWhere('name', 'like', '%USCI%');
+                                                $q->where('is_active', true);
                                                 if ($selectedId) {
                                                     $q->orWhere('id', $selectedId);
                                                 }
-                                            });
+                                            })->orderBy('name');
                                         }
                                     )
+                                    ->helperText('Vendor pembuat part stamping (mis. PT. POSMI STEEL INDONESIA, PT HSSI, PT USCI)')
                                     ->searchable()
                                     ->preload()
                                     ->required(fn (Get $get) => empty($get('supplier_name')))
@@ -857,12 +879,13 @@ class StampingPartResource extends Resource
                                 Forms\Components\TextInput::make('exchange_rate')
                                     ->label('Perubahan $ Rupiah (Kurs IDR)')
                                     ->numeric()
+                                    ->minValue(0)
                                     ->prefix('Rp')
-                                    ->placeholder('Contoh: 16000')
+                                    ->placeholder('Contoh: 16000 (atau 0 jika input harga IDR langsung)')
                                     ->default(function (Get $get) {
                                         $prevRate = $get('prev_rate');
                                         if ($prevRate !== null && (float) $prevRate > 0) {
-                                            return (int) round((float) $prevRate);
+                                            return QuarterlyPullHelper::normalizeRate($prevRate);
                                         }
 
                                         $year = (int) ($get('year') ?? date('Y'));
@@ -873,12 +896,11 @@ class StampingPartResource extends Resource
                                             ?? Currency::where('code', 'USD')->latest('year')->value('exchange_rate_to_idr')
                                             ?? 16000;
 
-                                        return (int) round((float) $rate);
+                                        return QuarterlyPullHelper::normalizeRate($rate);
                                     })
-                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (int) round((float) $state) : null)
+                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? ((float) $state == 0.0 ? 0 : QuarterlyPullHelper::normalizeRate($state)) : null)
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::recalculateFormPrices($get, $set))
-                                    ->required()
                                     ->columnSpan(1),
 
                                 Forms\Components\TextInput::make('exchange_rate_fluctuation')
@@ -897,7 +919,7 @@ class StampingPartResource extends Resource
                                     ->step(0.0001)
                                     ->prefix('$')
                                     ->placeholder('Contoh: 1.1206')
-                                    ->required(fn (Get $get) => empty($get('sheet_price')))
+                                    ->required(fn (Get $get) => (float) ($get('sheet_price') ?? 0) <= 0 && (float) ($get('coil_price_idr') ?? 0) <= 0 && (float) ($get('sheet_price_idr') ?? 0) <= 0)
                                     ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) $state : null)
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromCoil($get, $set))
@@ -909,7 +931,7 @@ class StampingPartResource extends Resource
                                     ->step(0.0001)
                                     ->prefix('$')
                                     ->placeholder('Contoh: 1.1456')
-                                    ->required(fn (Get $get) => empty($get('coil_price')))
+                                    ->required(fn (Get $get) => (float) ($get('coil_price') ?? 0) <= 0 && (float) ($get('coil_price_idr') ?? 0) <= 0 && (float) ($get('sheet_price_idr') ?? 0) <= 0)
                                     ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (float) $state : null)
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(fn (Get $get, Set $set) => static::updatePricesFromSheet($get, $set))
@@ -917,18 +939,44 @@ class StampingPartResource extends Resource
 
                                 Forms\Components\TextInput::make('coil_price_idr')
                                     ->label('Total Coil (IDR/Kg)')
+                                    ->numeric()
+                                    ->step(0.01)
                                     ->prefix('Rp')
-                                    ->readOnly()
+                                    ->placeholder('Otomatis USD × Kurs atau input Rp langsung')
+                                    ->helperText('Otomatis dari USD × Kurs, atau isi langsung IDR/kg (RM Price)')
+                                    ->live(onBlur: true)
+                                    ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                        if ($state !== null && $state !== '' && (float) $state > 0) {
+                                            $coilUsd = (float) ($get('coil_price') ?? 0);
+                                            $rate = (float) ($get('exchange_rate') ?? 0);
+                                            if ($coilUsd > 0 && ($rate <= 0 || abs((float) $state - round($coilUsd * $rate, 2)) > 0.05)) {
+                                                $set('coil_price', 0);
+                                            }
+                                        }
+                                    })
                                     ->dehydrated()
-                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (int) round((float) $state) : null)
+                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? round((float) $state, 2) : null)
                                     ->columnSpan(1),
 
                                 Forms\Components\TextInput::make('sheet_price_idr')
                                     ->label('Total Sheet (IDR/Kg)')
+                                    ->numeric()
+                                    ->step(0.01)
                                     ->prefix('Rp')
-                                    ->readOnly()
+                                    ->placeholder('Otomatis USD × Kurs atau input Rp langsung')
+                                    ->helperText('Otomatis dari USD × Kurs, atau isi langsung IDR/kg (RM Price)')
+                                    ->live(onBlur: true)
+                                    ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                                        if ($state !== null && $state !== '' && (float) $state > 0) {
+                                            $sheetUsd = (float) ($get('sheet_price') ?? 0);
+                                            $rate = (float) ($get('exchange_rate') ?? 0);
+                                            if ($sheetUsd > 0 && ($rate <= 0 || abs((float) $state - round($sheetUsd * $rate, 2)) > 0.05)) {
+                                                $set('sheet_price', 0);
+                                            }
+                                        }
+                                    })
                                     ->dehydrated()
-                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? (int) round((float) $state) : null)
+                                    ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? round((float) $state, 2) : null)
                                     ->columnSpan(1),
                             ])->columns(2),
 
@@ -966,9 +1014,9 @@ class StampingPartResource extends Resource
 
                                 Forms\Components\TextInput::make('berat')
                                     ->label('Berat Material Gross (Kg)')
-                                    ->placeholder('Contoh: 0.5890')
+                                    ->placeholder('Contoh: 0.5890326')
                                     ->numeric()
-                                    ->step(0.0001)
+                                    ->step(0.0000001)
                                     ->suffix('kg')
                                     ->live(onBlur: true)
                                     ->columnSpan(1),
@@ -987,6 +1035,7 @@ class StampingPartResource extends Resource
                                     ->label('Harga Scrap (Rp / kg)')
                                     ->numeric()
                                     ->placeholder('Contoh: -1500')
+                                    ->helperText('Gunakan angka negatif untuk potongan recovery, contoh: -1500')
                                     ->default(-1500)
                                     ->prefix('Rp')
                                     ->live(onBlur: true)
@@ -1070,13 +1119,17 @@ class StampingPartResource extends Resource
 
                                         $berat = (float) ($get('berat') ?? 0);
                                         if ($berat <= 0.0 && $thk > 0 && $wide > 0 && $pitch > 0) {
-                                            $berat = round(($thk * $wide * $pitch * 7.85) / (1000000 * $yieldRate), 4);
+                                            $berat = round(($thk * $wide * $pitch * 7.85) / (1000000 * $yieldRate), 7);
                                         }
 
-                                        $rate = (float) ($get('exchange_rate') ?? 16000);
-                                        $coilIdr = (float) ($get('coil_price_idr') ?? round((float) ($get('coil_price') ?? 0) * $rate));
-                                        $sheetIdr = (float) ($get('sheet_price_idr') ?? round((float) ($get('sheet_price') ?? 0) * $rate));
-                                        $steelRate = $sheetIdr > 0 ? $sheetIdr : ($coilIdr > 0 ? $coilIdr : round((float) ($get('sheet_price') ?? $get('coil_price') ?? 0) * $rate));
+                                        $rate = (float) ($get('exchange_rate') ?? 0);
+                                        $coilUsd = (float) ($get('coil_price') ?? 0);
+                                        $sheetUsd = (float) ($get('sheet_price') ?? 0);
+                                        $coilIdrRaw = (float) ($get('coil_price_idr') ?? 0);
+                                        $sheetIdrRaw = (float) ($get('sheet_price_idr') ?? 0);
+                                        $coilIdr = $coilIdrRaw > 0 ? $coilIdrRaw : round($coilUsd * $rate, 2);
+                                        $sheetIdr = $sheetIdrRaw > 0 ? $sheetIdrRaw : round($sheetUsd * $rate, 2);
+                                        $steelRate = $sheetIdr > 0 ? $sheetIdr : ($coilIdr > 0 ? $coilIdr : round(($sheetUsd > 0 ? $sheetUsd : $coilUsd) * $rate, 2));
 
                                         $grossMatCost = $berat > 0 && $steelRate > 0 ? round($berat * $steelRate, 2) : 0;
                                         $scrapWeight = $berat > 0 ? (float) ($get('scrap_weight') ?? 0) : 0;
@@ -1099,10 +1152,10 @@ class StampingPartResource extends Resource
                                         $packCost = (float) ($get('packing_cost') ?? 0);
 
                                         // (8) Part Cost (excluding tooling cost)
-                                        $partCostExclTooling = round($subtotal + $ohSuppliedCost + $ohSelfCost + $transCost + $packCost, 2);
+                                        $partCostExclTooling = round($subtotal + $ohSuppliedCost + $ohSelfCost + $transCost + $packCost, 4);
 
                                         $toolingDepr = (float) ($get('tooling_depreciation') ?? 0);
-                                        $finalPartCost = round($partCostExclTooling + $toolingDepr, 2);
+                                        $finalPartCost = round($partCostExclTooling + $toolingDepr, 4);
 
                                         return new HtmlString("
                                             <div class='rounded-xl border border-primary-200 bg-white p-5 shadow-sm dark:border-primary-800 dark:bg-gray-900'>
@@ -1248,7 +1301,6 @@ class StampingPartResource extends Resource
         return $table
             ->columns(static::getTableColumns())
             ->defaultSort('year', 'desc')
-            ->toggleColumnsTriggerAction(fn (Tables\Actions\Action $action) => $action->hidden())
             ->filters(static::getTableFilters())
             ->filtersTriggerAction(
                 fn (Tables\Actions\Action $action) => $action
@@ -1482,7 +1534,7 @@ class StampingPartResource extends Resource
 
             Tables\Columns\TextColumn::make('berat')
                 ->label('Berat')
-                ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? number_format((float) $state, 4, ',', '.').' kg' : '-')
+                ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? rtrim(rtrim(number_format((float) $state, 7, ',', '.'), '0'), ',').' kg' : '-')
                 ->placeholder('-')
                 ->alignRight()
                 ->sortable()

@@ -7,6 +7,7 @@ use App\Models\Currency;
 use App\Models\Material;
 use App\Models\MaterialSteel;
 use App\Models\Supplier;
+use App\Services\QuarterlyPullHelper;
 use Filament\Actions;
 use Filament\Forms;
 use Filament\Notifications\Notification;
@@ -151,11 +152,11 @@ class CreateMaterialSteel extends CreateRecord
                                 })
                                 ->toArray();
                         })
-                        ->afterStateUpdated(function ($state, Forms\Set $set, Forms\Get $get) {
-                            if ($state && empty($get('exchange_rate'))) {
+                        ->afterStateUpdated(function ($state, Forms\Set $set) {
+                            if ($state) {
                                 $rec = MaterialSteel::find($state);
-                                if ($rec && $rec->exchange_rate) {
-                                    $set('exchange_rate', (int) round((float) $rec->exchange_rate));
+                                if ($rec && $rec->exchange_rate && (float) $rec->exchange_rate > 0) {
+                                    $set('exchange_rate', QuarterlyPullHelper::normalizeRate($rec->exchange_rate));
                                 }
                             }
                         }),

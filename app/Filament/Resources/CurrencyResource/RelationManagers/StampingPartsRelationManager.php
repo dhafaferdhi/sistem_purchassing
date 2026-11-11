@@ -66,6 +66,17 @@ class StampingPartsRelationManager extends RelationManager
                     ->searchable()
                     ->weight('bold'),
 
+                Tables\Columns\TextColumn::make('part_number')
+                    ->label('Part Number')
+                    ->weight('bold')
+                    ->placeholder('-')
+                    ->searchable(),
+
+                Tables\Columns\TextColumn::make('part_name')
+                    ->label('Part Name')
+                    ->placeholder('-')
+                    ->searchable(),
+
                 Tables\Columns\TextColumn::make('steel_spec')
                     ->label('Spec')
                     ->formatStateUsing(fn ($state) => StampingPart::cleanSteelSpec($state))
@@ -122,6 +133,13 @@ class StampingPartsRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('sheet_price_idr')
                     ->label('Sheet (Rp)')
                     ->formatStateUsing(fn ($record) => $record->sheet_price_idr !== null && $record->sheet_price_idr !== '' ? 'Rp '.number_format((float) $record->sheet_price_idr, 0, ',', '.') : '-')
+                    ->alignRight(),
+
+                Tables\Columns\TextColumn::make('part_cost')
+                    ->label('Part Cost (Rp)')
+                    ->formatStateUsing(fn ($record) => $record->part_cost !== null && $record->part_cost !== '' ? 'Rp '.number_format((float) $record->part_cost, 2, ',', '.') : '-')
+                    ->weight('bold')
+                    ->color('success')
                     ->alignRight(),
             ])
             ->headerActions([
