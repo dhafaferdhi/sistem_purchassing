@@ -629,7 +629,7 @@ class StampingPartResource extends Resource
                                     fieldName: 'supplier_id',
                                     label: 'Pilih Supplier',
                                     defaultCategory: 'Stamping & Steel',
-                                    allowedCategories: ['Stamping & Steel', 'Stamping'],
+                                    allowedCategories: ['Stamping & Steel', 'Stamping', 'Component'],
                                     syncTextFields: true,
                                     required: fn (Get $get) => empty($get('supplier_name')),
                                     helperText: 'Vendor pembuat part stamping (mis. PT. POSMI STEEL INDONESIA, PT HSSI, PT USCI)',

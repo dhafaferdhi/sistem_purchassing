@@ -142,11 +142,14 @@ class Supplier extends Model
     /**
      * Cari atau buat supplier khusus untuk kategori modul tertentu tanpa mencampurkan modul lain.
      */
-    public static function resolveScopedSupplier(string $name, string $category, ?string $preferredCode = null): static
+    public static function resolveScopedSupplier(string $name, string $category, ?string $preferredCode = null, ?int $ignoreId = null): static
     {
-        $existing = static::where('name', $name)
-            ->where('category', $category)
-            ->first();
+        $query = static::where('name', $name)
+            ->where('category', $category);
+        if ($ignoreId) {
+            $query->where('id', '!=', $ignoreId);
+        }
+        $existing = $query->first();
         if ($existing) {
             return $existing;
         }

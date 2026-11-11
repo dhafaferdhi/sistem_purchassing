@@ -292,7 +292,7 @@ class SupplierSelectField
             }
 
             if ($supplier->{$relationName}()->exists()) {
-                $targetSup = Supplier::resolveScopedSupplier($supplier->name, $cfg['targetCategory']);
+                $targetSup = Supplier::resolveScopedSupplier($supplier->name, $cfg['targetCategory'], null, $supplier->id);
                 if (! $targetSup->is_active) {
                     $targetSup->update(['is_active' => true]);
                 }

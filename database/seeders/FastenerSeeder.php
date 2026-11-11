@@ -31,6 +31,16 @@ class FastenerSeeder extends Seeder
             ]
         );
 
+        Supplier::firstOrCreate(
+            ['code' => 'VND-MEIDOH'],
+            [
+                'name' => 'PT. MEIDOH INDONESIA',
+                'category' => 'Fastener',
+                'contact_person' => 'Marketing PT Meidoh Indonesia',
+                'is_active' => true,
+            ]
+        );
+
         $supHssi = Supplier::firstOrCreate(
             ['code' => 'VND-HSSI'],
             [

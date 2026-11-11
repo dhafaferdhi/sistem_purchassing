@@ -67,7 +67,7 @@ class RealMasterData2026Seeder extends Seeder
             ['code' => 'VND-POSMI'],
             [
                 'name' => 'PT. POSMI STEEL INDONESIA',
-                'category' => 'Steel',
+                'category' => 'Stamping & Steel',
                 'contact_person' => 'Sales Dept PT POSMI',
                 'is_active' => true,
             ]
@@ -109,6 +109,16 @@ class RealMasterData2026Seeder extends Seeder
                 'name' => 'PT. TRI CENTRUM FORTUNA',
                 'category' => 'Component',
                 'contact_person' => 'Sales Dept PT TCF',
+                'is_active' => true,
+            ]
+        );
+
+        Supplier::firstOrCreate(
+            ['code' => 'VND-MEIDOH'],
+            [
+                'name' => 'PT. MEIDOH INDONESIA',
+                'category' => 'Fastener',
+                'contact_person' => 'Sales Dept PT Meidoh',
                 'is_active' => true,
             ]
         );

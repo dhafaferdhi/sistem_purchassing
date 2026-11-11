@@ -51,6 +51,16 @@ class StampingPartSeeder extends Seeder
             ]
         );
 
+        Supplier::firstOrCreate(
+            ['code' => 'VND-TCF'],
+            [
+                'name' => 'PT. TRI CENTRUM FORTUNA',
+                'category' => 'Component',
+                'contact_person' => 'Marketing PT TCF',
+                'is_active' => true,
+            ]
+        );
+
         StampingPart::query()->delete();
 
         $records = [

@@ -333,4 +333,53 @@ class SupplierInlineCrudTest extends TestCase
         $this->assertDatabaseHas('suppliers', ['id' => $supplier->id]);
         $this->assertDatabaseHas('purchase_orders', ['id' => $po->id]);
     }
+
+    public function test_excel_suppliers_for_stamping_and_fasteners_are_active_and_properly_scoped(): void
+    {
+        $this->actingAs($this->admin);
+
+        // Jalankan seeder Stamping Part & Fasteners yang memuat daftar supplier resmi Excel
+        $this->seed(\Database\Seeders\StampingPartSeeder::class);
+        $this->seed(\Database\Seeders\FastenerSeeder::class);
+
+        $posmi = Supplier::where('code', 'VND-POSMI')->first();
+        $tcf = Supplier::where('code', 'VND-TCF')->first();
+        $nitto = Supplier::where('code', 'VND-NITTO')->first();
+        $meidoh = Supplier::where('code', 'VND-MEIDOH')->first();
+        $hssi = Supplier::where('code', 'VND-HSSI')->first();
+        $usci = Supplier::where('code', 'VND-USCI')->first();
+
+        $this->assertNotNull($posmi);
+        $this->assertNotNull($tcf);
+        $this->assertNotNull($nitto);
+        $this->assertNotNull($meidoh);
+        $this->assertNotNull($hssi);
+        $this->assertNotNull($usci);
+        $this->assertTrue($posmi->is_active);
+        $this->assertTrue($tcf->is_active);
+        $this->assertTrue($nitto->is_active);
+        $this->assertTrue($meidoh->is_active);
+
+        // Stamping Part memuat PT. POSMI STEEL INDONESIA & PT. TRI CENTRUM FORTUNA, bukan Steel/Fastener
+        $stampingOptions = Livewire::test(CreateStampingPart::class)
+            ->set('data.supplier_id', null)
+            ->instance()->getForm('form')->getFlatFields(withHidden: true)['supplier_id']->getOptions();
+        $this->assertArrayHasKey($posmi->id, $stampingOptions);
+        $this->assertArrayHasKey($tcf->id, $stampingOptions);
+        $this->assertArrayNotHasKey($hssi->id, $stampingOptions);
+        $this->assertArrayNotHasKey($usci->id, $stampingOptions);
+        $this->assertArrayNotHasKey($nitto->id, $stampingOptions);
+        $this->assertArrayNotHasKey($meidoh->id, $stampingOptions);
+
+        // Fastener memuat PT. NITTO ALAM INDONESIA & PT. MEIDOH INDONESIA, bukan Steel/Stamping
+        $fastenerOptions = Livewire::test(CreateFastener::class)
+            ->set('data.supplier_id', null)
+            ->instance()->getForm('form')->getFlatFields(withHidden: true)['supplier_id']->getOptions();
+        $this->assertArrayHasKey($nitto->id, $fastenerOptions);
+        $this->assertArrayHasKey($meidoh->id, $fastenerOptions);
+        $this->assertArrayNotHasKey($hssi->id, $fastenerOptions);
+        $this->assertArrayNotHasKey($usci->id, $fastenerOptions);
+        $this->assertArrayNotHasKey($posmi->id, $fastenerOptions);
+        $this->assertArrayNotHasKey($tcf->id, $fastenerOptions);
+    }
 }

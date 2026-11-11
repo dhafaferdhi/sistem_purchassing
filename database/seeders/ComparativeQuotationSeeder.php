@@ -31,7 +31,7 @@ class ComparativeQuotationSeeder extends Seeder
             ['code' => 'VND-POSMI'],
             [
                 'name' => 'PT. POSMI STEEL INDONESIA',
-                'category' => 'Steel',
+                'category' => 'Stamping & Steel',
                 'is_active' => true,
             ]
         );
@@ -40,7 +40,7 @@ class ComparativeQuotationSeeder extends Seeder
             ['code' => 'VND-NITTO'],
             [
                 'name' => 'PT. NITTO ALAM INDONESIA',
-                'category' => 'Component',
+                'category' => 'Fastener',
                 'is_active' => true,
             ]
         );
@@ -48,8 +48,8 @@ class ComparativeQuotationSeeder extends Seeder
         $supMeidoh = Supplier::firstOrCreate(
             ['code' => 'VND-MEIDOH'],
             [
-                'name' => 'PT. Meidoh Indonesia',
-                'category' => 'Component',
+                'name' => 'PT. MEIDOH INDONESIA',
+                'category' => 'Fastener',
                 'is_active' => true,
             ]
         );
