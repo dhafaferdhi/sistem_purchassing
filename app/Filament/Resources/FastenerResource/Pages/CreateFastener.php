@@ -61,7 +61,7 @@ class CreateFastener extends CreateRecord
                 }
             }
 
-            if (! empty($prevData['supplier_id'])) {
+            if (($prevData['source'] ?? '') !== 'MaterialSteel' && ! empty($prevData['supplier_id'])) {
                 $raw['supplier_id'] = $prevData['supplier_id'];
                 $raw['vendor_code'] = $prevData['vendor_code'];
                 $raw['supplier_name'] = $prevData['supplier_name'];
@@ -394,9 +394,6 @@ class CreateFastener extends CreateRecord
         $raw['steel_spec'] = $steel->steel_spec;
         $raw['double_thickness'] = $steel->double_thickness;
         $raw['diameter'] = $steel->double_thickness;
-        $raw['supplier_id'] = $steel->supplier_id;
-        $raw['vendor_code'] = $steel->vendor_code;
-        $raw['supplier_name'] = $steel->supplier_name;
 
         $raw['prev_coil_price'] = $sim['base_coil'];
         $raw['prev_sheet_price'] = $sim['base_sheet'];
@@ -461,15 +458,10 @@ class CreateFastener extends CreateRecord
     {
         // Pastikan vendor_code dan supplier_name terisi atau buat supplier otomatis jika diinput manual
         if (empty($data['supplier_id']) && ! empty($data['supplier_name'])) {
-            $clean = strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $data['supplier_name']), 0, 5));
-            $vendorCode = ! empty($data['vendor_code']) ? $data['vendor_code'] : 'VND-'.($clean ?: 'SUP').'-'.rand(10, 99);
-            $supplier = Supplier::firstOrCreate(
-                ['name' => $data['supplier_name']],
-                [
-                    'code' => $vendorCode,
-                    'category' => 'Fastener',
-                    'is_active' => true,
-                ]
+            $supplier = Supplier::resolveScopedSupplier(
+                $data['supplier_name'],
+                'Fastener',
+                ! empty($data['vendor_code']) ? $data['vendor_code'] : null
             );
             $data['supplier_id'] = $supplier->id;
             $data['vendor_code'] = $data['vendor_code'] ?? $supplier->code;

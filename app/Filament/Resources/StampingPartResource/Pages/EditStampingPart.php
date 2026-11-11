@@ -62,15 +62,10 @@ class EditStampingPart extends EditRecord
     protected function mutateFormDataBeforeSave(array $data): array
     {
         if (empty($data['supplier_id']) && ! empty($data['supplier_name'])) {
-            $clean = strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $data['supplier_name']), 0, 5));
-            $vendorCode = ! empty($data['vendor_code']) ? $data['vendor_code'] : 'VND-'.($clean ?: 'SUP').'-'.rand(10, 99);
-            $supplier = Supplier::firstOrCreate(
-                ['name' => $data['supplier_name']],
-                [
-                    'code' => $vendorCode,
-                    'category' => 'Steel',
-                    'is_active' => true,
-                ]
+            $supplier = Supplier::resolveScopedSupplier(
+                $data['supplier_name'],
+                'Stamping & Steel',
+                ! empty($data['vendor_code']) ? $data['vendor_code'] : null
             );
             $data['supplier_id'] = $supplier->id;
             $data['vendor_code'] = $data['vendor_code'] ?? $supplier->code;

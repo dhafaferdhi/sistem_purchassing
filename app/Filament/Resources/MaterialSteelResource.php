@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\MaterialSteelResource\Pages;
+use App\Filament\Support\SupplierSelectField;
 use App\Models\Currency;
 use App\Models\Material;
 use App\Models\MaterialSteel;
@@ -553,56 +554,19 @@ class MaterialSteelResource extends Resource
                                     })
                                     ->columnSpan(1),
 
-                                Forms\Components\Select::make('supplier_id')
-                                    ->label('Pilih Supplier')
-                                    ->relationship(
-                                        name: 'supplier',
-                                        titleAttribute: 'name',
-                                        modifyQueryUsing: function (Builder $query, Get $get, ?MaterialSteel $record) {
-                                            $selectedId = $get('supplier_id') ?? $record?->supplier_id;
-                                            $query->where(function ($q) use ($selectedId) {
-                                                $q->whereIn('name', ['PT HSSI', 'PT USCI'])
-                                                    ->orWhere('name', 'like', '%HSSI%')
-                                                    ->orWhere('name', 'like', '%USCI%');
-                                                if ($selectedId) {
-                                                    $q->orWhere('id', $selectedId);
-                                                }
-                                            });
-                                        }
-                                    )
-                                    ->searchable()
-                                    ->preload()
-                                    ->required(fn (Get $get) => empty($get('supplier_name')))
-                                    ->live()
-                                    ->afterStateUpdated(function ($state, Set $set, Get $get) {
-                                        if ($state) {
-                                            $supplier = Supplier::find($state);
-                                            if ($supplier) {
-                                                $set('vendor_code', $supplier->code);
-                                                $set('supplier_name', $supplier->name);
-                                            }
-                                        }
+                                SupplierSelectField::make(
+                                    fieldName: 'supplier_id',
+                                    label: 'Pilih Supplier',
+                                    defaultCategory: 'Steel',
+                                    allowedCategories: ['Steel'],
+                                    syncTextFields: true,
+                                    required: fn (Get $get) => empty($get('supplier_name')),
+                                    prioritizeSteelVendors: true,
+                                    onUpdated: function (Get $get, Set $set): void {
                                         static::updateHistoricalLookback($get, $set);
                                         static::lookupPreviousQuarterRecord($get, $set);
-                                    })
-                                    ->createOptionForm([
-                                        Forms\Components\TextInput::make('name')
-                                            ->label('Nama Supplier Baru')
-                                            ->placeholder('Contoh: PT Krakatau Steel Tbk')
-                                            ->required()
-                                            ->maxLength(255)
-                                            ->live(onBlur: true)
-                                            ->afterStateUpdated(function ($state, Set $set) {
-                                                if ($state) {
-                                                    $clean = strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $state), 0, 5));
-                                                    $set('code', 'VND-'.($clean ?: 'SUP').'-'.rand(10, 99));
-                                                }
-                                            }),
-
-                                        Forms\Components\Hidden::make('code')
-                                            ->default(fn () => 'VND-SUP-'.rand(100, 999)),
-                                    ])
-                                    ->columnSpan(1),
+                                    },
+                                ),
 
                                 Forms\Components\TextInput::make('steel_spec')
                                     ->label('Spesifikasi Baja (Spec)')

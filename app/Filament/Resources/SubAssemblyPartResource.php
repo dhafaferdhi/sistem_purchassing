@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\SubAssemblyPartResource\Pages;
+use App\Filament\Support\SupplierSelectField;
 use App\Models\Fastener;
 use App\Models\MaterialSteel;
 use App\Models\StampingPart;
@@ -186,31 +187,14 @@ class SubAssemblyPartResource extends Resource
 
                                 Forms\Components\Grid::make(3)
                                     ->schema([
-                                        Forms\Components\Select::make('supplier_id')
-                                            ->label('Vendor / Supplier Sub-Assy')
-                                            ->relationship('supplier', 'name')
-                                            ->searchable()
-                                            ->preload()
-                                            ->createOptionForm([
-                                                Forms\Components\TextInput::make('name')
-                                                    ->label('Nama Vendor')
-                                                    ->required(),
-                                                Forms\Components\TextInput::make('code')
-                                                    ->label('Kode Vendor')
-                                                    ->default(fn () => 'VND-TCF-'.rand(10, 99)),
-                                                Forms\Components\Hidden::make('category')->default('Component'),
-                                                Forms\Components\Hidden::make('is_active')->default(true),
-                                            ])
-                                            ->live()
-                                            ->afterStateUpdated(function (Get $get, Set $set, ?int $state) {
-                                                if ($state) {
-                                                    $supplier = Supplier::find($state);
-                                                    if ($supplier) {
-                                                        $set('supplier_name', $supplier->name);
-                                                        $set('vendor_code', $supplier->code);
-                                                    }
-                                                }
-                                            }),
+                                        SupplierSelectField::make(
+                                            fieldName: 'supplier_id',
+                                            label: 'Vendor / Supplier Sub-Assy',
+                                            defaultCategory: 'Component',
+                                            allowedCategories: ['Component', 'Stamping & Steel', 'Stamping', 'General'],
+                                            syncTextFields: true,
+                                            required: false,
+                                        ),
 
                                         Forms\Components\TextInput::make('supplier_name')
                                             ->label('Nama Supplier (Fallback)')

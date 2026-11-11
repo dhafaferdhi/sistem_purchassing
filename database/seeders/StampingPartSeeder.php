@@ -45,7 +45,7 @@ class StampingPartSeeder extends Seeder
             ['code' => 'VND-POSMI'],
             [
                 'name' => 'PT. POSMI STEEL INDONESIA',
-                'category' => 'Steel',
+                'category' => 'Stamping & Steel',
                 'contact_person' => 'Marketing PT Posmi Steel',
                 'is_active' => true,
             ]

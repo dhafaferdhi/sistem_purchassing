@@ -370,14 +370,10 @@ class CreateMaterialSteel extends CreateRecord
     {
         // Pastikan vendor_code dan supplier_name terisi atau buat supplier otomatis jika diinput manual
         if (empty($data['supplier_id']) && ! empty($data['supplier_name'])) {
-            $vendorCode = ! empty($data['vendor_code']) ? $data['vendor_code'] : 'VND-'.strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $data['supplier_name']), 0, 5)).'-'.rand(10, 99);
-            $supplier = Supplier::firstOrCreate(
-                ['name' => $data['supplier_name']],
-                [
-                    'code' => $vendorCode,
-                    'category' => 'Steel',
-                    'is_active' => true,
-                ]
+            $supplier = Supplier::resolveScopedSupplier(
+                $data['supplier_name'],
+                'Steel',
+                ! empty($data['vendor_code']) ? $data['vendor_code'] : null
             );
             $data['supplier_id'] = $supplier->id;
             $data['vendor_code'] = $data['vendor_code'] ?? $supplier->code;

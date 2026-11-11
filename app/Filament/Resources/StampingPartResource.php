@@ -160,12 +160,6 @@ class StampingPartResource extends Resource
                 $set('double_thickness', $steel->double_thickness);
             }
 
-            if (empty($get('supplier_id')) && ! empty($steel->supplier_id)) {
-                $set('supplier_id', $steel->supplier_id);
-                $set('vendor_code', $steel->vendor_code);
-                $set('supplier_name', $steel->supplier_name);
-            }
-
             static::recalculateFormPrices($get, $set);
 
             if ($notify) {
@@ -519,7 +513,7 @@ class StampingPartResource extends Resource
             if (isset($prevData['sheet_price'])) {
                 $set('sheet_price', $prevData['sheet_price']);
             }
-            if (empty($get('supplier_id')) && ! empty($prevData['supplier_id'])) {
+            if (empty($get('supplier_id')) && ($prevData['source'] ?? '') !== 'MaterialSteel' && ! empty($prevData['supplier_id'])) {
                 $set('supplier_id', $prevData['supplier_id']);
                 $set('vendor_code', $prevData['vendor_code']);
                 $set('supplier_name', $prevData['supplier_name']);
@@ -631,54 +625,16 @@ class StampingPartResource extends Resource
                                     })
                                     ->columnSpan(1),
 
-                                Forms\Components\Select::make('supplier_id')
-                                    ->label('Pilih Supplier')
-                                    ->relationship(
-                                        name: 'supplier',
-                                        titleAttribute: 'name',
-                                        modifyQueryUsing: function (Builder $query, Get $get, ?StampingPart $record) {
-                                            $selectedId = $get('supplier_id') ?? $record?->supplier_id;
-                                            $query->where(function ($q) use ($selectedId) {
-                                                $q->where('is_active', true);
-                                                if ($selectedId) {
-                                                    $q->orWhere('id', $selectedId);
-                                                }
-                                            })->orderBy('name');
-                                        }
-                                    )
-                                    ->helperText('Vendor pembuat part stamping (mis. PT. POSMI STEEL INDONESIA, PT HSSI, PT USCI)')
-                                    ->searchable()
-                                    ->preload()
-                                    ->required(fn (Get $get) => empty($get('supplier_name')))
-                                    ->live()
-                                    ->afterStateUpdated(function ($state, Set $set, Get $get) {
-                                        if ($state) {
-                                            $supplier = Supplier::find($state);
-                                            if ($supplier) {
-                                                $set('vendor_code', $supplier->code);
-                                                $set('supplier_name', $supplier->name);
-                                            }
-                                        }
-                                        static::lookupPreviousQuarterRecord($get, $set);
-                                    })
-                                    ->createOptionForm([
-                                        Forms\Components\TextInput::make('name')
-                                            ->label('Nama Supplier Baru')
-                                            ->placeholder('Contoh: PT Krakatau Steel Tbk')
-                                            ->required()
-                                            ->maxLength(255)
-                                            ->live(onBlur: true)
-                                            ->afterStateUpdated(function ($state, Set $set) {
-                                                if ($state) {
-                                                    $clean = strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $state), 0, 5));
-                                                    $set('code', 'VND-'.($clean ?: 'SUP').'-'.rand(10, 99));
-                                                }
-                                            }),
-
-                                        Forms\Components\Hidden::make('code')
-                                            ->default(fn () => 'VND-SUP-'.rand(100, 999)),
-                                    ])
-                                    ->columnSpan(1),
+                                \App\Filament\Support\SupplierSelectField::make(
+                                    fieldName: 'supplier_id',
+                                    label: 'Pilih Supplier',
+                                    defaultCategory: 'Stamping & Steel',
+                                    allowedCategories: ['Stamping & Steel', 'Stamping'],
+                                    syncTextFields: true,
+                                    required: fn (Get $get) => empty($get('supplier_name')),
+                                    helperText: 'Vendor pembuat part stamping (mis. PT. POSMI STEEL INDONESIA, PT HSSI, PT USCI)',
+                                    onUpdated: fn (Get $get, Set $set) => static::lookupPreviousQuarterRecord($get, $set),
+                                ),
 
                                 Forms\Components\TextInput::make('part_number')
                                     ->label('Part Number')

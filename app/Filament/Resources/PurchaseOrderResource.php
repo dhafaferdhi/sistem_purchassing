@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\GoodsReceiptResource;
 use App\Filament\Resources\PurchaseOrderResource\Pages;
+use App\Filament\Support\SupplierSelectField;
 use App\Models\Currency;
 use App\Models\Part;
 use App\Models\PartPriceHistory;
@@ -91,14 +92,14 @@ class PurchaseOrderResource extends Resource
                 Forms\Components\Hidden::make('user_id')
                     ->default(fn () => Auth::id()),
 
-                Forms\Components\Select::make('supplier_id')
-                    ->label('Vendor / Supplier')
-                    ->relationship('supplier', 'name')
-                    ->searchable()
-                    ->preload()
-                    ->required()
-                    ->live()
-                    ->columnSpan(2),
+                SupplierSelectField::make(
+                    fieldName: 'supplier_id',
+                    label: 'Vendor / Supplier',
+                    defaultCategory: 'General',
+                    syncTextFields: false,
+                    required: true,
+                    columnSpan: 2,
+                ),
 
                 Forms\Components\DatePicker::make('order_date')
                     ->label('Tanggal Order')

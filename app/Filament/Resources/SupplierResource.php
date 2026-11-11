@@ -4,9 +4,11 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\SupplierResource\Pages;
 use App\Filament\Resources\SupplierResource\RelationManagers\VendorItemsRelationManager;
+use App\Filament\Support\SupplierSelectField;
 use App\Models\Supplier;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -131,7 +133,19 @@ class SupplierResource extends Resource
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                Tables\Actions\DeleteAction::make()
+                    ->before(function (Tables\Actions\DeleteAction $action, Supplier $record): void {
+                        $usages = $record->getReferenceCounts();
+                        if (! empty($usages)) {
+                            $summary = SupplierSelectField::formatUsageSummary($usages);
+                            Notification::make()
+                                ->title('Supplier Tidak Dapat Dihapus Permanen')
+                                ->body("Masih dipakai di {$summary}. Nonaktifkan Status Aktif agar tidak muncul di pilihan.")
+                                ->warning()
+                                ->send();
+                            $action->halt();
+                        }
+                    }),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([

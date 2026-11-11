@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\MaterialResource\Pages;
+use App\Filament\Support\SupplierSelectField;
 use App\Models\Currency;
 use App\Models\Material;
 use App\Models\Supplier;
@@ -81,12 +82,14 @@ class MaterialResource extends Resource
                             })
                             ->required(),
 
-                        Forms\Components\Select::make('supplier_id')
-                            ->label('Pabrikan / Supplier Material')
-                            ->relationship('supplier', 'name')
-                            ->searchable()
-                            ->preload()
-                            ->placeholder('Pilih Supplier (Opsional)'),
+                        SupplierSelectField::make(
+                            fieldName: 'supplier_id',
+                            label: 'Pabrikan / Supplier Material',
+                            defaultCategory: 'General',
+                            syncTextFields: false,
+                            required: false,
+                            placeholder: 'Pilih Supplier (Opsional)',
+                        ),
 
                         Forms\Components\Select::make('currency_id')
                             ->label('Mata Uang Pembelian')

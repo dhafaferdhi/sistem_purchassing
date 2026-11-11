@@ -557,9 +557,9 @@ class StampingPart extends Model
                 'exchange_rate' => (float) $steelRecord->exchange_rate,
                 'coil_price' => (float) $steelRecord->coil_price,
                 'sheet_price' => (float) $steelRecord->sheet_price,
-                'supplier_id' => $steelRecord->supplier_id,
-                'vendor_code' => $steelRecord->vendor_code,
-                'supplier_name' => $steelRecord->supplier_name,
+                'supplier_id' => null,
+                'vendor_code' => null,
+                'supplier_name' => null,
             ];
         }
 
