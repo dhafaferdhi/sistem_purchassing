@@ -43,7 +43,6 @@ class PartPriceTrend extends Page implements HasForms
         $columns = ['id', 'item_code', 'part_number', 'description', 'part_name', 'main_category', 'sub_category'];
 
         $parts = Part::query()
-            ->select($columns)
             ->when($search !== '', function (Builder $query) use ($search): void {
                 $query->where(function (Builder $q) use ($search): void {
                     $q->where('item_code', 'like', "%{$search}%")
@@ -54,10 +53,10 @@ class PartPriceTrend extends Page implements HasForms
             })
             ->orderBy('part_number')
             ->limit(100)
-            ->get();
+            ->get($columns);
 
         if ($this->selectedPartId && ! $parts->contains('id', $this->selectedPartId)) {
-            $selected = Part::query()->select($columns)->find($this->selectedPartId);
+            $selected = Part::query()->find($this->selectedPartId, $columns);
             if ($selected) {
                 $parts->prepend($selected);
             }
@@ -97,8 +96,8 @@ class PartPriceTrend extends Page implements HasForms
             ];
         }
 
-        $latest = (float) $histories->last()->unit_price_idr;
-        $first = (float) $histories->first()->unit_price_idr;
+        $latest = (float) ($histories->last()?->unit_price_idr ?? 0);
+        $first = (float) ($histories->first()?->unit_price_idr ?? 0);
         $min = (float) $histories->min('unit_price_idr');
         $max = (float) $histories->max('unit_price_idr');
         $overallChange = $first > 0 ? round((($latest - $first) / $first) * 100, 2) : 0;

@@ -3,7 +3,6 @@
 namespace App\Filament\Pages;
 
 use App\Models\ComparativeQuotation;
-use App\Models\Part;
 use App\Services\ComparativeQuotationService;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Select;
@@ -99,8 +98,8 @@ class ComparativeQuotationSheet extends Page implements HasForms
             ];
         }
 
-        $firstPrice = (float) $periods->first()->total_cost;
-        $latestPrice = (float) $periods->last()->total_cost;
+        $firstPrice = (float) ($periods->first()?->total_cost ?? 0);
+        $latestPrice = (float) ($periods->last()?->total_cost ?? 0);
         $minPrice = (float) $periods->min('total_cost');
         $maxPrice = (float) $periods->max('total_cost');
         $change = $latestPrice - $firstPrice;

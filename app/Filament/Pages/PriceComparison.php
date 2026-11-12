@@ -52,7 +52,6 @@ class PriceComparison extends Page implements HasForms
         $columns = ['id', 'part_number', 'part_name', 'main_category', 'sub_category'];
 
         $parts = Part::query()
-            ->select($columns)
             ->when($search !== '', function (Builder $query) use ($search): void {
                 $query->where(function (Builder $q) use ($search): void {
                     $q->where('part_number', 'like', "%{$search}%")
@@ -61,10 +60,10 @@ class PriceComparison extends Page implements HasForms
             })
             ->orderBy('part_number')
             ->limit(100)
-            ->get();
+            ->get($columns);
 
         if ($this->selectedPartId && ! $parts->contains('id', $this->selectedPartId)) {
-            $selected = Part::query()->select($columns)->find($this->selectedPartId);
+            $selected = Part::query()->find($this->selectedPartId, $columns);
             if ($selected) {
                 $parts->prepend($selected);
             }

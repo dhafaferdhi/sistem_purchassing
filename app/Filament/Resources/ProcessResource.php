@@ -29,7 +29,7 @@ class ProcessResource extends Resource
     {
         return $form
             ->schema([
-                Forms\Components\Card::make()
+                Forms\Components\Section::make()
                     ->schema([
                         Forms\Components\TextInput::make('name')
                             ->label('Nama Proses')
@@ -63,7 +63,7 @@ class ProcessResource extends Resource
                                     ->orderBy('name')
                                     ->limit(100)
                                     ->get(['id', 'name', 'stamping_type', 'tonnage', 'hourly_rate'])
-                                    ->mapWithKeys(function (Machine $m): array {
+                                    ->mapWithKeys(function ($m): array {
                                         $rate = 'Rp '.number_format((float) $m->hourly_rate, 0, ',', '.').'/jam';
 
                                         return [$m->id => "{$m->name} [{$m->stamping_type} - {$m->tonnage}] ({$rate})"];
@@ -77,7 +77,7 @@ class ProcessResource extends Resource
                                     ->orderBy('name')
                                     ->limit(50)
                                     ->get(['id', 'name', 'stamping_type', 'tonnage', 'hourly_rate'])
-                                    ->mapWithKeys(function (Machine $m): array {
+                                    ->mapWithKeys(function ($m): array {
                                         $rate = 'Rp '.number_format((float) $m->hourly_rate, 0, ',', '.').'/jam';
 
                                         return [$m->id => "{$m->name} [{$m->stamping_type} - {$m->tonnage}] ({$rate})"];

@@ -6,7 +6,6 @@ use App\Filament\Resources\MaterialResource\Pages;
 use App\Filament\Support\SupplierSelectField;
 use App\Models\Currency;
 use App\Models\Material;
-use App\Models\Supplier;
 use App\Services\MaterialMassUpdateService;
 use Filament\Forms;
 use Filament\Forms\Form;
@@ -34,7 +33,7 @@ class MaterialResource extends Resource
     {
         return $form
             ->schema([
-                Forms\Components\Card::make()
+                Forms\Components\Section::make()
                     ->schema([
                         Forms\Components\TextInput::make('spec')
                             ->label('Material Spec')

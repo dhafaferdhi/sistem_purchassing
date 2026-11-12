@@ -139,7 +139,7 @@ class QuotationResource extends Resource
                                         ->orderBy('spec')
                                         ->limit(50)
                                         ->get(['id', 'spec', 'category', 'basic_rate'])
-                                        ->mapWithKeys(fn (Material $m): array => [
+                                        ->mapWithKeys(fn ($m): array => [
                                             $m->id => "{$m->spec} ({$m->category}) - Rate: \${$m->basic_rate}",
                                         ])
                                         ->toArray())
@@ -153,7 +153,7 @@ class QuotationResource extends Resource
                                         ->orderBy('spec')
                                         ->limit(50)
                                         ->get(['id', 'spec', 'category', 'basic_rate'])
-                                        ->mapWithKeys(fn (Material $m): array => [
+                                        ->mapWithKeys(fn ($m): array => [
                                             $m->id => "{$m->spec} ({$m->category}) - Rate: \${$m->basic_rate}",
                                         ])
                                         ->toArray())

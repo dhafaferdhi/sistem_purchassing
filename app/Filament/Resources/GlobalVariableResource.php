@@ -29,7 +29,7 @@ class GlobalVariableResource extends Resource
     {
         return $form
             ->schema([
-                Forms\Components\Card::make()
+                Forms\Components\Section::make()
                     ->schema([
                         Forms\Components\TextInput::make('key')
                             ->label('Key / Kode Variabel')

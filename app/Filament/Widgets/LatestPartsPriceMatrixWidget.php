@@ -18,8 +18,6 @@ class LatestPartsPriceMatrixWidget extends BaseWidget
         return false;
     }
 
-    protected static ?string $heading = '📋 Rekapitulasi Harga Komponen Stamping Terkini';
-
     protected static ?int $sort = 5;
 
     protected int|string|array $columnSpan = 'full';
@@ -38,6 +36,7 @@ class LatestPartsPriceMatrixWidget extends BaseWidget
             ->latest('id');
 
         return $table
+            ->heading('📋 Rekapitulasi Harga Komponen Stamping Terkini')
             ->query($query)
             ->columns([
                 Tables\Columns\TextColumn::make('period')
@@ -98,4 +97,3 @@ class LatestPartsPriceMatrixWidget extends BaseWidget
             ->defaultPaginationPageOption(5);
     }
 }
-

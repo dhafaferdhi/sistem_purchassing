@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\ComparativeQuotation;
-use App\Models\Part;
 use Illuminate\Support\Collection;
 
 class ComparativeQuotationService

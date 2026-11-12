@@ -9,7 +9,6 @@ use App\Models\MaterialSteel;
 use App\Models\PartQuotation;
 use App\Models\StampingPart;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Log;
 
 class CurrencyRecalculationService
@@ -40,9 +39,9 @@ class CurrencyRecalculationService
     public static function estimateAffectedCount(Currency $currency): int
     {
         return PartQuotation::where('currency_id', $currency->id)->count()
-            + self::buildCurrencyTargetQuery(MaterialSteel::class, $currency)->count()
-            + self::buildCurrencyTargetQuery(StampingPart::class, $currency)->count()
-            + self::buildCurrencyTargetQuery(Fastener::class, $currency)->count();
+            + self::applyCurrencyTargetFilter(MaterialSteel::query(), $currency)->count()
+            + self::applyCurrencyTargetFilter(StampingPart::query(), $currency)->count()
+            + self::applyCurrencyTargetFilter(Fastener::query(), $currency)->count();
     }
 
     /**
@@ -111,7 +110,7 @@ class CurrencyRecalculationService
         $updatedCount = 0;
         $rate = (float) $currency->exchange_rate_to_idr;
 
-        self::buildCurrencyTargetQuery(MaterialSteel::class, $currency)
+        self::applyCurrencyTargetFilter(MaterialSteel::query(), $currency)
             ->chunkById(self::CHUNK_SIZE, function ($steels) use ($currency, $rate, &$updatedCount): void {
                 foreach ($steels as $steel) {
                     $steel->currency_id = $currency->id;
@@ -157,7 +156,7 @@ class CurrencyRecalculationService
         $updatedCount = 0;
         $rate = (float) $currency->exchange_rate_to_idr;
 
-        self::buildCurrencyTargetQuery(StampingPart::class, $currency)
+        self::applyCurrencyTargetFilter(StampingPart::query(), $currency)
             ->chunkById(self::CHUNK_SIZE, function ($stampingParts) use ($currency, $rate, &$updatedCount): void {
                 foreach ($stampingParts as $part) {
                     $part->currency_id = $currency->id;
@@ -190,7 +189,7 @@ class CurrencyRecalculationService
         $updatedCount = 0;
         $rate = (float) $currency->exchange_rate_to_idr;
 
-        self::buildCurrencyTargetQuery(Fastener::class, $currency)
+        self::applyCurrencyTargetFilter(Fastener::query(), $currency)
             ->chunkById(self::CHUNK_SIZE, function ($fasteners) use ($currency, $rate, &$updatedCount): void {
                 foreach ($fasteners as $fastener) {
                     $prevRate = (float) ($fastener->exchange_rate ?? 0);
@@ -237,11 +236,9 @@ class CurrencyRecalculationService
     }
 
     /**
-     * Bangun query target model dengan pengelompokan OR yang aman untuk chunkById().
-     *
-     * @param  class-string<Model>  $modelClass
+     * Terapkan filter target model dengan pengelompokan OR yang aman untuk chunkById().
      */
-    protected static function buildCurrencyTargetQuery(string $modelClass, Currency $currency): Builder
+    protected static function applyCurrencyTargetFilter(Builder $baseQuery, Currency $currency): Builder
     {
         $codes = [$currency->code];
         if (in_array(strtoupper((string) $currency->code), ['JPY', 'YEN'], true)) {
@@ -254,7 +251,7 @@ class CurrencyRecalculationService
             ->filter()
             ->all();
 
-        return $modelClass::query()->where(function (Builder $outer) use ($codes, $currency, $otherCurrencyYears): void {
+        return $baseQuery->where(function (Builder $outer) use ($codes, $currency, $otherCurrencyYears): void {
             $outer->where('currency_id', $currency->id)
                 ->orWhere(function (Builder $query) use ($codes, $currency, $otherCurrencyYears): void {
                     $query->whereIn('currency_code', $codes);

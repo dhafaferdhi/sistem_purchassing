@@ -11,7 +11,7 @@ use Filament\Tables;
 use Filament\Tables\Table;
 
 class MachineResource extends Resource
-    {
+{
     protected static ?string $model = Machine::class;
 
     protected static bool $shouldRegisterNavigation = false;
@@ -28,7 +28,7 @@ class MachineResource extends Resource
     {
         return $form
             ->schema([
-                Forms\Components\Card::make()
+                Forms\Components\Section::make()
                     ->schema([
                         Forms\Components\TextInput::make('name')
                             ->label('Nama Mesin / Lini Produksi')

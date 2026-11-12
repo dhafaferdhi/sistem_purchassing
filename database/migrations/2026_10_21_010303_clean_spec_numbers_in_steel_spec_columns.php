@@ -17,9 +17,9 @@ return new class extends Migration
                 return null;
             }
             $spec = trim($spec);
-            $spec = preg_replace('/\s*\(\s*\d+(?:\.\d+)?\s*(?:mm)?\s*\)\s*$/i', '', $spec);
-            $spec = preg_replace('/(?:\s+|-|\s*–\s*|\s*—\s*)\s*\d+(?:\.\d+)?\s*(?:mm)?\s*$/i', '', $spec);
-            $spec = preg_replace('/\s+mm\s*$/i', '', $spec);
+            $spec = (string) preg_replace('/\s*\(\s*\d+(?:\.\d+)?\s*(?:mm)?\s*\)\s*$/i', '', $spec);
+            $spec = (string) preg_replace('/(?:\s+|-|\s*–\s*|\s*—\s*)\s*\d+(?:\.\d+)?\s*(?:mm)?\s*$/i', '', $spec);
+            $spec = (string) preg_replace('/\s+mm\s*$/i', '', $spec);
 
             return trim($spec);
         };

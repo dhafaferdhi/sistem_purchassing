@@ -365,10 +365,10 @@ class QuarterlyPullHelper
         $basePrimary = $baseSheet > 0 ? $baseSheet : $baseCoil;
 
         $hasExplicitSheet = $overrideSheetUsd !== null && $overrideSheetUsd > 0;
-        $isUnchangedSheet = $hasExplicitSheet && abs($overrideSheetUsd - $basePrimary) < 0.00001;
+        $isUnchangedSheet = $hasExplicitSheet && abs((float) $overrideSheetUsd - $basePrimary) < 0.00001;
         $deltaUsd = $isUnchangedSheet
             ? 0.0
-            : ($hasExplicitSheet ? round($overrideSheetUsd - $basePrimary, 4) : $appliedKg);
+            : ($hasExplicitSheet ? round((float) $overrideSheetUsd - $basePrimary, 4) : $appliedKg);
 
         if ($isUnchangedSheet) {
             $newSheet = $baseSheet;
@@ -449,7 +449,7 @@ class QuarterlyPullHelper
         $baseWire = (float) ($rec->wire_price_usd_kg ?: ($baseCoil > 0 ? $baseCoil : 1.66));
 
         $hasExplicitWire = $overrideWireUsd !== null && $overrideWireUsd > 0;
-        $isUnchangedWire = $hasExplicitWire && abs($overrideWireUsd - $baseWire) < 0.00001;
+        $isUnchangedWire = $hasExplicitWire && abs((float) $overrideWireUsd - $baseWire) < 0.00001;
 
         if ($isUnchangedWire) {
             $newWireUsd = $baseWire;
@@ -457,7 +457,7 @@ class QuarterlyPullHelper
             $newCoil = $baseCoil;
             $newSheet = $baseSheet;
         } else {
-            $newWireUsd = $hasExplicitWire ? round($overrideWireUsd, 4) : round($baseWire + $appliedKg, 4);
+            $newWireUsd = $hasExplicitWire ? round((float) $overrideWireUsd, 4) : round($baseWire + $appliedKg, 4);
             $deltaWireUsd = $hasExplicitWire ? round($newWireUsd - $baseWire, 4) : $appliedKg;
 
             $newCoil = $baseCoil > 0 ? round($baseCoil + $deltaWireUsd, 4) : 0.0;

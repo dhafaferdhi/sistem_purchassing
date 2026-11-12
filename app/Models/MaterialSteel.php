@@ -376,11 +376,11 @@ class MaterialSteel extends Model
 
         $spec = trim($spec);
         // Hapus ketebalan di dalam tanda kurung di akhir, contoh: "SPCC-SD (1.2mm)" atau "SPCC-SD (1.2)"
-        $spec = preg_replace('/\s*\(\s*\d+(?:\.\d+)?\s*(?:mm)?\s*\)\s*$/i', '', $spec);
+        $spec = (string) preg_replace('/\s*\(\s*\d+(?:\.\d+)?\s*(?:mm)?\s*\)\s*$/i', '', $spec);
         // Hapus trailing angka ketebalan dan satuan mm setelah spasi atau tanda hubung, contoh: "SPCC-SD 1.2mm", "SPCC-SD 1.2 mm", "SPCC-SD 1.2", "SPCC-SD - 1.2mm"
-        $spec = preg_replace('/(?:\s+|-|\s*–\s*|\s*—\s*)\s*\d+(?:\.\d+)?\s*(?:mm)?\s*$/i', '', $spec);
+        $spec = (string) preg_replace('/(?:\s+|-|\s*–\s*|\s*—\s*)\s*\d+(?:\.\d+)?\s*(?:mm)?\s*$/i', '', $spec);
         // Hapus trailing satuan mm berdiri sendiri setelah spasi, contoh: "SPCC-SD mm"
-        $spec = preg_replace('/\s+mm\s*$/i', '', $spec);
+        $spec = (string) preg_replace('/\s+mm\s*$/i', '', $spec);
 
         return trim($spec);
     }

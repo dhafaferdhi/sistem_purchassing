@@ -122,7 +122,7 @@ class PartResource extends Resource
                                                 ->orderBy('part_number')
                                                 ->limit(50)
                                                 ->get(['id', 'item_code', 'part_number', 'description', 'part_name', 'item_category'])
-                                                ->mapWithKeys(fn (Part $p): array => [$p->id => '['.($p->item_code ?? $p->part_number).'] '.($p->description ?? $p->part_name)." ({$p->item_category})"])
+                                                ->mapWithKeys(fn ($p): array => [$p->id => '['.($p->item_code ?? $p->part_number).'] '.($p->description ?? $p->part_name)." ({$p->item_category})"])
                                                 ->all())
                                             ->getSearchResultsUsing(fn (string $search): array => Part::query()
                                                 ->where('part_number', 'like', "%{$search}%")
@@ -132,7 +132,7 @@ class PartResource extends Resource
                                                 ->orderBy('part_number')
                                                 ->limit(50)
                                                 ->get(['id', 'item_code', 'part_number', 'description', 'part_name', 'item_category'])
-                                                ->mapWithKeys(fn (Part $p): array => [$p->id => '['.($p->item_code ?? $p->part_number).'] '.($p->description ?? $p->part_name)." ({$p->item_category})"])
+                                                ->mapWithKeys(fn ($p): array => [$p->id => '['.($p->item_code ?? $p->part_number).'] '.($p->description ?? $p->part_name)." ({$p->item_category})"])
                                                 ->all())
                                             ->getOptionLabelUsing(function ($value): ?string {
                                                 if (! $value) {

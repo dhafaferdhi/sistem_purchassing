@@ -66,7 +66,7 @@ class GoodsReceiptResource extends Resource
                                             ->latest('id')
                                             ->limit(50)
                                             ->get()
-                                            ->mapWithKeys(fn (PurchaseOrder $po): array => [
+                                            ->mapWithKeys(fn ($po): array => [
                                                 $po->id => "{$po->po_number} — {$po->supplier?->name} ({$po->delivery_status})",
                                             ])
                                             ->all();
@@ -83,7 +83,7 @@ class GoodsReceiptResource extends Resource
                                             ->latest('id')
                                             ->limit(50)
                                             ->get()
-                                            ->mapWithKeys(fn (PurchaseOrder $po): array => [
+                                            ->mapWithKeys(fn ($po): array => [
                                                 $po->id => "{$po->po_number} — {$po->supplier?->name} ({$po->delivery_status})",
                                             ])
                                             ->all();

@@ -423,11 +423,11 @@ class CreateStampingPart extends CreateRecord
         $gap = QuarterlyPullHelper::resolveSteelGap(StampingPart::determineSteelType($steel->steel_spec), $hrMt, $crMt);
         $rate = QuarterlyPullHelper::resolveAppliedRate($modalRate, (float) $steel->exchange_rate, (float) ($raw['exchange_rate'] ?? 0));
         $basePrimary = (float) ($steel->sheet_price > 0 ? $steel->sheet_price : $steel->coil_price);
-        $isUnchangedOverride = $sheetOverride !== null && $sheetOverride > 0 && abs($sheetOverride - $basePrimary) < 0.00001;
+        $isUnchangedOverride = $sheetOverride !== null && $sheetOverride > 0 && abs((float) $sheetOverride - $basePrimary) < 0.00001;
         $appliedKg = $isUnchangedOverride
             ? 0.0
             : ($sheetOverride !== null && $basePrimary > 0
-                ? round($sheetOverride - $basePrimary, 4)
+                ? round((float) $sheetOverride - $basePrimary, 4)
                 : $gap['applied_kg']);
         $sim = QuarterlyPullHelper::computeMaterialSteelSimulation($steel, $rate, $appliedKg);
 

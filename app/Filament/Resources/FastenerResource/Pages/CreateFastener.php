@@ -383,11 +383,11 @@ class CreateFastener extends CreateRecord
         $gap = QuarterlyPullHelper::resolveSteelGap(Fastener::determineSteelType($steel->steel_spec), $hrMt, $crMt);
         $rate = QuarterlyPullHelper::resolveAppliedRate($modalRate, (float) $steel->exchange_rate, (float) ($raw['exchange_rate'] ?? 0));
         $baseCoil = (float) ($steel->coil_price ?? 0);
-        $isUnchangedOverride = $wireOverride !== null && $wireOverride > 0 && $baseCoil > 0 && abs($wireOverride - $baseCoil) < 0.00001;
+        $isUnchangedOverride = $wireOverride !== null && $wireOverride > 0 && $baseCoil > 0 && abs((float) $wireOverride - $baseCoil) < 0.00001;
         $appliedKg = $isUnchangedOverride
             ? 0.0
             : ($wireOverride !== null && $baseCoil > 0
-                ? round($wireOverride - $baseCoil, 4)
+                ? round((float) $wireOverride - $baseCoil, 4)
                 : $gap['applied_kg']);
         $sim = QuarterlyPullHelper::computeMaterialSteelSimulation($steel, $rate, $appliedKg);
 

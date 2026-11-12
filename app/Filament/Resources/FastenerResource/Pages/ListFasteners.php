@@ -12,6 +12,7 @@ use Filament\Forms;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ListRecords;
 use Filament\Support\Enums\MaxWidth;
+use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Url;
@@ -30,10 +31,13 @@ class ListFasteners extends ListRecords
         return MaxWidth::Full;
     }
 
-    protected function getTableQuery(): ?Builder
+    public function table(Table $table): Table
     {
-        return parent::getTableQuery()
-            ->when($this->selectedYear, fn (Builder $query) => $query->where('year', (int) $this->selectedYear));
+        return parent::table($table)
+            ->modifyQueryUsing(fn (Builder $query): Builder => $query->when(
+                $this->selectedYear,
+                fn (Builder $q): Builder => $q->where('year', (int) $this->selectedYear)
+            ));
     }
 
     protected function getHeaderActions(): array
