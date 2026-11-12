@@ -12,12 +12,18 @@ class PudRequestStatsWidget extends BaseWidget
 
     protected function getStats(): array
     {
-        $total = PudRequest::where('is_deleted', false)->count();
-        $delivered = PudRequest::where('is_deleted', false)->where('status', PudRequest::STATUS_DELIVERED)->count();
-        $quotation = PudRequest::where('is_deleted', false)->where('status', PudRequest::STATUS_REQUEST_QUOTATION)->count();
-        $review = PudRequest::where('is_deleted', false)->where('status', PudRequest::STATUS_REVIEW_NEGOTIATION)->count();
-        $code = PudRequest::where('is_deleted', false)->where('status', PudRequest::STATUS_ITEM_CODE_CREATED)->count();
-        $closed = PudRequest::where('is_deleted', false)->where('status', PudRequest::STATUS_CLOSED)->count();
+        $countsByStatus = PudRequest::query()
+            ->where('is_deleted', false)
+            ->selectRaw('status, COUNT(*) as aggregate')
+            ->groupBy('status')
+            ->pluck('aggregate', 'status');
+
+        $total = (int) $countsByStatus->sum();
+        $delivered = (int) ($countsByStatus->get(PudRequest::STATUS_DELIVERED) ?? 0);
+        $quotation = (int) ($countsByStatus->get(PudRequest::STATUS_REQUEST_QUOTATION) ?? 0);
+        $review = (int) ($countsByStatus->get(PudRequest::STATUS_REVIEW_NEGOTIATION) ?? 0);
+        $code = (int) ($countsByStatus->get(PudRequest::STATUS_ITEM_CODE_CREATED) ?? 0);
+        $closed = (int) ($countsByStatus->get(PudRequest::STATUS_CLOSED) ?? 0);
 
         return [
             Stat::make('Total Request', $total)

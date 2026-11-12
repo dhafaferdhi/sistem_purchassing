@@ -2,17 +2,25 @@
     <div class="space-y-6">
 
         {{-- Selector Part --}}
-        <div class="p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-            <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+        <div class="p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 space-y-3">
+            <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">
                 Pilih Part Number untuk Analisis Tren Harga:
             </label>
-            <select wire:model.live="selectedPartId" class="w-full md:w-1/2 rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm">
-                @foreach(\App\Models\Part::all() as $part)
-                    <option value="{{ $part->id }}">
-                        {{ $part->item_code ?? $part->part_number }} — {{ $part->description ?? $part->part_name }} ({{ $part->main_category }} - {{ $part->sub_category }})
-                    </option>
-                @endforeach
-            </select>
+            <div class="flex flex-col md:flex-row gap-3">
+                <input
+                    type="text"
+                    wire:model.live.debounce.300ms="partSearch"
+                    placeholder="Cari kode / nama part (maks. 100 hasil)..."
+                    class="w-full md:w-1/3 rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
+                />
+                <select wire:model.live="selectedPartId" class="w-full md:w-1/2 rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm">
+                    @foreach($this->availableParts as $part)
+                        <option value="{{ $part->id }}">
+                            {{ $part->item_code ?? $part->part_number }} — {{ $part->description ?? $part->part_name }} ({{ $part->main_category }} - {{ $part->sub_category }})
+                        </option>
+                    @endforeach
+                </select>
+            </div>
         </div>
 
         @if($this->selectedPart)

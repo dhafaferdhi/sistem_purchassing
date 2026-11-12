@@ -2,7 +2,6 @@
 
 namespace App\Filament\Resources;
 
-use App\Filament\Resources\GoodsReceiptResource;
 use App\Filament\Resources\PurchaseOrderResource\Pages;
 use App\Filament\Support\SupplierSelectField;
 use App\Models\Currency;
@@ -154,7 +153,6 @@ class PurchaseOrderResource extends Resource
                     ->label('Ref. Dokumen Quotation (Opsional)')
                     ->relationship('quotation', 'document_number')
                     ->searchable()
-                    ->preload()
                     ->nullable()
                     ->columnSpan(1),
             ])->columns(3);
@@ -173,7 +171,6 @@ class PurchaseOrderResource extends Resource
                             ->label('Pilih dari Master Part')
                             ->relationship('part', 'part_number')
                             ->searchable()
-                            ->preload()
                             ->live()
                             ->afterStateUpdated(function ($state, Set $set, Get $get) {
                                 if (! $state) {
@@ -568,7 +565,7 @@ class PurchaseOrderResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
-            ->with(['supplier', 'currency', 'quotation']);
+            ->with(['supplier', 'currency', 'quotation', 'items']);
     }
 
     public static function getRelations(): array

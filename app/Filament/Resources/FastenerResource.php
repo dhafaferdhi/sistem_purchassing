@@ -7,7 +7,6 @@ use App\Filament\Support\SupplierSelectField;
 use App\Models\Currency;
 use App\Models\Fastener;
 use App\Models\MaterialSteel;
-use App\Models\Supplier;
 use App\Services\ExcelExportService;
 use App\Services\QuarterlyPullHelper;
 use Filament\Forms;
@@ -694,7 +693,13 @@ class FastenerResource extends Resource
                                 Forms\Components\TextInput::make('steel_spec')
                                     ->label('Spesifikasi Baja (Spec)')
                                     ->placeholder('Contoh: SWCH-45K, SPH270C, SPC270C')
-                                    ->datalist(fn () => MaterialSteel::distinct()->pluck('steel_spec')->filter()->toArray())
+                                    ->datalist(fn (): array => MaterialSteel::query()
+                                        ->whereNotNull('steel_spec')
+                                        ->distinct()
+                                        ->orderBy('steel_spec')
+                                        ->limit(200)
+                                        ->pluck('steel_spec')
+                                        ->toArray())
                                     ->required()
                                     ->live(onBlur: true)
                                     ->afterStateUpdated(function (Get $get, Set $set, ?string $state) {
@@ -1477,7 +1482,7 @@ class FastenerResource extends Resource
                 ->label('Filter Supplier')
                 ->relationship('supplier', 'name')
                 ->searchable()
-                ->preload(),
+                ->optionsLimit(50),
 
             Tables\Filters\SelectFilter::make('year')
                 ->label('Filter Tahun')

@@ -134,15 +134,37 @@ class QuotationResource extends Resource
 
                                 Forms\Components\Select::make('material_id')
                                     ->label('Pilih Material')
-                                    ->options(function () {
-                                        return Material::where('is_active', true)
-                                            ->get()
-                                            ->mapWithKeys(function ($m) {
-                                                return [$m->id => "{$m->spec} ({$m->category}) - Rate: \${$m->basic_rate}"];
-                                            });
-                                    })
+                                    ->options(fn (): array => Material::query()
+                                        ->where('is_active', true)
+                                        ->orderBy('spec')
+                                        ->limit(50)
+                                        ->get(['id', 'spec', 'category', 'basic_rate'])
+                                        ->mapWithKeys(fn (Material $m): array => [
+                                            $m->id => "{$m->spec} ({$m->category}) - Rate: \${$m->basic_rate}",
+                                        ])
+                                        ->toArray())
                                     ->searchable()
-                                    ->preload()
+                                    ->getSearchResultsUsing(fn (string $search): array => Material::query()
+                                        ->where('is_active', true)
+                                        ->where(function (Builder $query) use ($search): void {
+                                            $query->where('spec', 'like', "%{$search}%")
+                                                ->orWhere('category', 'like', "%{$search}%");
+                                        })
+                                        ->orderBy('spec')
+                                        ->limit(50)
+                                        ->get(['id', 'spec', 'category', 'basic_rate'])
+                                        ->mapWithKeys(fn (Material $m): array => [
+                                            $m->id => "{$m->spec} ({$m->category}) - Rate: \${$m->basic_rate}",
+                                        ])
+                                        ->toArray())
+                                    ->getOptionLabelUsing(function ($value): ?string {
+                                        if (! $value) {
+                                            return null;
+                                        }
+                                        $m = Material::find($value, ['id', 'spec', 'category', 'basic_rate']);
+
+                                        return $m ? "{$m->spec} ({$m->category}) - Rate: \${$m->basic_rate}" : null;
+                                    })
                                     ->required()
                                     ->live()
                                     ->afterStateUpdated(function ($state, Get $get, Set $set) {
@@ -281,18 +303,28 @@ class QuotationResource extends Resource
                                     ->schema([
                                         Forms\Components\Select::make('process_id')
                                             ->label('Pilih Proses')
-                                            ->options(function (Get $get) {
-                                                // Filter proses sesuai kategori atau Both
+                                            ->options(function (Get $get): array {
                                                 $category = $get('../../category');
-                                                $query = Process::where('is_active', true);
+                                                $query = Process::query()->where('is_active', true);
                                                 if ($category) {
                                                     $query->whereIn('category', [$category, 'Both']);
                                                 }
 
-                                                return $query->pluck('name', 'id');
+                                                return $query->orderBy('name')->limit(50)->pluck('name', 'id')->toArray();
                                             })
                                             ->searchable()
-                                            ->preload()
+                                            ->getSearchResultsUsing(function (string $search, Get $get): array {
+                                                $category = $get('../../category');
+                                                $query = Process::query()
+                                                    ->where('is_active', true)
+                                                    ->where('name', 'like', "%{$search}%");
+                                                if ($category) {
+                                                    $query->whereIn('category', [$category, 'Both']);
+                                                }
+
+                                                return $query->orderBy('name')->limit(50)->pluck('name', 'id')->toArray();
+                                            })
+                                            ->getOptionLabelUsing(fn ($value): ?string => $value ? Process::whereKey($value)->value('name') : null)
                                             ->required()
                                             ->live()
                                             ->afterStateUpdated(function ($state, Set $set, Get $get) {

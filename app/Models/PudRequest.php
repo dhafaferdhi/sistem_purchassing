@@ -172,27 +172,41 @@ class PudRequest extends Model
     }
 
     /**
+     * Hitung jumlah hari kerja (Senin - Jumat) inklusif di antara dua tanggal dalam kompleksitas O(1).
+     */
+    public static function calculateWorkDaysBetween(Carbon $startDate, ?Carbon $endDate = null): int
+    {
+        $utcStart = Carbon::createFromFormat('!Y-m-d', $startDate->toDateString(), 'UTC');
+        $utcEnd = Carbon::createFromFormat('!Y-m-d', ($endDate ?? Carbon::now())->toDateString(), 'UTC');
+
+        if (! $utcStart || ! $utcEnd || $utcStart->greaterThanOrEqualTo($utcEnd)) {
+            return 1;
+        }
+
+        $totalDays = (int) $utcStart->diffInDays($utcEnd) + 1;
+        $fullWeeks = intdiv($totalDays, 7);
+        $remainder = $totalDays % 7;
+        $workDays = $fullWeeks * 5;
+        $startIsoDay = $utcStart->dayOfWeekIso;
+
+        for ($offset = 0; $offset < $remainder; $offset++) {
+            $isoDay = (($startIsoDay - 1 + $offset) % 7) + 1;
+            if ($isoDay <= 5) {
+                $workDays++;
+            }
+        }
+
+        return max(1, $workDays);
+    }
+
+    /**
      * Hitung hari kerja (Senin - Jumat) sejak request dibuat
      */
     public function getWorkDaysElapsedAttribute(): int
     {
-        $start = Carbon::parse($this->created_at ?? $this->request_date ?? now())->startOfDay();
-        $end = Carbon::now()->startOfDay();
+        $start = Carbon::parse($this->created_at ?? $this->request_date ?? now());
 
-        if ($start->greaterThanOrEqualTo($end)) {
-            return 1;
-        }
-
-        $days = 0;
-        $period = $start->copy();
-        while ($period->lessThanOrEqualTo($end)) {
-            if (! $period->isWeekend()) {
-                $days++;
-            }
-            $period->addDay();
-        }
-
-        return max(1, $days);
+        return static::calculateWorkDaysBetween($start, Carbon::now());
     }
 
     /**

@@ -8,6 +8,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Currency extends Model
 {
+    public static bool $skipAutoRecalculate = false;
+
+    protected static bool $batchCacheEnabled = false;
+
+    /** @var array<int, self> */
+    protected static array $batchCacheById = [];
+
     protected $fillable = [
         'year',
         'quarter',
@@ -58,13 +65,21 @@ class Currency extends Model
         });
 
         static::saved(function (Currency $currency) {
+            static::refreshBatchCacheItem($currency);
+
+            if (static::$skipAutoRecalculate) {
+                return;
+            }
+
             // Otomatis hitung ulang seluruh data Material Steel & Stamping Part jika nilai kurs, tahun, kuartal, bulan, atau kode berubah
             if ($currency->wasChanged('exchange_rate_to_idr') || $currency->wasChanged('year') || $currency->wasChanged('quarter') || $currency->wasChanged('month') || $currency->wasChanged('code')) {
-                CurrencyRecalculationService::recalculateForCurrency($currency);
+                CurrencyRecalculationService::dispatchOrRunForCurrency($currency);
             }
         });
 
         static::deleting(function (Currency $currency) {
+            unset(static::$batchCacheById[$currency->id]);
+
             // Cari mata uang pengganti dengan kode yang sama jika ada (misal USD periode lain)
             $replacement = static::where('code', $currency->code)
                 ->where('id', '!=', $currency->id)
@@ -97,6 +112,102 @@ class Currency extends Model
             PartQuotation::where('currency_id', $currency->id)
                 ->update(['currency_id' => $replacementId]);
         });
+    }
+
+    /**
+     * Jalankan callback tanpa memicu auto-recalculate di event saved Currency.
+     */
+    public static function withoutAutoRecalculate(callable $callback): mixed
+    {
+        $previous = static::$skipAutoRecalculate;
+        static::$skipAutoRecalculate = true;
+
+        try {
+            return $callback();
+        } finally {
+            static::$skipAutoRecalculate = $previous;
+        }
+    }
+
+    /**
+     * Aktifkan cache mata uang dalam memori selama pemrosesan batch agar hook saving tidak mengulang query per baris.
+     */
+    public static function withBatchCache(callable $callback): mixed
+    {
+        $wasEnabled = static::$batchCacheEnabled;
+        if (! $wasEnabled) {
+            static::$batchCacheEnabled = true;
+            static::$batchCacheById = static::query()->get()->keyBy('id')->all();
+        }
+
+        try {
+            return $callback();
+        } finally {
+            if (! $wasEnabled) {
+                static::$batchCacheEnabled = false;
+                static::$batchCacheById = [];
+            }
+        }
+    }
+
+    protected static function refreshBatchCacheItem(Currency $currency): void
+    {
+        if (static::$batchCacheEnabled) {
+            static::$batchCacheById[$currency->id] = $currency;
+        }
+    }
+
+    /**
+     * Cari Currency berdasarkan ID menggunakan batch cache bila aktif.
+     */
+    public static function findCached(?int $id): ?self
+    {
+        if (! $id) {
+            return null;
+        }
+
+        if (static::$batchCacheEnabled) {
+            return static::$batchCacheById[$id] ??= static::find($id);
+        }
+
+        return static::find($id);
+    }
+
+    /**
+     * Selesaikan pencocokan currency berdasarkan kode, tahun, dan kuartal (aman & hemat query saat batch).
+     */
+    public static function resolvePeriodMatch(?int $currencyId, string $code, ?int $year, ?string $quarter): ?self
+    {
+        $normalizedCode = strtoupper($code ?: 'USD');
+        $curr = static::findCached($currencyId);
+
+        $needsMatch = ! $curr
+            || $curr->year != $year
+            || ($quarter && $curr->quarter != $quarter)
+            || (strtoupper($curr->code) != $normalizedCode);
+
+        if (! $needsMatch) {
+            return $curr;
+        }
+
+        if (static::$batchCacheEnabled) {
+            $pool = collect(static::$batchCacheById);
+
+            return $pool->first(fn (Currency $c) => strtoupper($c->code) === $normalizedCode && $c->year == $year && (! $quarter || $c->quarter == $quarter))
+                ?? $pool->first(fn (Currency $c) => strtoupper($c->code) === $normalizedCode && $c->year == $year)
+                ?? $pool->first(fn (Currency $c) => strtoupper($c->code) === $normalizedCode)
+                ?? $pool->first();
+        }
+
+        return static::where('code', $code ?: 'USD')
+            ->where('year', $year)
+            ->when($quarter, fn ($q) => $q->where('quarter', $quarter))
+            ->first()
+            ?? static::where('code', $code ?: 'USD')
+                ->where('year', $year)
+                ->first()
+            ?? static::where('code', $code ?: 'USD')->first()
+            ?? static::first();
     }
 
     public function materials(): HasMany

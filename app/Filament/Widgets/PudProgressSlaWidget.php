@@ -3,6 +3,7 @@
 namespace App\Filament\Widgets;
 
 use App\Models\PudRequest;
+use Carbon\Carbon;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 
@@ -12,8 +13,12 @@ class PudProgressSlaWidget extends BaseWidget
 
     protected function getStats(): array
     {
-        $requests = PudRequest::where('is_deleted', false)
+        $today = Carbon::now();
+        $rows = PudRequest::query()
+            ->where('is_deleted', false)
             ->whereNotIn('status', [PudRequest::STATUS_CLOSED, PudRequest::STATUS_CANCELLED])
+            ->selectRaw('DATE(COALESCE(created_at, request_date)) as start_day, COUNT(*) as aggregate')
+            ->groupByRaw('DATE(COALESCE(created_at, request_date))')
             ->get();
 
         $onTrack = 0;
@@ -21,14 +26,21 @@ class PudProgressSlaWidget extends BaseWidget
         $dueSoon = 0;
         $overdue = 0;
 
-        foreach ($requests as $r) {
-            match ($r->sla_progress) {
-                'On Track' => $onTrack++,
-                'Attention' => $attention++,
-                'Due Soon' => $dueSoon++,
-                'Overdue' => $overdue++,
-                default => null,
-            };
+        foreach ($rows as $row) {
+            $count = (int) $row->aggregate;
+            $days = $row->start_day
+                ? PudRequest::calculateWorkDaysBetween(Carbon::parse((string) $row->start_day), $today)
+                : 1;
+
+            if ($days <= 2) {
+                $onTrack += $count;
+            } elseif ($days === 3) {
+                $attention += $count;
+            } elseif ($days === 4) {
+                $dueSoon += $count;
+            } else {
+                $overdue += $count;
+            }
         }
 
         return [

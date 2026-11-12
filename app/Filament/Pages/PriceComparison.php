@@ -11,6 +11,7 @@ use Filament\Forms\Contracts\HasForms;
 use Filament\Notifications\Actions\Action;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 
@@ -32,6 +33,8 @@ class PriceComparison extends Page implements HasForms
 
     public ?int $selectedPartId = null;
 
+    public string $partSearch = '';
+
     public function mount(): void
     {
         // Default ke part pertama yang memiliki quotation
@@ -41,6 +44,33 @@ class PriceComparison extends Page implements HasForms
         } else {
             $this->selectedPartId = Part::first()?->id;
         }
+    }
+
+    public function getAvailablePartsProperty(): Collection
+    {
+        $search = trim($this->partSearch);
+        $columns = ['id', 'part_number', 'part_name', 'main_category', 'sub_category'];
+
+        $parts = Part::query()
+            ->select($columns)
+            ->when($search !== '', function (Builder $query) use ($search): void {
+                $query->where(function (Builder $q) use ($search): void {
+                    $q->where('part_number', 'like', "%{$search}%")
+                        ->orWhere('part_name', 'like', "%{$search}%");
+                });
+            })
+            ->orderBy('part_number')
+            ->limit(100)
+            ->get();
+
+        if ($this->selectedPartId && ! $parts->contains('id', $this->selectedPartId)) {
+            $selected = Part::query()->select($columns)->find($this->selectedPartId);
+            if ($selected) {
+                $parts->prepend($selected);
+            }
+        }
+
+        return $parts;
     }
 
     public function getSelectedPartProperty(): ?Part
@@ -58,7 +88,7 @@ class PriceComparison extends Page implements HasForms
             return collect();
         }
 
-        return $this->selectedPart->partQuotations()->orderBy('total_cost_idr', 'asc')->get();
+        return $this->selectedPart->partQuotations()->with(['supplier', 'currency'])->orderBy('total_cost_idr', 'asc')->get();
     }
 
     public function selectWinningSupplier(int $quotationId): void
@@ -71,7 +101,7 @@ class PriceComparison extends Page implements HasForms
         PartQuotation::where('part_id', $this->selectedPartId)->update(['is_selected' => false]);
 
         // Set new winner
-        $winner = PartQuotation::find($quotationId);
+        $winner = PartQuotation::with('supplier')->find($quotationId);
         if ($winner) {
             $winner->update(['is_selected' => true]);
             Notification::make()

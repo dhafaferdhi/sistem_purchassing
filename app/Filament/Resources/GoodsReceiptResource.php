@@ -50,16 +50,55 @@ class GoodsReceiptResource extends Resource
                                 Forms\Components\Select::make('purchase_order_id')
                                     ->label('Pilih Purchase Order (PO)')
                                     ->options(function () {
-                                        return PurchaseOrder::where('status', 'Approved')
-                                            ->where('delivery_status', '!=', 'Fully Received')
-                                            ->orWhere('id', request()->get('po_id'))
+                                        $poId = request()->integer('po_id');
+
+                                        return PurchaseOrder::query()
+                                            ->with('supplier')
+                                            ->where(function ($outer) use ($poId): void {
+                                                $outer->where(function ($q): void {
+                                                    $q->where('status', 'Approved')
+                                                        ->where('delivery_status', '!=', 'Fully Received');
+                                                });
+                                                if ($poId > 0) {
+                                                    $outer->orWhere('id', $poId);
+                                                }
+                                            })
+                                            ->latest('id')
+                                            ->limit(50)
                                             ->get()
-                                            ->mapWithKeys(function ($po) {
-                                                return [$po->id => "{$po->po_number} — {$po->supplier?->name} ({$po->delivery_status})"];
-                                            });
+                                            ->mapWithKeys(fn (PurchaseOrder $po): array => [
+                                                $po->id => "{$po->po_number} — {$po->supplier?->name} ({$po->delivery_status})",
+                                            ])
+                                            ->all();
+                                    })
+                                    ->getSearchResultsUsing(function (string $search): array {
+                                        return PurchaseOrder::query()
+                                            ->with('supplier')
+                                            ->where('status', 'Approved')
+                                            ->where('delivery_status', '!=', 'Fully Received')
+                                            ->where(function ($q) use ($search): void {
+                                                $q->where('po_number', 'like', "%{$search}%")
+                                                    ->orWhereHas('supplier', fn ($sq) => $sq->where('name', 'like', "%{$search}%"));
+                                            })
+                                            ->latest('id')
+                                            ->limit(50)
+                                            ->get()
+                                            ->mapWithKeys(fn (PurchaseOrder $po): array => [
+                                                $po->id => "{$po->po_number} — {$po->supplier?->name} ({$po->delivery_status})",
+                                            ])
+                                            ->all();
+                                    })
+                                    ->getOptionLabelUsing(function ($value): ?string {
+                                        if (! $value) {
+                                            return null;
+                                        }
+                                        $po = PurchaseOrder::with('supplier')->find($value);
+
+                                        return $po
+                                            ? "{$po->po_number} — {$po->supplier?->name} ({$po->delivery_status})"
+                                            : null;
                                     })
                                     ->searchable()
-                                    ->preload()
                                     ->required()
                                     ->live()
                                     ->afterStateUpdated(function ($state, Set $set) {

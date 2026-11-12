@@ -76,7 +76,7 @@ class PartResource extends Resource
                                     ->label('Bahan Baku Mentah (Raw Material)')
                                     ->relationship('material', 'spec')
                                     ->searchable()
-                                    ->preload()
+                                    ->optionsLimit(50)
                                     ->visible(fn (Forms\Get $get) => in_array($get('item_category'), ['Stamping', 'Fastener', 'Non-Steel', 'Component']))
                                     ->placeholder('Pilih material dasar'),
 
@@ -118,7 +118,32 @@ class PartResource extends Resource
                                     ->schema([
                                         Forms\Components\Select::make('component_part_id')
                                             ->label('Pilih Part Komponen')
-                                            ->options(fn () => Part::all()->mapWithKeys(fn ($p) => [$p->id => "[{$p->item_code}] {$p->description} ({$p->item_category})"]))
+                                            ->options(fn (): array => Part::query()
+                                                ->orderBy('part_number')
+                                                ->limit(50)
+                                                ->get(['id', 'item_code', 'part_number', 'description', 'part_name', 'item_category'])
+                                                ->mapWithKeys(fn (Part $p): array => [$p->id => '['.($p->item_code ?? $p->part_number).'] '.($p->description ?? $p->part_name)." ({$p->item_category})"])
+                                                ->all())
+                                            ->getSearchResultsUsing(fn (string $search): array => Part::query()
+                                                ->where('part_number', 'like', "%{$search}%")
+                                                ->orWhere('item_code', 'like', "%{$search}%")
+                                                ->orWhere('part_name', 'like', "%{$search}%")
+                                                ->orWhere('description', 'like', "%{$search}%")
+                                                ->orderBy('part_number')
+                                                ->limit(50)
+                                                ->get(['id', 'item_code', 'part_number', 'description', 'part_name', 'item_category'])
+                                                ->mapWithKeys(fn (Part $p): array => [$p->id => '['.($p->item_code ?? $p->part_number).'] '.($p->description ?? $p->part_name)." ({$p->item_category})"])
+                                                ->all())
+                                            ->getOptionLabelUsing(function ($value): ?string {
+                                                if (! $value) {
+                                                    return null;
+                                                }
+                                                $p = Part::select(['id', 'item_code', 'part_number', 'description', 'part_name', 'item_category'])->find($value);
+
+                                                return $p
+                                                    ? '['.($p->item_code ?? $p->part_number).'] '.($p->description ?? $p->part_name)." ({$p->item_category})"
+                                                    : null;
+                                            })
                                             ->searchable()
                                             ->required()
                                             ->columnSpan(2),
@@ -210,7 +235,7 @@ class PartResource extends Resource
                     ->label('BOM Tree')
                     ->icon('heroicon-o-bars-3-bottom-left')
                     ->color('success')
-                    ->visible(fn (Part $record) => $record->type === 'Assembly' || $record->bomComponents()->exists())
+                    ->visible(fn (Part $record): bool => $record->type === 'Assembly' || (($record->bom_components_count ?? null) !== null ? $record->bom_components_count > 0 : $record->bomComponents()->exists()))
                     ->modalHeading(fn (Part $record) => "Struktur BOM: [{$record->item_code}] {$record->description}")
                     ->modalContent(fn (Part $record) => view('filament.components.bom-tree-view', ['record' => $record]))
                     ->modalSubmitAction(false)
@@ -229,7 +254,8 @@ class PartResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
-            ->with(['supplier', 'currency']);
+            ->with(['material'])
+            ->withCount(['bomComponents']);
     }
 
     public static function getRelations(): array

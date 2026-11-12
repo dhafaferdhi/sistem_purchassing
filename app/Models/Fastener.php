@@ -177,7 +177,9 @@ class Fastener extends Model
         static::saving(function (Fastener $model) {
             // Pastikan vendor_code dan supplier_name terisi otomatis jika supplier_id ada
             if (empty($model->vendor_code) && $model->supplier_id) {
-                $supplier = $model->supplier ?? Supplier::find($model->supplier_id);
+                $supplier = $model->relationLoaded('supplier')
+                    ? $model->getRelation('supplier')
+                    : Supplier::find($model->supplier_id);
                 if ($supplier) {
                     $model->vendor_code = $supplier->code;
                     if (empty($model->supplier_name)) {
@@ -187,26 +189,14 @@ class Fastener extends Model
             }
 
             // Pastikan currency_id selalu sinkron dengan year, quarter, dan currency_code
-            $curr = $model->currency_id ? Currency::find($model->currency_id) : null;
-            $needsMatch = ! $curr
-                || $curr->year != $model->year
-                || ($model->quarter && $curr->quarter != $model->quarter)
-                || (strtoupper($curr->code) != strtoupper($model->currency_code ?: 'USD'));
-
-            if ($needsMatch) {
-                $matched = Currency::where('code', $model->currency_code ?: 'USD')
-                    ->where('year', $model->year)
-                    ->when($model->quarter, fn ($q) => $q->where('quarter', $model->quarter))
-                    ->first()
-                    ?? Currency::where('code', $model->currency_code ?: 'USD')
-                        ->where('year', $model->year)
-                        ->first()
-                    ?? Currency::where('code', $model->currency_code ?: 'USD')->first()
-                    ?? Currency::first();
-
-                if ($matched) {
-                    $model->currency_id = $matched->id;
-                }
+            $matchedCurrency = Currency::resolvePeriodMatch(
+                $model->currency_id,
+                $model->currency_code ?: 'USD',
+                $model->year,
+                $model->quarter
+            );
+            if ($matchedCurrency) {
+                $model->currency_id = $matchedCurrency->id;
             }
 
             // Bersihkan teks seperti 'mm' dari double_thickness & diameter

@@ -153,7 +153,9 @@ class StampingPart extends Model
         static::saving(function (StampingPart $model) {
             // Pastikan vendor_code dan supplier_name terisi otomatis jika supplier_id ada
             if (empty($model->vendor_code) && $model->supplier_id) {
-                $supplier = $model->supplier ?? Supplier::find($model->supplier_id);
+                $supplier = $model->relationLoaded('supplier')
+                    ? $model->getRelation('supplier')
+                    : Supplier::find($model->supplier_id);
                 if ($supplier) {
                     $model->vendor_code = $supplier->code;
                     if (empty($model->supplier_name)) {
@@ -163,26 +165,14 @@ class StampingPart extends Model
             }
 
             // Pastikan currency_id selalu sinkron dengan year, quarter, dan currency_code
-            $curr = $model->currency_id ? Currency::find($model->currency_id) : null;
-            $needsMatch = ! $curr
-                || $curr->year != $model->year
-                || ($model->quarter && $curr->quarter != $model->quarter)
-                || (strtoupper($curr->code) != strtoupper($model->currency_code ?: 'USD'));
-
-            if ($needsMatch) {
-                $matched = Currency::where('code', $model->currency_code ?: 'USD')
-                    ->where('year', $model->year)
-                    ->when($model->quarter, fn ($q) => $q->where('quarter', $model->quarter))
-                    ->first()
-                    ?? Currency::where('code', $model->currency_code ?: 'USD')
-                        ->where('year', $model->year)
-                        ->first()
-                    ?? Currency::where('code', $model->currency_code ?: 'USD')->first()
-                    ?? Currency::first();
-
-                if ($matched) {
-                    $model->currency_id = $matched->id;
-                }
+            $matchedCurrency = Currency::resolvePeriodMatch(
+                $model->currency_id,
+                $model->currency_code ?: 'USD',
+                $model->year,
+                $model->quarter
+            );
+            if ($matchedCurrency) {
+                $model->currency_id = $matchedCurrency->id;
             }
 
             // Bersihkan teks seperti 'mm' dari double_thickness
@@ -616,23 +606,29 @@ class StampingPart extends Model
         }
 
         $cleanPartNo = trim((string) $this->part_number);
+        $normalizedTarget = str_replace([' ', '-'], '', $cleanPartNo);
+        $matches = collect();
 
-        return SubAssemblyPart::where('year', $this->year)
+        SubAssemblyPart::query()
+            ->where('year', $this->year)
             ->where('quarter', $this->quarter)
-            ->get()
-            ->filter(function (SubAssemblyPart $sa) use ($cleanPartNo) {
-                if (! is_array($sa->material_breakdown)) {
-                    return false;
-                }
-                foreach ($sa->material_breakdown as $item) {
-                    $itemPart = trim((string) ($item['part_number'] ?? $item['part_no'] ?? ''));
-                    if ($itemPart !== '' && (strcasecmp($itemPart, $cleanPartNo) === 0 || str_replace([' ', '-'], '', $itemPart) === str_replace([' ', '-'], '', $cleanPartNo))) {
-                        return true;
+            ->chunkById(200, function (Collection $subAssemblies) use ($cleanPartNo, $normalizedTarget, &$matches): void {
+                foreach ($subAssemblies as $sa) {
+                    if (! is_array($sa->material_breakdown)) {
+                        continue;
+                    }
+                    foreach ($sa->material_breakdown as $item) {
+                        $itemPart = trim((string) ($item['part_number'] ?? $item['part_no'] ?? ''));
+                        if ($itemPart !== '' && (strcasecmp($itemPart, $cleanPartNo) === 0 || str_replace([' ', '-'], '', $itemPart) === $normalizedTarget)) {
+                            $matches->push($sa);
+
+                            break;
+                        }
                     }
                 }
+            });
 
-                return false;
-            })->values();
+        return $matches->values();
     }
 
     /**

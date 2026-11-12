@@ -132,31 +132,21 @@ class MaterialSteel extends Model
 
         static::saving(function (MaterialSteel $model) {
             // Pastikan currency_id selalu sinkron dengan year, quarter, dan currency_code
-            $curr = $model->currency_id ? Currency::find($model->currency_id) : null;
-            $needsMatch = ! $curr
-                || $curr->year != $model->year
-                || ($model->quarter && $curr->quarter != $model->quarter)
-                || (strtoupper($curr->code) != strtoupper($model->currency_code ?: 'USD'));
-
-            if ($needsMatch) {
-                $matched = Currency::where('code', $model->currency_code ?: 'USD')
-                    ->where('year', $model->year)
-                    ->when($model->quarter, fn ($q) => $q->where('quarter', $model->quarter))
-                    ->first()
-                    ?? Currency::where('code', $model->currency_code ?: 'USD')
-                        ->where('year', $model->year)
-                        ->first()
-                    ?? Currency::where('code', $model->currency_code ?: 'USD')->first()
-                    ?? Currency::first();
-
-                if ($matched) {
-                    $model->currency_id = $matched->id;
-                }
+            $matchedCurrency = Currency::resolvePeriodMatch(
+                $model->currency_id,
+                $model->currency_code ?: 'USD',
+                $model->year,
+                $model->quarter
+            );
+            if ($matchedCurrency) {
+                $model->currency_id = $matchedCurrency->id;
             }
 
             // Otomatis sinkronkan vendor_code dan supplier_name dari supplier_id jika belum terisi
             if ($model->supplier_id && (empty($model->vendor_code) || empty($model->supplier_name))) {
-                $supp = Supplier::find($model->supplier_id);
+                $supp = $model->relationLoaded('supplier')
+                    ? $model->getRelation('supplier')
+                    : Supplier::find($model->supplier_id);
                 if ($supp) {
                     $model->vendor_code = $model->vendor_code ?: $supp->code;
                     $model->supplier_name = $model->supplier_name ?: $supp->name;

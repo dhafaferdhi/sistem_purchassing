@@ -4,19 +4,8 @@
             Request All Plant
         </x-slot>
         <x-slot name="description">
-            Rincian request per Plant, Division, dan Month — Tahun {{ date('Y') }}
+            Rincian request per Plant, Division, dan Month — Tahun {{ $year }}
         </x-slot>
-
-        @php
-            $year = (int) date('Y');
-            $months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-            $plants = \App\Models\PudRequest::PLANTS;
-            $plantDivisions = \App\Models\PudRequest::PLANT_DIVISIONS;
-
-            $activeRequests = \App\Models\PudRequest::where('is_deleted', false)
-                ->whereYear('request_date', $year)
-                ->get();
-        @endphp
 
         <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800 mt-2">
             <table class="w-full text-xs text-left border-collapse">
@@ -32,12 +21,8 @@
                 <tbody class="divide-y divide-gray-100 dark:divide-gray-800 text-[11px]">
                     @foreach($plants as $plant)
                         @php
-                            $pRequests = $activeRequests->where('plant', $plant);
-                            $pTotal = $pRequests->count();
-                            $pMonthCounts = [];
-                            for ($m = 1; $m <= 12; $m++) {
-                                $pMonthCounts[$m] = $pRequests->filter(fn ($r) => (int) $r->request_date->format('n') === $m)->count();
-                            }
+                            $pTotal = $plantTotals[$plant] ?? 0;
+                            $pMonthCounts = $plantMonthCounts[$plant] ?? [];
                             $divs = $plantDivisions[$plant] ?? [];
                             sort($divs);
                         @endphp
@@ -48,7 +33,7 @@
                                 <span>{{ $plant }}</span>
                             </td>
                             @for($m = 1; $m <= 12; $m++)
-                                <td class="py-2 px-2 text-center font-bold">{{ $pMonthCounts[$m] }}</td>
+                                <td class="py-2 px-2 text-center font-bold">{{ $pMonthCounts[$m] ?? 0 }}</td>
                             @endfor
                             <td class="py-2 px-3 text-center font-extrabold bg-blue-100/60 dark:bg-blue-900/40 text-primary-800 dark:text-primary-300">
                                 {{ $pTotal }}
@@ -58,8 +43,7 @@
                         {{-- Division Rows for this Plant --}}
                         @foreach($divs as $div)
                             @php
-                                $dRequests = $pRequests->where('division', $div);
-                                $dTotal = $dRequests->count();
+                                $dTotal = $divisionTotals[$plant][$div] ?? 0;
                             @endphp
                             <tr class="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition">
                                 <td class="py-1.5 px-3 pl-7 text-gray-700 dark:text-gray-300">
@@ -67,7 +51,7 @@
                                 </td>
                                 @for($m = 1; $m <= 12; $m++)
                                     @php
-                                        $dCount = $dRequests->filter(fn ($r) => (int) $r->request_date->format('n') === $m)->count();
+                                        $dCount = $divisionMonthCounts[$plant][$div][$m] ?? 0;
                                     @endphp
                                     <td class="py-1.5 px-2 text-center {{ $dCount > 0 ? 'font-bold text-gray-900 dark:text-gray-100' : 'text-gray-400 dark:text-gray-600' }}">
                                         {{ $dCount }}

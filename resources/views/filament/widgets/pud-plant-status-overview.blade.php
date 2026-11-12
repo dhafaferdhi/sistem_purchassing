@@ -7,24 +7,6 @@
             Distribusi status request pada bulan berjalan ({{ now()->translatedFormat('F Y') }}) per Plant
         </x-slot>
 
-        @php
-            $plants = \App\Models\PudRequest::PLANTS;
-            $statuses = [
-                ['name' => 'Delivered to PUD', 'color' => 'bg-slate-500'],
-                ['name' => 'Request Quotation', 'color' => 'bg-amber-500'],
-                ['name' => 'Review & Negotiation', 'color' => 'bg-orange-500'],
-                ['name' => 'Item Code Created', 'color' => 'bg-blue-600'],
-                ['name' => 'Closed', 'color' => 'bg-emerald-600'],
-            ];
-            $month = (int) now()->format('m');
-            $year = (int) now()->format('Y');
-
-            $monthRequests = \App\Models\PudRequest::where('is_deleted', false)
-                ->whereMonth('request_date', $month)
-                ->whereYear('request_date', $year)
-                ->get();
-        @endphp
-
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-2">
             @foreach($plants as $plant)
                 <div class="border border-gray-200 dark:border-gray-800 rounded-xl p-4 bg-white dark:bg-gray-900 shadow-sm">
@@ -33,13 +15,13 @@
                             {{ $plant }}
                         </span>
                         <span class="text-xs font-bold text-gray-500 dark:text-gray-400">
-                            Total: {{ $monthRequests->where('plant', $plant)->count() }}
+                            Total: {{ $plantTotals[$plant] ?? 0 }}
                         </span>
                     </div>
                     <div class="space-y-1.5 text-xs">
                         @foreach($statuses as $st)
                             @php
-                                $count = $monthRequests->where('plant', $plant)->where('status', $st['name'])->count();
+                                $count = $statusCounts[$plant][$st['name']] ?? 0;
                             @endphp
                             <div class="flex items-center justify-between py-1 border-b border-gray-50 dark:border-gray-800/40 last:border-0">
                                 <div class="flex items-center gap-2">

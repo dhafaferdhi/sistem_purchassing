@@ -4,6 +4,7 @@ namespace App\Filament\Widgets;
 
 use App\Models\PudRequest;
 use Filament\Widgets\ChartWidget;
+use Illuminate\Support\Facades\DB;
 
 class PudRequestTrendChart extends ChartWidget
 {
@@ -16,17 +17,28 @@ class PudRequestTrendChart extends ChartWidget
     protected function getData(): array
     {
         $year = (int) date('Y');
+        $yearStart = sprintf('%04d-01-01', $year);
+        $nextYearStart = sprintf('%04d-01-01', $year + 1);
         $months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
         $counts = array_fill(0, 12, 0);
 
-        $requests = PudRequest::where('is_deleted', false)
-            ->whereYear('request_date', $year)
-            ->get();
+        $driver = DB::connection()->getDriverName();
+        $monthExpr = $driver === 'sqlite'
+            ? "CAST(strftime('%m', request_date) AS INTEGER)"
+            : 'MONTH(request_date)';
 
-        foreach ($requests as $r) {
-            $m = (int) $r->request_date->format('n') - 1;
-            if (isset($counts[$m])) {
-                $counts[$m]++;
+        $monthlyCounts = PudRequest::query()
+            ->where('is_deleted', false)
+            ->where('request_date', '>=', $yearStart)
+            ->where('request_date', '<', $nextYearStart)
+            ->selectRaw("{$monthExpr} as month_num, COUNT(*) as aggregate")
+            ->groupByRaw($monthExpr)
+            ->pluck('aggregate', 'month_num');
+
+        foreach ($monthlyCounts as $monthNum => $total) {
+            $idx = (int) $monthNum - 1;
+            if (isset($counts[$idx])) {
+                $counts[$idx] = (int) $total;
             }
         }
 
@@ -46,12 +58,20 @@ class PudRequestTrendChart extends ChartWidget
     public function getDescription(): ?string
     {
         $year = (int) date('Y');
+        $yearStart = sprintf('%04d-01-01', $year);
+        $nextYearStart = sprintf('%04d-01-01', $year + 1);
+
+        $countsByPlant = PudRequest::query()
+            ->where('is_deleted', false)
+            ->where('request_date', '>=', $yearStart)
+            ->where('request_date', '<', $nextYearStart)
+            ->selectRaw('plant, COUNT(*) as aggregate')
+            ->groupBy('plant')
+            ->pluck('aggregate', 'plant');
+
         $plantTotals = [];
         foreach (PudRequest::PLANTS as $p) {
-            $c = PudRequest::where('is_deleted', false)
-                ->whereYear('request_date', $year)
-                ->where('plant', $p)
-                ->count();
+            $c = (int) ($countsByPlant->get($p) ?? 0);
             $plantTotals[] = "{$p}: {$c}";
         }
 

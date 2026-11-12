@@ -68,8 +68,10 @@ class SubAssemblyPartResource extends Resource
                 ->where($column, 'like', "%{$clean}%")
                 ->latest('id')
                 ->first()
-            ?? $modelClass::where($column, $clean)
-                ->orWhere($column, 'like', "%{$clean}%")
+            ?? $modelClass::where(function ($query) use ($column, $clean): void {
+                $query->where($column, $clean)
+                    ->orWhere($column, 'like', "%{$clean}%");
+            })
                 ->latest('year')
                 ->latest('id')
                 ->first();
@@ -229,10 +231,10 @@ class SubAssemblyPartResource extends Resource
                                         Forms\Components\TextInput::make('part_number')
                                             ->label('Part Number Child')
                                             ->placeholder('72388-X7V00-A atau 89911-X7095')
-                                            ->datalist(function () {
-                                                $stamping = StampingPart::distinct()->pluck('part_number')->filter()->toArray();
-                                                $fasteners = Fastener::distinct()->pluck('part_number')->filter()->toArray();
-                                                $steels = MaterialSteel::distinct()->pluck('steel_spec')->filter()->toArray();
+                                            ->datalist(function (): array {
+                                                $stamping = StampingPart::query()->whereNotNull('part_number')->distinct()->orderBy('part_number')->limit(100)->pluck('part_number')->toArray();
+                                                $fasteners = Fastener::query()->whereNotNull('part_number')->distinct()->orderBy('part_number')->limit(100)->pluck('part_number')->toArray();
+                                                $steels = MaterialSteel::query()->whereNotNull('steel_spec')->distinct()->orderBy('steel_spec')->limit(100)->pluck('steel_spec')->toArray();
 
                                                 return array_values(array_unique(array_merge($stamping, $fasteners, $steels)));
                                             })
@@ -679,7 +681,7 @@ class SubAssemblyPartResource extends Resource
 
                 Tables\Filters\SelectFilter::make('supplier_name')
                     ->label('Filter Supplier')
-                    ->options(fn () => Supplier::query()->pluck('name', 'name')->toArray())
+                    ->options(fn (): array => Supplier::query()->orderBy('name')->limit(500)->pluck('name', 'name')->toArray())
                     ->searchable(),
 
                 Tables\Filters\SelectFilter::make('status')

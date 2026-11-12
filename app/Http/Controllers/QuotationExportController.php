@@ -51,7 +51,7 @@ class QuotationExportController extends Controller
 
             fputcsv($file, $columns);
 
-            $quotations = Quotation::with(['user', 'material', 'approvedBy'])->orderBy('id', 'desc')->get();
+            $quotations = Quotation::with(['user', 'material', 'approvedBy'])->lazyByIdDesc(500);
 
             foreach ($quotations as $q) {
                 fputcsv($file, [

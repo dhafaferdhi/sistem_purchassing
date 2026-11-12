@@ -270,7 +270,12 @@ class UserRequestResource extends Resource
                 Tables\Filters\SelectFilter::make('division')
                     ->label('Filter Division')
                     ->options(function () {
-                        return PudRequest::distinct()->orderBy('division')->pluck('division', 'division')->toArray();
+                        return PudRequest::where('is_deleted', false)
+                            ->whereNotNull('division')
+                            ->distinct()
+                            ->orderBy('division')
+                            ->pluck('division', 'division')
+                            ->toArray();
                     }),
             ])
             ->headerActions([
@@ -279,10 +284,9 @@ class UserRequestResource extends Resource
                     ->icon('heroicon-o-arrow-down-tray')
                     ->color('gray')
                     ->action(function () {
-                        $requests = PudRequest::where('is_deleted', false)->latest('id')->get();
                         $filename = 'PUD_Request_Information_'.date('Ymd_His').'.csv';
 
-                        return response()->streamDownload(function () use ($requests) {
+                        return response()->streamDownload(function (): void {
                             $output = fopen('php://output', 'w');
                             fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF)); // UTF-8 BOM
 
@@ -293,7 +297,7 @@ class UserRequestResource extends Resource
                                 'Supplier Terpilih', 'Item Code',
                             ]);
 
-                            foreach ($requests as $r) {
+                            foreach (PudRequest::where('is_deleted', false)->lazyByIdDesc(500) as $r) {
                                 fputcsv($output, [
                                     $r->request_number,
                                     $r->request_date?->format('d/m/Y') ?: '',

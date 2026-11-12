@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\StampingPartResource\Pages;
 
 use App\Filament\Resources\StampingPartResource;
+use App\Jobs\ImportSpreadsheetJob;
 use App\Models\StampingPart;
 use App\Services\ExcelExportService;
 use App\Services\ExcelImportService;
@@ -90,7 +91,21 @@ class ListStampingParts extends ListRecords
                         'year' => (int) ($data['default_year'] ?? date('Y')),
                         'quarter' => $data['default_quarter'] ?? 'Q2',
                     ];
-                    $result = ExcelImportService::importStampingPart($filePath, $defaults, (bool) ($data['update_existing'] ?? true));
+                    $updateExisting = (bool) ($data['update_existing'] ?? true);
+
+                    if (file_exists($filePath) && filesize($filePath) > 153600 && config('queue.default') !== 'sync') {
+                        ImportSpreadsheetJob::dispatch('stamping_part', $filePath, $defaults, $updateExisting, auth()->id());
+
+                        Notification::make()
+                            ->title('Impor Dimasukkan ke Antrean Background!')
+                            ->body('File spreadsheet berukuran besar sedang diproses di latar belakang oleh queue worker.')
+                            ->info()
+                            ->send();
+
+                        return;
+                    }
+
+                    $result = ExcelImportService::importStampingPart($filePath, $defaults, $updateExisting);
 
                     if (file_exists($filePath)) {
                         @unlink($filePath);
@@ -157,9 +172,11 @@ class ListStampingParts extends ListRecords
                     if (($data['quarter'] ?? 'all') !== 'all') {
                         $query->where('quarter', $data['quarter']);
                     }
-                    $records = $query->orderBy('year', 'desc')->orderBy('quarter', 'desc')->get();
 
-                    return ExcelExportService::exportStampingPart($records, $data['format'] ?? 'xlsx');
+                    return ExcelExportService::exportStampingPart(
+                        $query->orderBy('year', 'desc')->orderBy('quarter', 'desc'),
+                        $data['format'] ?? 'xlsx'
+                    );
                 }),
 
             Actions\Action::make('download_template_xlsx')

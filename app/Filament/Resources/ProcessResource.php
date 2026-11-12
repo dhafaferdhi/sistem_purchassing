@@ -58,12 +58,43 @@ class ProcessResource extends Resource
 
                         Forms\Components\Select::make('machine_id')
                             ->label('Mesin yang Digunakan (Routing Machine)')
-                            ->options(function () {
-                                return Machine::all()->mapWithKeys(function ($m) {
-                                    $rate = 'Rp '.number_format($m->hourly_rate, 0, ',', '.').'/jam';
+                            ->options(function (): array {
+                                return Machine::query()
+                                    ->orderBy('name')
+                                    ->limit(100)
+                                    ->get(['id', 'name', 'stamping_type', 'tonnage', 'hourly_rate'])
+                                    ->mapWithKeys(function (Machine $m): array {
+                                        $rate = 'Rp '.number_format((float) $m->hourly_rate, 0, ',', '.').'/jam';
 
-                                    return [$m->id => "{$m->name} [{$m->stamping_type} - {$m->tonnage}] ({$rate})"];
-                                });
+                                        return [$m->id => "{$m->name} [{$m->stamping_type} - {$m->tonnage}] ({$rate})"];
+                                    })
+                                    ->all();
+                            })
+                            ->getSearchResultsUsing(function (string $search): array {
+                                return Machine::query()
+                                    ->where('name', 'like', "%{$search}%")
+                                    ->orWhere('stamping_type', 'like', "%{$search}%")
+                                    ->orderBy('name')
+                                    ->limit(50)
+                                    ->get(['id', 'name', 'stamping_type', 'tonnage', 'hourly_rate'])
+                                    ->mapWithKeys(function (Machine $m): array {
+                                        $rate = 'Rp '.number_format((float) $m->hourly_rate, 0, ',', '.').'/jam';
+
+                                        return [$m->id => "{$m->name} [{$m->stamping_type} - {$m->tonnage}] ({$rate})"];
+                                    })
+                                    ->all();
+                            })
+                            ->getOptionLabelUsing(function ($value): ?string {
+                                if (! $value) {
+                                    return null;
+                                }
+                                $m = Machine::select(['id', 'name', 'stamping_type', 'tonnage', 'hourly_rate'])->find($value);
+                                if (! $m) {
+                                    return null;
+                                }
+                                $rate = 'Rp '.number_format((float) $m->hourly_rate, 0, ',', '.').'/jam';
+
+                                return "{$m->name} [{$m->stamping_type} - {$m->tonnage}] ({$rate})";
                             })
                             ->searchable()
                             ->placeholder('Pilih mesin produksi'),

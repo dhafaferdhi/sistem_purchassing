@@ -52,18 +52,34 @@ class ComparativeQuotationSheet extends Page implements HasForms
 
     /**
      * Daftar pilihan Part Number yang tersedia
+     *
+     * @return array<string, string>
      */
     public function getAvailablePartsProperty(): array
     {
-        return ComparativeQuotation::select('part_number', 'part_name', 'part_type', 'supplier_name')
+        $parts = ComparativeQuotation::select('part_number', 'part_name', 'part_type', 'supplier_name')
             ->distinct()
+            ->orderBy('part_number')
+            ->limit(300)
             ->get()
-            ->mapWithKeys(function ($item) {
+            ->mapWithKeys(function ($item): array {
                 return [
                     $item->part_number => "{$item->part_number} — {$item->part_name} ({$item->part_type} | {$item->supplier_name})",
                 ];
             })
             ->toArray();
+
+        if ($this->selectedPartNumber !== '' && ! isset($parts[$this->selectedPartNumber])) {
+            $selected = ComparativeQuotation::select('part_number', 'part_name', 'part_type', 'supplier_name')
+                ->where('part_number', $this->selectedPartNumber)
+                ->first();
+
+            if ($selected) {
+                $parts = [$selected->part_number => "{$selected->part_number} — {$selected->part_name} ({$selected->part_type} | {$selected->supplier_name})"] + $parts;
+            }
+        }
+
+        return $parts;
     }
 
     /**

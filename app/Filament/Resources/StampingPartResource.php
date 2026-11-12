@@ -3,10 +3,10 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\StampingPartResource\Pages;
+use App\Filament\Support\SupplierSelectField;
 use App\Models\Currency;
 use App\Models\MaterialSteel;
 use App\Models\StampingPart;
-use App\Models\Supplier;
 use App\Services\ExcelExportService;
 use App\Services\QuarterlyPullHelper;
 use Filament\Forms;
@@ -625,7 +625,7 @@ class StampingPartResource extends Resource
                                     })
                                     ->columnSpan(1),
 
-                                \App\Filament\Support\SupplierSelectField::make(
+                                SupplierSelectField::make(
                                     fieldName: 'supplier_id',
                                     label: 'Pilih Supplier',
                                     defaultCategory: 'Stamping & Steel',
@@ -693,7 +693,13 @@ class StampingPartResource extends Resource
                                             'SPC270C', 'SPC440', 'SPC590',
                                             'SPC440HR', 'SPC590DU', 'NSC590B', 'SPC980',
                                         ];
-                                        $dbSpecs = MaterialSteel::distinct()->pluck('steel_spec')->filter()->toArray();
+                                        $dbSpecs = MaterialSteel::query()
+                                            ->whereNotNull('steel_spec')
+                                            ->distinct()
+                                            ->orderBy('steel_spec')
+                                            ->limit(200)
+                                            ->pluck('steel_spec')
+                                            ->toArray();
 
                                         return array_values(array_unique(array_merge($standardSpecs, $dbSpecs)));
                                     })
@@ -1227,7 +1233,7 @@ class StampingPartResource extends Resource
                                     ->label('Link Item Part Master (Opsional)')
                                     ->relationship('part', 'part_name')
                                     ->searchable()
-                                    ->preload()
+                                    ->optionsLimit(50)
                                     ->placeholder('Pilih part terkait jika ada')
                                     ->columnSpan(1),
 
@@ -1530,7 +1536,7 @@ class StampingPartResource extends Resource
                 ->label('Filter Supplier')
                 ->relationship('supplier', 'name')
                 ->searchable()
-                ->preload(),
+                ->optionsLimit(50),
 
             Tables\Filters\SelectFilter::make('year')
                 ->label('Filter Tahun')

@@ -5,11 +5,15 @@ namespace App\Services;
 use App\Models\Fastener;
 use App\Models\MaterialSteel;
 use App\Models\StampingPart;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use ZipArchive;
 
 class ExcelExportService
 {
+    public const EXPORT_CHUNK_SIZE = 500;
+
     /**
      * Konversi index kolom (0-based) ke huruf koordinat Excel (0 -> A, 25 -> Z, 26 -> AA)
      */
@@ -26,97 +30,36 @@ class ExcelExportService
     }
 
     /**
-     * Buat file Excel (.xlsx) valid menggunakan ZipArchive murni
+     * Buat file Excel (.xlsx) valid secara streaming ke file XML sementara agar hemat memori untuk ribuan baris.
      *
      * @param  array<int, string>  $headers
-     * @param  array<int, array<int, mixed>>  $rows
+     * @param  iterable<int, array<int, mixed>>  $rows
      */
-    public static function createXlsxFile(string $outputPath, array $headers, array $rows): bool
+    public static function createXlsxFile(string $outputPath, array $headers, iterable $rows): bool
     {
-        $zip = new ZipArchive;
-        if ($zip->open($outputPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
-            return false;
-        }
-
-        // 1. [Content_Types].xml
-        $contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            .'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
-            .'<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
-            .'<Default Extension="xml" ContentType="application/xml"/>'
-            .'<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
-            .'<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
-            .'</Types>';
-        $zip->addFromString('[Content_Types].xml', $contentTypes);
-
-        // 2. _rels/.rels
-        $rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            .'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-            .'<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
-            .'</Relationships>';
-        $zip->addFromString('_rels/.rels', $rels);
-
-        // 3. xl/_rels/workbook.xml.rels
-        $wbRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            .'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-            .'<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
-            .'</Relationships>';
-        $zip->addFromString('xl/_rels/workbook.xml.rels', $wbRels);
-
-        // 4. xl/workbook.xml
-        $workbook = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            .'<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
-            .'<sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>'
-            .'</workbook>';
-        $zip->addFromString('xl/workbook.xml', $workbook);
-
-        // 5. xl/worksheets/sheet1.xml
-        $xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            .'<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-            .'<sheetData>';
-
-        $allRows = array_merge([$headers], $rows);
-        foreach ($allRows as $rIdx => $row) {
-            $rowNum = $rIdx + 1;
-            $xml .= '<row r="'.$rowNum.'">';
-            $cIdx = 0;
-            foreach ($row as $val) {
-                $colLetter = static::indexToColumnLetter($cIdx);
-                $cellRef = $colLetter.$rowNum;
-                $cIdx++;
-
-                if ($val === null || $val === '') {
-                    $xml .= '<c r="'.$cellRef.'" t="inlineStr"><is><t></t></is></c>';
-                } elseif (is_numeric($val) && ! str_starts_with((string) $val, '0') && (string) (float) $val === (string) $val) {
-                    $xml .= '<c r="'.$cellRef.'"><v>'.$val.'</v></c>';
-                } else {
-                    $escaped = htmlspecialchars((string) $val, ENT_XML1, 'UTF-8');
-                    $xml .= '<c r="'.$cellRef.'" t="inlineStr"><is><t>'.$escaped.'</t></is></c>';
-                }
+        return static::writeStreamingXlsx($outputPath, $headers, function ($handle) use ($rows): void {
+            $rowNum = 2;
+            foreach ($rows as $row) {
+                static::writeXlsxRow($handle, $rowNum, $row);
+                $rowNum++;
             }
-            $xml .= '</row>';
-        }
-
-        $xml .= '</sheetData></worksheet>';
-        $zip->addFromString('xl/worksheets/sheet1.xml', $xml);
-
-        return $zip->close();
+        });
     }
 
     /**
-     * Download response untuk data tabular (mendukung .xlsx dan .csv)
+     * Download response untuk data tabular (mendukung .xlsx dan .csv).
      *
      * @param  array<int, string>  $headers
-     * @param  array<int, array<int, mixed>>  $rows
+     * @param  iterable<int, array<int, mixed>>  $rows
      */
-    public static function streamDownloadTable(string $baseFileName, array $headers, array $rows, string $format = 'xlsx'): StreamedResponse
+    public static function streamDownloadTable(string $baseFileName, array $headers, iterable $rows, string $format = 'xlsx'): StreamedResponse
     {
         $format = strtolower($format) === 'csv' ? 'csv' : 'xlsx';
         $fileName = "{$baseFileName}.{$format}";
 
         if ($format === 'csv') {
-            return response()->streamDownload(function () use ($headers, $rows) {
+            return response()->streamDownload(function () use ($headers, $rows): void {
                 $out = fopen('php://output', 'w');
-                // UTF-8 BOM untuk kompatibilitas Microsoft Excel
                 fwrite($out, "\xEF\xBB\xBF");
                 fputcsv($out, $headers);
                 foreach ($rows as $row) {
@@ -129,19 +72,200 @@ class ExcelExportService
             ]);
         }
 
-        // Format XLSX
+        $tempPath = static::createTempFilePath('xlsx');
+        static::createXlsxFile($tempPath, $headers, $rows);
+
+        return static::streamAndDeleteTempXlsx($tempPath, $fileName);
+    }
+
+    /**
+     * Download response dari Eloquent Builder secara chunked (streaming per 500 baris) agar siap mengekspor puluhan ribu baris.
+     *
+     * @param  array<int, string>  $headers
+     * @param  callable(mixed): array<int, mixed>  $rowMapper
+     */
+    public static function streamDownloadFromQuery(
+        string $baseFileName,
+        array $headers,
+        Builder $query,
+        callable $rowMapper,
+        string $format = 'xlsx'
+    ): StreamedResponse {
+        $format = strtolower($format) === 'csv' ? 'csv' : 'xlsx';
+        $fileName = "{$baseFileName}.{$format}";
+
+        if ($format === 'csv') {
+            return response()->streamDownload(function () use ($headers, $query, $rowMapper): void {
+                $out = fopen('php://output', 'w');
+                fwrite($out, "\xEF\xBB\xBF");
+                fputcsv($out, $headers);
+
+                (clone $query)->chunk(self::EXPORT_CHUNK_SIZE, function ($chunk) use ($out, $rowMapper): void {
+                    foreach ($chunk as $record) {
+                        fputcsv($out, $rowMapper($record));
+                    }
+                });
+
+                fclose($out);
+            }, $fileName, [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+                'Content-Disposition' => "attachment; filename=\"{$fileName}\"",
+            ]);
+        }
+
+        $tempPath = static::createTempFilePath('xlsx');
+        static::writeStreamingXlsx($tempPath, $headers, function ($handle) use ($query, $rowMapper): void {
+            $rowNum = 2;
+            (clone $query)->chunk(self::EXPORT_CHUNK_SIZE, function ($chunk) use ($handle, &$rowNum, $rowMapper): void {
+                foreach ($chunk as $record) {
+                    static::writeXlsxRow($handle, $rowNum, $rowMapper($record));
+                    $rowNum++;
+                }
+            });
+        });
+
+        return static::streamAndDeleteTempXlsx($tempPath, $fileName);
+    }
+
+    /**
+     * Tulis struktur XLSX dengan worksheet XML dialirkan langsung ke disk temp file.
+     *
+     * @param  array<int, string>  $headers
+     * @param  callable(resource): void  $writeDataRows
+     */
+    protected static function writeStreamingXlsx(string $outputPath, array $headers, callable $writeDataRows): bool
+    {
+        $sheetTempPath = static::createTempFilePath('xml');
+        $handle = fopen($sheetTempPath, 'wb');
+        if ($handle === false) {
+            return false;
+        }
+
+        try {
+            fwrite(
+                $handle,
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                .'<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+                .'<sheetData>'
+            );
+
+            static::writeXlsxRow($handle, 1, $headers);
+            $writeDataRows($handle);
+
+            fwrite($handle, '</sheetData></worksheet>');
+            fclose($handle);
+            $handle = null;
+
+            $zip = new ZipArchive;
+            if ($zip->open($outputPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+                return false;
+            }
+
+            $contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                .'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+                .'<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+                .'<Default Extension="xml" ContentType="application/xml"/>'
+                .'<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+                .'<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+                .'</Types>';
+            $zip->addFromString('[Content_Types].xml', $contentTypes);
+
+            $rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                .'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                .'<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+                .'</Relationships>';
+            $zip->addFromString('_rels/.rels', $rels);
+
+            $wbRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                .'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                .'<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+                .'</Relationships>';
+            $zip->addFromString('xl/_rels/workbook.xml.rels', $wbRels);
+
+            $workbook = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                .'<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+                .'<sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>'
+                .'</workbook>';
+            $zip->addFromString('xl/workbook.xml', $workbook);
+
+            $zip->addFile($sheetTempPath, 'xl/worksheets/sheet1.xml');
+
+            return $zip->close();
+        } finally {
+            if (is_resource($handle)) {
+                fclose($handle);
+            }
+            if (file_exists($sheetTempPath)) {
+                @unlink($sheetTempPath);
+            }
+        }
+    }
+
+    /**
+     * Tulis satu baris Excel XML ke stream file secara aman (angka 0 & desimal < 1 tetap bertipe numerik).
+     *
+     * @param  resource  $handle
+     * @param  array<int, mixed>  $row
+     */
+    protected static function writeXlsxRow($handle, int $rowNum, array $row): void
+    {
+        $rowXml = '<row r="'.$rowNum.'">';
+        $cIdx = 0;
+
+        foreach ($row as $val) {
+            $cellRef = static::indexToColumnLetter($cIdx).$rowNum;
+            $cIdx++;
+
+            if ($val === null || $val === '') {
+                $rowXml .= '<c r="'.$cellRef.'" t="inlineStr"><is><t></t></is></c>';
+            } elseif (static::isExcelNumericValue($val)) {
+                $rowXml .= '<c r="'.$cellRef.'"><v>'.((string) ($val + 0)).'</v></c>';
+            } else {
+                $escaped = htmlspecialchars((string) $val, ENT_XML1, 'UTF-8');
+                $rowXml .= '<c r="'.$cellRef.'" t="inlineStr"><is><t>'.$escaped.'</t></is></c>';
+            }
+        }
+
+        $rowXml .= '</row>';
+        fwrite($handle, $rowXml);
+    }
+
+    /**
+     * Deteksi apakah nilai harus ditulis sebagai angka di Excel (tetap menjaga kode berawalan nol seperti '00123' sebagai string).
+     */
+    protected static function isExcelNumericValue(mixed $val): bool
+    {
+        if (is_int($val) || is_float($val)) {
+            return is_finite((float) $val);
+        }
+
+        if (! is_string($val) || ! is_numeric($val)) {
+            return false;
+        }
+
+        if (preg_match('/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/', $val) !== 1) {
+            return false;
+        }
+
+        return strlen(ltrim(explode('.', $val)[0], '-')) <= 15;
+    }
+
+    protected static function createTempFilePath(string $extension): string
+    {
         $tempDir = storage_path('app');
         if (! is_dir($tempDir)) {
             mkdir($tempDir, 0755, true);
         }
-        $tempPath = $tempDir.'/export_'.uniqid().'.xlsx';
 
-        static::createXlsxFile($tempPath, $headers, $rows);
+        return $tempDir.'/export_'.uniqid('', true).'.'.$extension;
+    }
 
-        return response()->streamDownload(function () use ($tempPath) {
+    protected static function streamAndDeleteTempXlsx(string $tempPath, string $fileName): StreamedResponse
+    {
+        return response()->streamDownload(function () use ($tempPath): void {
             if (file_exists($tempPath)) {
                 readfile($tempPath);
-                unlink($tempPath);
+                @unlink($tempPath);
             }
         }, $fileName, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -150,11 +274,29 @@ class ExcelExportService
     }
 
     /**
-     * Export data MaterialSteel
+     * Generator/helper untuk memetakan iterable (Collection / LazyCollection / array) dengan eager-load aman.
      *
-     * @param  iterable<MaterialSteel>  $records
+     * @param  iterable<int, mixed>  $records
+     * @param  callable(mixed): array<int, mixed>  $rowMapper
+     * @return \Generator<int, array<int, mixed>>
      */
-    public static function exportMaterialSteel(iterable $records, string $format = 'xlsx'): StreamedResponse
+    protected static function mapIterableWithSupplier(iterable $records, callable $rowMapper): \Generator
+    {
+        if ($records instanceof EloquentCollection) {
+            $records->loadMissing('supplier');
+        }
+
+        foreach ($records as $record) {
+            yield $rowMapper($record);
+        }
+    }
+
+    /**
+     * Export data MaterialSteel (mendukung Eloquent Builder chunked atau iterable).
+     *
+     * @param  Builder<MaterialSteel>|iterable<MaterialSteel>  $records
+     */
+    public static function exportMaterialSteel(Builder|iterable $records, string $format = 'xlsx'): StreamedResponse
     {
         $headers = [
             'Kuartal',
@@ -179,13 +321,14 @@ class ExcelExportService
             'Catatan',
         ];
 
-        $rows = [];
-        foreach ($records as $r) {
-            $rows[] = [
+        $mapper = function (MaterialSteel $r): array {
+            $supplier = $r->relationLoaded('supplier') ? $r->getRelation('supplier') : null;
+
+            return [
                 $r->quarter,
                 $r->year,
-                $r->vendor_code ?: ($r->supplier?->code ?? '-'),
-                $r->supplier_name ?: ($r->supplier?->name ?? '-'),
+                $r->vendor_code ?: ($supplier?->code ?? '-'),
+                $r->supplier_name ?: ($supplier?->name ?? '-'),
                 $r->steel_spec,
                 $r->double_thickness,
                 $r->size,
@@ -203,11 +346,16 @@ class ExcelExportService
                 $r->status ?: 'Active',
                 $r->notes ?? '',
             ];
-        }
+        };
 
         $dateSuffix = date('Ymd_His');
+        $baseName = "Material_Steel_Export_{$dateSuffix}";
 
-        return static::streamDownloadTable("Material_Steel_Export_{$dateSuffix}", $headers, $rows, $format);
+        if ($records instanceof Builder) {
+            return static::streamDownloadFromQuery($baseName, $headers, $records->with('supplier'), $mapper, $format);
+        }
+
+        return static::streamDownloadTable($baseName, $headers, static::mapIterableWithSupplier($records, $mapper), $format);
     }
 
     /**
@@ -238,11 +386,11 @@ class ExcelExportService
     }
 
     /**
-     * Export data StampingPart
+     * Export data StampingPart (mendukung Eloquent Builder chunked atau iterable).
      *
-     * @param  iterable<StampingPart>  $records
+     * @param  Builder<StampingPart>|iterable<StampingPart>  $records
      */
-    public static function exportStampingPart(iterable $records, string $format = 'xlsx'): StreamedResponse
+    public static function exportStampingPart(Builder|iterable $records, string $format = 'xlsx'): StreamedResponse
     {
         $headers = [
             'Part Number',
@@ -297,9 +445,10 @@ class ExcelExportService
             'Notes',
         ];
 
-        $rows = [];
-        foreach ($records as $r) {
-            $rows[] = [
+        $mapper = function (StampingPart $r): array {
+            $supplier = $r->relationLoaded('supplier') ? $r->getRelation('supplier') : null;
+
+            return [
                 $r->part_number,
                 $r->part_no_to_compare,
                 $r->part_name,
@@ -310,7 +459,7 @@ class ExcelExportService
                 $r->quotation_date ? (is_string($r->quotation_date) ? $r->quotation_date : $r->quotation_date->format('Y-m-d')) : null,
                 $r->quarter,
                 $r->year,
-                $r->supplier_name ?: ($r->supplier?->name ?? '-'),
+                $r->supplier_name ?: ($supplier?->name ?? '-'),
                 $r->steel_spec ?: '-',
                 (float) ($r->double_thickness ?? 0),
                 $r->size,
@@ -351,11 +500,16 @@ class ExcelExportService
                 $r->etc_contents,
                 $r->notes,
             ];
-        }
+        };
 
         $dateSuffix = date('Ymd_His');
+        $baseName = "Stamping_Parts_Export_{$dateSuffix}";
 
-        return static::streamDownloadTable("Stamping_Parts_Export_{$dateSuffix}", $headers, $rows, $format);
+        if ($records instanceof Builder) {
+            return static::streamDownloadFromQuery($baseName, $headers, $records->with('supplier'), $mapper, $format);
+        }
+
+        return static::streamDownloadTable($baseName, $headers, static::mapIterableWithSupplier($records, $mapper), $format);
     }
 
     /**
@@ -443,11 +597,11 @@ class ExcelExportService
     }
 
     /**
-     * Export data Fastener
+     * Export data Fastener (mendukung Eloquent Builder chunked atau iterable).
      *
-     * @param  iterable<Fastener>  $records
+     * @param  Builder<Fastener>|iterable<Fastener>  $records
      */
-    public static function exportFastener(iterable $records, string $format = 'xlsx'): StreamedResponse
+    public static function exportFastener(Builder|iterable $records, string $format = 'xlsx'): StreamedResponse
     {
         $headers = [
             'Kuartal',
@@ -505,12 +659,13 @@ class ExcelExportService
             'Notes',
         ];
 
-        $rows = [];
-        foreach ($records as $r) {
-            $rows[] = [
+        $mapper = function (Fastener $r): array {
+            $supplier = $r->relationLoaded('supplier') ? $r->getRelation('supplier') : null;
+
+            return [
                 $r->quarter,
                 $r->year,
-                $r->supplier_name ?: ($r->supplier?->name ?? '-'),
+                $r->supplier_name ?: ($supplier?->name ?? '-'),
                 $r->part_number ?: '-',
                 $r->old_part_number ?: '',
                 $r->part_name ?: '-',
@@ -562,11 +717,16 @@ class ExcelExportService
                 $r->etc_contents,
                 $r->notes,
             ];
-        }
+        };
 
         $dateSuffix = date('Ymd_His');
+        $baseName = "Fasteners_Export_{$dateSuffix}";
 
-        return static::streamDownloadTable("Fasteners_Export_{$dateSuffix}", $headers, $rows, $format);
+        if ($records instanceof Builder) {
+            return static::streamDownloadFromQuery($baseName, $headers, $records->with('supplier'), $mapper, $format);
+        }
+
+        return static::streamDownloadTable($baseName, $headers, static::mapIterableWithSupplier($records, $mapper), $format);
     }
 
     /**

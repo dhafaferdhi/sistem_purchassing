@@ -7,6 +7,7 @@ use App\Filament\Resources\CurrencyResource\Pages;
 use App\Filament\Resources\CurrencyResource\RelationManagers\FastenersRelationManager;
 use App\Filament\Resources\CurrencyResource\RelationManagers\MaterialSteelsRelationManager;
 use App\Filament\Resources\CurrencyResource\RelationManagers\StampingPartsRelationManager;
+use App\Jobs\RecalculateCurrencyRatesJob;
 use App\Models\Currency;
 use App\Services\CurrencyRecalculationService;
 use Filament\Forms;
@@ -273,7 +274,24 @@ class CurrencyResource extends Resource
                             ->helperText('Contoh: 16000 atau 16500'),
                     ])
                     ->action(function (Currency $record, array $data) {
-                        $record->update(['exchange_rate_to_idr' => $data['exchange_rate_to_idr']]);
+                        Currency::withoutAutoRecalculate(function () use ($record, $data): void {
+                            $record->update(['exchange_rate_to_idr' => $data['exchange_rate_to_idr']]);
+                        });
+
+                        $estimated = CurrencyRecalculationService::estimateAffectedCount($record);
+
+                        if ($estimated > CurrencyRecalculationService::QUEUE_THRESHOLD && config('queue.default') !== 'sync') {
+                            RecalculateCurrencyRatesJob::dispatch($record->id);
+
+                            Notification::make()
+                                ->title("Kurs {$record->code} Berhasil Diperbarui!")
+                                ->body('Kurs baru Rp '.number_format((float) $record->exchange_rate_to_idr, 0, ',', '.')." telah aktif. Perhitungan ulang ~{$estimated} data sedang diproses di antrean latar belakang (queue).")
+                                ->success()
+                                ->send();
+
+                            return;
+                        }
+
                         $stats = CurrencyRecalculationService::recalculateForCurrencyWithStats($record);
 
                         Notification::make()

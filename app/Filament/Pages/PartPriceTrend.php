@@ -6,6 +6,7 @@ use App\Models\Part;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Pages\Page;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 class PartPriceTrend extends Page implements HasForms
@@ -26,12 +27,43 @@ class PartPriceTrend extends Page implements HasForms
 
     public ?int $selectedPartId = null;
 
+    public string $partSearch = '';
+
     public function mount(): void
     {
         $firstPart = Part::whereHas('priceHistories')->first() ?? Part::first();
         if ($firstPart) {
             $this->selectedPartId = $firstPart->id;
         }
+    }
+
+    public function getAvailablePartsProperty(): Collection
+    {
+        $search = trim($this->partSearch);
+        $columns = ['id', 'item_code', 'part_number', 'description', 'part_name', 'main_category', 'sub_category'];
+
+        $parts = Part::query()
+            ->select($columns)
+            ->when($search !== '', function (Builder $query) use ($search): void {
+                $query->where(function (Builder $q) use ($search): void {
+                    $q->where('item_code', 'like', "%{$search}%")
+                        ->orWhere('part_number', 'like', "%{$search}%")
+                        ->orWhere('description', 'like', "%{$search}%")
+                        ->orWhere('part_name', 'like', "%{$search}%");
+                });
+            })
+            ->orderBy('part_number')
+            ->limit(100)
+            ->get();
+
+        if ($this->selectedPartId && ! $parts->contains('id', $this->selectedPartId)) {
+            $selected = Part::query()->select($columns)->find($this->selectedPartId);
+            if ($selected) {
+                $parts->prepend($selected);
+            }
+        }
+
+        return $parts;
     }
 
     public function getSelectedPartProperty(): ?Part
@@ -49,7 +81,7 @@ class PartPriceTrend extends Page implements HasForms
             return collect();
         }
 
-        return $this->selectedPart->priceHistories()->orderBy('price_date', 'asc')->get();
+        return $this->selectedPart->priceHistories()->with('supplier')->orderBy('price_date', 'asc')->get();
     }
 
     public function getMetricsProperty(): array

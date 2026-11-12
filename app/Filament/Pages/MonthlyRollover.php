@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Jobs\ProcessMonthlyRolloverJob;
 use App\Models\Currency;
 use App\Models\Fastener;
 use App\Models\MaterialSteel;
@@ -165,6 +166,34 @@ class MonthlyRollover extends Page implements HasForms
     public function executeAllRollover(): void
     {
         try {
+            $estimated = MonthlyDataRolloverService::estimateRolloverCount('all', $this->sourceYear, $this->sourceQuarter);
+
+            if ($estimated > MonthlyDataRolloverService::QUEUE_THRESHOLD && config('queue.default') !== 'sync') {
+                ProcessMonthlyRolloverJob::dispatch('all', [
+                    'sourceYear' => $this->sourceYear,
+                    'sourceQuarter' => $this->sourceQuarter,
+                    'targetYear' => $this->targetYear,
+                    'targetQuarter' => $this->targetQuarter,
+                    'usdRate' => $this->usdRate,
+                    'priceAdjustmentPercent' => $this->priceAdjustmentPercent,
+                    'newGapSteelUsd' => $this->newGapSteelUsd,
+                    'status' => $this->status,
+                    'duplicateHandling' => $this->duplicateHandling,
+                    'notes' => $this->notes,
+                ], auth()->id());
+
+                Notification::make()
+                    ->title('Rollover Dimasukkan ke Antrean Background!')
+                    ->body("Estimasi ~{$estimated} data dari {$this->sourceYear} {$this->sourceQuarter} ke {$this->targetYear} {$this->targetQuarter} sedang diproses di antrean queue dan hasilnya akan tercatat pada tab Riwayat.")
+                    ->info()
+                    ->duration(8000)
+                    ->send();
+
+                $this->activeTab = 'history';
+
+                return;
+            }
+
             $result = MonthlyDataRolloverService::rolloverAll(
                 $this->sourceYear,
                 $this->sourceQuarter,
@@ -220,7 +249,7 @@ class MonthlyRollover extends Page implements HasForms
                 'currencies_count' => $result['total'],
                 'details' => $result,
                 'notes' => "Rollover Kurs Mata Uang {$this->currSourceYear} -> {$this->currTargetYear}",
-                'user_id' => auth()->id() ?? User::first()?->id,
+                'user_id' => auth()->id() ?? User::value('id'),
             ]);
 
             Notification::make()
@@ -245,6 +274,38 @@ class MonthlyRollover extends Page implements HasForms
     public function executeMaterialSteelRollover(): void
     {
         try {
+            $estimated = MonthlyDataRolloverService::estimateRolloverCount(
+                'material_steel',
+                $this->steelSourceYear,
+                $this->steelSourceQuarter,
+                $this->steelSupplierId
+            );
+
+            if ($estimated > MonthlyDataRolloverService::QUEUE_THRESHOLD && config('queue.default') !== 'sync') {
+                ProcessMonthlyRolloverJob::dispatch('material_steel', [
+                    'sourceYear' => $this->steelSourceYear,
+                    'sourceQuarter' => $this->steelSourceQuarter,
+                    'targetYear' => $this->steelTargetYear,
+                    'targetQuarter' => $this->steelTargetQuarter,
+                    'exchangeRate' => $this->steelExchangeRate,
+                    'priceAdjustmentPercent' => $this->steelAdjustmentPercent,
+                    'newGapSteelUsd' => $this->steelGapUsd,
+                    'status' => $this->status,
+                    'duplicateHandling' => $this->steelDuplicateHandling,
+                    'supplierId' => $this->steelSupplierId,
+                ], auth()->id());
+
+                Notification::make()
+                    ->title('Rollover Material Steel Dimasukkan ke Antrean!')
+                    ->body("Estimasi ~{$estimated} baris sedang diproses di background queue.")
+                    ->info()
+                    ->send();
+
+                $this->activeTab = 'history';
+
+                return;
+            }
+
             $result = MonthlyDataRolloverService::rolloverMaterialSteels(
                 $this->steelSourceYear,
                 $this->steelSourceQuarter,
@@ -266,7 +327,7 @@ class MonthlyRollover extends Page implements HasForms
                 'material_steels_count' => $result['copied'] + $result['updated'],
                 'details' => $result,
                 'notes' => "Rollover Material Steel {$this->steelSourceYear} {$this->steelSourceQuarter} -> {$this->steelTargetYear} {$this->steelTargetQuarter}",
-                'user_id' => auth()->id() ?? User::first()?->id,
+                'user_id' => auth()->id() ?? User::value('id'),
             ]);
 
             Notification::make()
@@ -291,6 +352,38 @@ class MonthlyRollover extends Page implements HasForms
     public function executeStampingPartRollover(): void
     {
         try {
+            $estimated = MonthlyDataRolloverService::estimateRolloverCount(
+                'stamping_part',
+                $this->stampSourceYear,
+                $this->stampSourceQuarter,
+                $this->stampSupplierId
+            );
+
+            if ($estimated > MonthlyDataRolloverService::QUEUE_THRESHOLD && config('queue.default') !== 'sync') {
+                ProcessMonthlyRolloverJob::dispatch('stamping_part', [
+                    'sourceYear' => $this->stampSourceYear,
+                    'sourceQuarter' => $this->stampSourceQuarter,
+                    'targetYear' => $this->stampTargetYear,
+                    'targetQuarter' => $this->stampTargetQuarter,
+                    'exchangeRate' => $this->stampExchangeRate,
+                    'newGapSteelUsd' => $this->stampGapUsd,
+                    'status' => $this->status,
+                    'duplicateHandling' => $this->stampDuplicateHandling,
+                    'supplierId' => $this->stampSupplierId,
+                    'syncFromMaterialSteel' => $this->stampSyncFromSteel,
+                ], auth()->id());
+
+                Notification::make()
+                    ->title('Rollover Stamping Part Dimasukkan ke Antrean!')
+                    ->body("Estimasi ~{$estimated} baris sedang diproses di background queue.")
+                    ->info()
+                    ->send();
+
+                $this->activeTab = 'history';
+
+                return;
+            }
+
             $result = MonthlyDataRolloverService::rolloverStampingParts(
                 $this->stampSourceYear,
                 $this->stampSourceQuarter,
@@ -312,7 +405,7 @@ class MonthlyRollover extends Page implements HasForms
                 'stamping_parts_count' => $result['copied'] + $result['updated'],
                 'details' => $result,
                 'notes' => "Rollover Stamping Part {$this->stampSourceYear} {$this->stampSourceQuarter} -> {$this->stampTargetYear} {$this->stampTargetQuarter}",
-                'user_id' => auth()->id() ?? User::first()?->id,
+                'user_id' => auth()->id() ?? User::value('id'),
             ]);
 
             Notification::make()
@@ -337,6 +430,38 @@ class MonthlyRollover extends Page implements HasForms
     public function executeFastenerRollover(): void
     {
         try {
+            $estimated = MonthlyDataRolloverService::estimateRolloverCount(
+                'fastener',
+                $this->fastSourceYear,
+                $this->fastSourceQuarter,
+                $this->fastSupplierId
+            );
+
+            if ($estimated > MonthlyDataRolloverService::QUEUE_THRESHOLD && config('queue.default') !== 'sync') {
+                ProcessMonthlyRolloverJob::dispatch('fastener', [
+                    'sourceYear' => $this->fastSourceYear,
+                    'sourceQuarter' => $this->fastSourceQuarter,
+                    'targetYear' => $this->fastTargetYear,
+                    'targetQuarter' => $this->fastTargetQuarter,
+                    'exchangeRate' => $this->fastExchangeRate,
+                    'newGapSteelUsd' => $this->fastGapUsd,
+                    'status' => $this->status,
+                    'duplicateHandling' => $this->fastDuplicateHandling,
+                    'supplierId' => $this->fastSupplierId,
+                    'syncFromMaterialSteel' => $this->fastSyncFromSteel,
+                ], auth()->id());
+
+                Notification::make()
+                    ->title('Rollover Fasteners Dimasukkan ke Antrean!')
+                    ->body("Estimasi ~{$estimated} baris sedang diproses di background queue.")
+                    ->info()
+                    ->send();
+
+                $this->activeTab = 'history';
+
+                return;
+            }
+
             $result = MonthlyDataRolloverService::rolloverFasteners(
                 $this->fastSourceYear,
                 $this->fastSourceQuarter,
@@ -358,7 +483,7 @@ class MonthlyRollover extends Page implements HasForms
                 'fasteners_count' => $result['copied'] + $result['updated'],
                 'details' => $result,
                 'notes' => "Rollover Fasteners {$this->fastSourceYear} {$this->fastSourceQuarter} -> {$this->fastTargetYear} {$this->fastTargetQuarter}",
-                'user_id' => auth()->id() ?? User::first()?->id,
+                'user_id' => auth()->id() ?? User::value('id'),
             ]);
 
             Notification::make()
@@ -386,7 +511,11 @@ class MonthlyRollover extends Page implements HasForms
 
     public function getSuppliersProperty(): Collection
     {
-        return Supplier::orderBy('name')->get();
+        return Supplier::query()
+            ->select(['id', 'code', 'name'])
+            ->orderBy('name')
+            ->limit(500)
+            ->get();
     }
 
     public function getSourceCountsProperty(): array

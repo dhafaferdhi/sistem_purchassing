@@ -577,7 +577,13 @@ class MaterialSteelResource extends Resource
                                             'SPC270C', 'SPC440', 'SPC590',
                                             'SPC440HR', 'SPC590DU', 'NSC590B', 'SPC980',
                                         ];
-                                        $dbSpecs = MaterialSteel::distinct()->pluck('steel_spec')->filter()->toArray();
+                                        $dbSpecs = MaterialSteel::query()
+                                            ->whereNotNull('steel_spec')
+                                            ->distinct()
+                                            ->orderBy('steel_spec')
+                                            ->limit(200)
+                                            ->pluck('steel_spec')
+                                            ->toArray();
 
                                         return array_values(array_unique(array_merge($standardSpecs, $dbSpecs)));
                                     })
@@ -992,6 +998,7 @@ class MaterialSteelResource extends Resource
 
                         $supplierMap = Supplier::query()
                             ->orderBy('name')
+                            ->limit(200)
                             ->pluck('name', 'name')
                             ->toArray();
 

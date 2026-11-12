@@ -7,15 +7,71 @@ use App\Models\Fastener;
 use App\Models\MaterialSteel;
 use App\Models\StampingPart;
 use App\Models\Supplier;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 use ZipArchive;
 
 class ExcelImportService
 {
+    public const IMPORT_CHUNK_SIZE = 200;
+
+    protected static bool $supplierCacheEnabled = false;
+
+    /** @var array<string, Supplier> */
+    protected static array $supplierByCode = [];
+
+    /** @var array<string, Supplier> */
+    protected static array $supplierByName = [];
+
+    /**
+     * Aktifkan cache supplier & mata uang dalam memori selama proses impor batch berlangsung.
+     */
+    protected static function withBatchLookups(callable $callback): mixed
+    {
+        $wasEnabled = static::$supplierCacheEnabled;
+        if (! $wasEnabled) {
+            static::$supplierCacheEnabled = true;
+            static::$supplierByCode = [];
+            static::$supplierByName = [];
+
+            foreach (Supplier::query()->get(['id', 'code', 'name', 'category', 'is_active']) as $sup) {
+                if (! empty($sup->code)) {
+                    static::$supplierByCode[strtoupper($sup->code)] = $sup;
+                }
+                if (! empty($sup->name)) {
+                    static::$supplierByName[mb_strtolower(trim($sup->name))] = $sup;
+                }
+            }
+        }
+
+        try {
+            return Currency::withBatchCache($callback);
+        } finally {
+            if (! $wasEnabled) {
+                static::$supplierCacheEnabled = false;
+                static::$supplierByCode = [];
+                static::$supplierByName = [];
+            }
+        }
+    }
+
     /**
      * Resolusi Supplier berdasarkan kode atau nama, atau buat baru secara aman
      */
     public static function resolveSupplier(string $name, ?string $code = null, string $category = 'Steel'): Supplier
     {
+        $normalizedCode = $code ? strtoupper(trim($code)) : '';
+        $normalizedName = mb_strtolower(trim($name));
+
+        if (static::$supplierCacheEnabled) {
+            if ($normalizedCode !== '' && isset(static::$supplierByCode[$normalizedCode])) {
+                return static::$supplierByCode[$normalizedCode];
+            }
+            if ($normalizedName !== '' && isset(static::$supplierByName[$normalizedName])) {
+                return static::$supplierByName[$normalizedName];
+            }
+        }
+
         $supplier = null;
         if (! empty($code)) {
             $supplier = Supplier::where('code', $code)->first();
@@ -36,6 +92,15 @@ class ExcelImportService
                 'category' => $category,
                 'is_active' => true,
             ]);
+        }
+
+        if (static::$supplierCacheEnabled) {
+            if (! empty($supplier->code)) {
+                static::$supplierByCode[strtoupper($supplier->code)] = $supplier;
+            }
+            if (! empty($supplier->name)) {
+                static::$supplierByName[mb_strtolower(trim($supplier->name))] = $supplier;
+            }
         }
 
         return $supplier;
@@ -689,7 +754,7 @@ class ExcelImportService
             }
             if (is_numeric($s) && (float) $s >= 30000 && (float) $s <= 70000) {
                 try {
-                    return \Carbon\Carbon::create(1899, 12, 30)->addDays((int) round((float) $s))->toDateString();
+                    return Carbon::create(1899, 12, 30)->addDays((int) round((float) $s))->toDateString();
                 } catch (\Throwable) {
                     return null;
                 }
@@ -983,11 +1048,13 @@ class ExcelImportService
 
                     if (str_contains($anchorLow, 'process breakdown')) {
                         $inProcess = true;
+
                         continue;
                     }
 
                     if (str_starts_with($anchorLabel, '(2)')) {
                         $inProcess = false;
+
                         continue;
                     }
 
@@ -1637,68 +1704,73 @@ class ExcelImportService
         $updated = 0;
         $errors = [];
 
-        foreach ($rows as $idx => $row) {
-            try {
-                if (empty($row['steel_spec'])) {
-                    continue;
-                }
+        static::withBatchLookups(function () use ($rows, $updateExisting, &$imported, &$updated, &$errors): void {
+            $defaultUsdCurrencyId = Currency::where('code', 'USD')->value('id');
 
-                // Cari atau buat Supplier otomatis
-                $supplierId = null;
-                if (! empty($row['supplier_name']) || ! empty($row['vendor_code'])) {
-                    $supplierName = $row['supplier_name'] ?: ($row['vendor_code'] ?? 'Unknown');
-                    $supplier = static::resolveSupplier($supplierName, $row['vendor_code'] ?? null, 'Steel');
-                    $supplierId = $supplier->id;
-                    $row['supplier_id'] = $supplierId;
-                    $row['vendor_code'] = $supplier->code;
-                    $row['supplier_name'] = $supplier->name;
-                }
+            foreach (array_chunk($rows, self::IMPORT_CHUNK_SIZE, true) as $chunk) {
+                DB::transaction(function () use ($chunk, $updateExisting, $defaultUsdCurrencyId, &$imported, &$updated, &$errors): void {
+                    foreach ($chunk as $idx => $row) {
+                        try {
+                            if (empty($row['steel_spec'])) {
+                                continue;
+                            }
 
-                // Cek apakah data sudah ada berdasarkan (year, quarter, steel_spec, double_thickness, supplier_id)
-                $existing = MaterialSteel::where('year', $row['year'])
-                    ->where('quarter', $row['quarter'])
-                    ->where('steel_spec', $row['steel_spec'])
-                    ->when(! empty($row['double_thickness']), fn ($q) => $q->where('double_thickness', $row['double_thickness']))
-                    ->when($supplierId, fn ($q) => $q->where('supplier_id', $supplierId))
-                    ->first();
+                            // Cari atau buat Supplier otomatis
+                            $supplierId = null;
+                            if (! empty($row['supplier_name']) || ! empty($row['vendor_code'])) {
+                                $supplierName = $row['supplier_name'] ?: ($row['vendor_code'] ?? 'Unknown');
+                                $supplier = static::resolveSupplier($supplierName, $row['vendor_code'] ?? null, 'Steel');
+                                $supplierId = $supplier->id;
+                                $row['supplier_id'] = $supplierId;
+                                $row['vendor_code'] = $supplier->code;
+                                $row['supplier_name'] = $supplier->name;
+                            }
 
-                if ($existing) {
-                    if ($updateExisting) {
-                        $existing->update([
-                            'vendor_code' => $row['vendor_code'] ?: $existing->vendor_code,
-                            'supplier_name' => $row['supplier_name'] ?: $existing->supplier_name,
-                            'double_thickness' => $row['double_thickness'] ?: $existing->double_thickness,
-                            'diameter' => $row['diameter'] ?: $existing->diameter,
-                            'size' => ! empty($row['size']) ? $row['size'] : $existing->size,
-                            'exchange_rate' => $row['exchange_rate'] > 0 ? $row['exchange_rate'] : $existing->exchange_rate,
-                            'steel_price' => $row['steel_price'] > 0 ? $row['steel_price'] : $existing->steel_price,
-                            'steel_price_idr' => $row['steel_price_idr'] > 0 ? $row['steel_price_idr'] : $existing->steel_price_idr,
-                            'coil_price' => $row['coil_price'] > 0 ? $row['coil_price'] : $existing->coil_price,
-                            'coil_price_idr' => $row['coil_price_idr'] > 0 ? $row['coil_price_idr'] : $existing->coil_price_idr,
-                            'sheet_price' => $row['sheet_price'] > 0 ? $row['sheet_price'] : $existing->sheet_price,
-                            'sheet_price_idr' => $row['sheet_price_idr'] > 0 ? $row['sheet_price_idr'] : $existing->sheet_price_idr,
-                            'gap_steel_usd' => $row['gap_steel_usd'],
-                            'gap_steel_kg_usd' => $row['gap_steel_kg_usd'],
-                            'fluktuasi_jfe' => $row['fluktuasi_jfe'],
-                            'status' => $row['status'] ?: $existing->status,
-                            'notes' => $row['notes'] ?: $existing->notes,
-                        ]);
-                        $updated++;
-                    }
-                } else {
-                    if (empty($row['currency_id'])) {
-                        $currency = Currency::where('code', 'USD')->first();
-                        if ($currency) {
-                            $row['currency_id'] = $currency->id;
+                            // Cek apakah data sudah ada berdasarkan (year, quarter, steel_spec, double_thickness, supplier_id)
+                            $existing = MaterialSteel::where('year', $row['year'])
+                                ->where('quarter', $row['quarter'])
+                                ->where('steel_spec', $row['steel_spec'])
+                                ->when(! empty($row['double_thickness']), fn ($q) => $q->where('double_thickness', $row['double_thickness']))
+                                ->when($supplierId, fn ($q) => $q->where('supplier_id', $supplierId))
+                                ->first();
+
+                            if ($existing) {
+                                if ($updateExisting) {
+                                    $existing->update([
+                                        'vendor_code' => $row['vendor_code'] ?: $existing->vendor_code,
+                                        'supplier_name' => $row['supplier_name'] ?: $existing->supplier_name,
+                                        'double_thickness' => $row['double_thickness'] ?: $existing->double_thickness,
+                                        'diameter' => $row['diameter'] ?: $existing->diameter,
+                                        'size' => ! empty($row['size']) ? $row['size'] : $existing->size,
+                                        'exchange_rate' => $row['exchange_rate'] > 0 ? $row['exchange_rate'] : $existing->exchange_rate,
+                                        'steel_price' => $row['steel_price'] > 0 ? $row['steel_price'] : $existing->steel_price,
+                                        'steel_price_idr' => $row['steel_price_idr'] > 0 ? $row['steel_price_idr'] : $existing->steel_price_idr,
+                                        'coil_price' => $row['coil_price'] > 0 ? $row['coil_price'] : $existing->coil_price,
+                                        'coil_price_idr' => $row['coil_price_idr'] > 0 ? $row['coil_price_idr'] : $existing->coil_price_idr,
+                                        'sheet_price' => $row['sheet_price'] > 0 ? $row['sheet_price'] : $existing->sheet_price,
+                                        'sheet_price_idr' => $row['sheet_price_idr'] > 0 ? $row['sheet_price_idr'] : $existing->sheet_price_idr,
+                                        'gap_steel_usd' => $row['gap_steel_usd'],
+                                        'gap_steel_kg_usd' => $row['gap_steel_kg_usd'],
+                                        'fluktuasi_jfe' => $row['fluktuasi_jfe'],
+                                        'status' => $row['status'] ?: $existing->status,
+                                        'notes' => $row['notes'] ?: $existing->notes,
+                                    ]);
+                                    $updated++;
+                                }
+                            } else {
+                                if (empty($row['currency_id']) && $defaultUsdCurrencyId) {
+                                    $row['currency_id'] = $defaultUsdCurrencyId;
+                                }
+                                MaterialSteel::create($row);
+                                $imported++;
+                            }
+                        } catch (\Throwable $e) {
+                            $errors[] = 'Baris #'.($idx + 1).': '.$e->getMessage();
                         }
                     }
-                    MaterialSteel::create($row);
-                    $imported++;
-                }
-            } catch (\Throwable $e) {
-                $errors[] = 'Baris #'.($idx + 1).': '.$e->getMessage();
+                });
             }
-        }
+        });
 
         return [
             'imported' => $imported,
@@ -1729,51 +1801,57 @@ class ExcelImportService
         $updated = 0;
         $errors = [];
 
-        foreach ($rows as $idx => $row) {
-            try {
-                if (empty($row['steel_spec']) && empty($row['part_number'])) {
-                    continue;
-                }
+        static::withBatchLookups(function () use ($rows, $updateExisting, &$imported, &$updated, &$errors): void {
+            foreach (array_chunk($rows, self::IMPORT_CHUNK_SIZE, true) as $chunk) {
+                DB::transaction(function () use ($chunk, $updateExisting, &$imported, &$updated, &$errors): void {
+                    foreach ($chunk as $idx => $row) {
+                        try {
+                            if (empty($row['steel_spec']) && empty($row['part_number'])) {
+                                continue;
+                            }
 
-                // Cari atau buat Supplier otomatis
-                $supplierId = null;
-                if (! empty($row['supplier_name']) || ! empty($row['vendor_code'])) {
-                    $supplierName = $row['supplier_name'] ?: ($row['vendor_code'] ?? 'Unknown');
-                    $supplier = static::resolveSupplier($supplierName, $row['vendor_code'] ?? null, 'Steel');
-                    $supplierId = $supplier->id;
-                    $row['supplier_id'] = $supplierId;
-                    $row['vendor_code'] = $supplier->code;
-                    $row['supplier_name'] = $supplier->name;
-                }
+                            // Cari atau buat Supplier otomatis
+                            $supplierId = null;
+                            if (! empty($row['supplier_name']) || ! empty($row['vendor_code'])) {
+                                $supplierName = $row['supplier_name'] ?: ($row['vendor_code'] ?? 'Unknown');
+                                $supplier = static::resolveSupplier($supplierName, $row['vendor_code'] ?? null, 'Steel');
+                                $supplierId = $supplier->id;
+                                $row['supplier_id'] = $supplierId;
+                                $row['vendor_code'] = $supplier->code;
+                                $row['supplier_name'] = $supplier->name;
+                            }
 
-                // Cek apakah data sudah ada (cocokkan via part_number atau steel_spec)
-                $query = StampingPart::where('year', $row['year'])
-                    ->where('quarter', $row['quarter']);
+                            // Cek apakah data sudah ada (cocokkan via part_number atau steel_spec)
+                            $query = StampingPart::where('year', $row['year'])
+                                ->where('quarter', $row['quarter']);
 
-                if (! empty($row['part_number'])) {
-                    $query->where('part_number', $row['part_number']);
-                } else {
-                    $query->where('steel_spec', $row['steel_spec'])
-                        ->when($supplierId, fn ($q) => $q->where('supplier_id', $supplierId));
-                }
+                            if (! empty($row['part_number'])) {
+                                $query->where('part_number', $row['part_number']);
+                            } else {
+                                $query->where('steel_spec', $row['steel_spec'])
+                                    ->when($supplierId, fn ($q) => $q->where('supplier_id', $supplierId));
+                            }
 
-                $existing = $query->first();
+                            $existing = $query->first();
 
-                if ($existing) {
-                    if ($updateExisting) {
-                        $updateData = array_filter($row, fn ($val) => $val !== null && $val !== '');
-                        $existing->update($updateData);
-                        $updated++;
+                            if ($existing) {
+                                if ($updateExisting) {
+                                    $updateData = array_filter($row, fn ($val) => $val !== null && $val !== '');
+                                    $existing->update($updateData);
+                                    $updated++;
+                                }
+                            } else {
+                                $createData = array_filter($row, fn ($val) => $val !== null && $val !== '');
+                                StampingPart::create($createData);
+                                $imported++;
+                            }
+                        } catch (\Throwable $e) {
+                            $errors[] = 'Baris #'.($idx + 1).': '.$e->getMessage();
+                        }
                     }
-                } else {
-                    $createData = array_filter($row, fn ($val) => $val !== null && $val !== '');
-                    StampingPart::create($createData);
-                    $imported++;
-                }
-            } catch (\Throwable $e) {
-                $errors[] = 'Baris #'.($idx + 1).': '.$e->getMessage();
+                });
             }
-        }
+        });
 
         return [
             'imported' => $imported,
@@ -1802,97 +1880,103 @@ class ExcelImportService
         $updated = 0;
         $errors = [];
 
-        foreach ($rows as $idx => $row) {
-            try {
-                if (empty($row['steel_spec']) && empty($row['wire_spec']) && empty($row['part_number'])) {
-                    continue;
-                }
-
-                if (empty($row['steel_spec']) && ! empty($row['wire_spec'])) {
-                    if (preg_match('/\[([^\]]+)\]/', (string) $row['wire_spec'], $m)) {
-                        $row['steel_spec'] = Fastener::cleanSteelSpec($m[1]);
-                    } else {
-                        $row['steel_spec'] = Fastener::cleanSteelSpec((string) $row['wire_spec']);
-                    }
-                } elseif (empty($row['steel_spec'])) {
-                    $row['steel_spec'] = 'SWCH';
-                }
-
-                // Auto Gross Weight = Nett Weight * 1.1 sesuai Excel R16 jika hanya Nett yang diisi
-                if (empty($row['gross_weight_gr']) && ! empty($row['nett_weight_gr']) && (float) $row['nett_weight_gr'] > 0) {
-                    $row['gross_weight_gr'] = round((float) $row['nett_weight_gr'] * 1.1, 4);
-                }
-
-                // Cari atau buat Supplier otomatis
-                $supplierId = null;
-                if (! empty($row['supplier_name']) || ! empty($row['vendor_code'])) {
-                    $supplierName = $row['supplier_name'] ?: ($row['vendor_code'] ?? 'Unknown');
-                    $supplier = static::resolveSupplier($supplierName, $row['vendor_code'] ?? null, 'Fastener');
-                    $supplierId = $supplier->id;
-                    $row['supplier_id'] = $supplierId;
-                    $row['vendor_code'] = $supplier->code;
-                    $row['supplier_name'] = $supplier->name;
-                }
-
-                $row['diameter'] = $row['double_thickness'] ?? null;
-
-                // Cek apakah data sudah ada (berdasarkan part_number jika ada, atau steel_spec)
-                $query = Fastener::where('year', $row['year'])
-                    ->where('quarter', $row['quarter']);
-                if (! empty($row['part_number'])) {
-                    $query->where('part_number', $row['part_number']);
-                } else {
-                    $query->where('steel_spec', $row['steel_spec']);
-                }
-                if ($supplierId) {
-                    $query->where('supplier_id', $supplierId);
-                }
-                $existing = $query->first();
-
-                if ($existing) {
-                    if ($updateExisting) {
-                        $updateData = [
-                            'vendor_code' => $row['vendor_code'] ?? $existing->vendor_code,
-                            'supplier_name' => $row['supplier_name'] ?? $existing->supplier_name,
-                            'double_thickness' => $row['double_thickness'] ?: $existing->double_thickness,
-                            'diameter' => $row['diameter'] ?: $existing->diameter,
-                            'exchange_rate' => $row['exchange_rate'] ?? $existing->exchange_rate,
-                            'coil_price' => $row['coil_price'] ?? $existing->coil_price,
-                            'coil_price_idr' => $row['coil_price_idr'] ?? $existing->coil_price_idr,
-                            'sheet_price' => $row['sheet_price'] ?? $existing->sheet_price,
-                            'sheet_price_idr' => $row['sheet_price_idr'] ?? $existing->sheet_price_idr,
-                            'gap_steel_usd' => $row['gap_steel_usd'] ?? $existing->gap_steel_usd,
-                            'gap_steel_kg_usd' => $row['gap_steel_kg_usd'] ?? $existing->gap_steel_kg_usd,
-                            'fluktuasi_jfe' => $row['fluktuasi_jfe'] ?? $existing->fluktuasi_jfe,
-                        ];
-
-                        foreach ([
-                            'part_number', 'old_part_number', 'part_name', 'model_name', 'monthly_volume',
-                            'drawing_reference', 'eci_number', 'quotation_date', 'old_exchange_rate',
-                            'exchange_rate_fluctuation', 'wire_spec', 'gross_weight_gr', 'nett_weight_gr',
-                            'wire_price_usd_kg', 'wire_price_idr_kg', 'material_control_percent',
-                            'washer_price', 'washer_weight_gr', 'heading_cost', 'rolling_cost',
-                            'washing_cost_kg', 'plating_cost_kg', 'inspection_cost', 'packing_cost',
-                            'overhead_supplied_percent', 'overhead_self_percent', 'transportation_cost',
-                            'cost_down', 'tooling_depreciation', 'tooling_details',
-                            'status', 'notes', 'comments', 'remarks', 'alteration', 'etc_contents',
-                        ] as $fKey) {
-                            if (array_key_exists($fKey, $row) && $row[$fKey] !== null && $row[$fKey] !== '') {
-                                $updateData[$fKey] = $row[$fKey];
+        static::withBatchLookups(function () use ($rows, $updateExisting, &$imported, &$updated, &$errors): void {
+            foreach (array_chunk($rows, self::IMPORT_CHUNK_SIZE, true) as $chunk) {
+                DB::transaction(function () use ($chunk, $updateExisting, &$imported, &$updated, &$errors): void {
+                    foreach ($chunk as $idx => $row) {
+                        try {
+                            if (empty($row['steel_spec']) && empty($row['wire_spec']) && empty($row['part_number'])) {
+                                continue;
                             }
-                        }
 
-                        $existing->update($updateData);
-                        $updated++;
+                            if (empty($row['steel_spec']) && ! empty($row['wire_spec'])) {
+                                if (preg_match('/\[([^\]]+)\]/', (string) $row['wire_spec'], $m)) {
+                                    $row['steel_spec'] = Fastener::cleanSteelSpec($m[1]);
+                                } else {
+                                    $row['steel_spec'] = Fastener::cleanSteelSpec((string) $row['wire_spec']);
+                                }
+                            } elseif (empty($row['steel_spec'])) {
+                                $row['steel_spec'] = 'SWCH';
+                            }
+
+                            // Auto Gross Weight = Nett Weight * 1.1 sesuai Excel R16 jika hanya Nett yang diisi
+                            if (empty($row['gross_weight_gr']) && ! empty($row['nett_weight_gr']) && (float) $row['nett_weight_gr'] > 0) {
+                                $row['gross_weight_gr'] = round((float) $row['nett_weight_gr'] * 1.1, 4);
+                            }
+
+                            // Cari atau buat Supplier otomatis
+                            $supplierId = null;
+                            if (! empty($row['supplier_name']) || ! empty($row['vendor_code'])) {
+                                $supplierName = $row['supplier_name'] ?: ($row['vendor_code'] ?? 'Unknown');
+                                $supplier = static::resolveSupplier($supplierName, $row['vendor_code'] ?? null, 'Fastener');
+                                $supplierId = $supplier->id;
+                                $row['supplier_id'] = $supplierId;
+                                $row['vendor_code'] = $supplier->code;
+                                $row['supplier_name'] = $supplier->name;
+                            }
+
+                            $row['diameter'] = $row['double_thickness'] ?? null;
+
+                            // Cek apakah data sudah ada (berdasarkan part_number jika ada, atau steel_spec)
+                            $query = Fastener::where('year', $row['year'])
+                                ->where('quarter', $row['quarter']);
+                            if (! empty($row['part_number'])) {
+                                $query->where('part_number', $row['part_number']);
+                            } else {
+                                $query->where('steel_spec', $row['steel_spec']);
+                            }
+                            if ($supplierId) {
+                                $query->where('supplier_id', $supplierId);
+                            }
+                            $existing = $query->first();
+
+                            if ($existing) {
+                                if ($updateExisting) {
+                                    $updateData = [
+                                        'vendor_code' => $row['vendor_code'] ?? $existing->vendor_code,
+                                        'supplier_name' => $row['supplier_name'] ?? $existing->supplier_name,
+                                        'double_thickness' => $row['double_thickness'] ?: $existing->double_thickness,
+                                        'diameter' => $row['diameter'] ?: $existing->diameter,
+                                        'exchange_rate' => $row['exchange_rate'] ?? $existing->exchange_rate,
+                                        'coil_price' => $row['coil_price'] ?? $existing->coil_price,
+                                        'coil_price_idr' => $row['coil_price_idr'] ?? $existing->coil_price_idr,
+                                        'sheet_price' => $row['sheet_price'] ?? $existing->sheet_price,
+                                        'sheet_price_idr' => $row['sheet_price_idr'] ?? $existing->sheet_price_idr,
+                                        'gap_steel_usd' => $row['gap_steel_usd'] ?? $existing->gap_steel_usd,
+                                        'gap_steel_kg_usd' => $row['gap_steel_kg_usd'] ?? $existing->gap_steel_kg_usd,
+                                        'fluktuasi_jfe' => $row['fluktuasi_jfe'] ?? $existing->fluktuasi_jfe,
+                                    ];
+
+                                    foreach ([
+                                        'part_number', 'old_part_number', 'part_name', 'model_name', 'monthly_volume',
+                                        'drawing_reference', 'eci_number', 'quotation_date', 'old_exchange_rate',
+                                        'exchange_rate_fluctuation', 'wire_spec', 'gross_weight_gr', 'nett_weight_gr',
+                                        'wire_price_usd_kg', 'wire_price_idr_kg', 'material_control_percent',
+                                        'washer_price', 'washer_weight_gr', 'heading_cost', 'rolling_cost',
+                                        'washing_cost_kg', 'plating_cost_kg', 'inspection_cost', 'packing_cost',
+                                        'overhead_supplied_percent', 'overhead_self_percent', 'transportation_cost',
+                                        'cost_down', 'tooling_depreciation', 'tooling_details',
+                                        'status', 'notes', 'comments', 'remarks', 'alteration', 'etc_contents',
+                                    ] as $fKey) {
+                                        if (array_key_exists($fKey, $row) && $row[$fKey] !== null && $row[$fKey] !== '') {
+                                            $updateData[$fKey] = $row[$fKey];
+                                        }
+                                    }
+
+                                    $existing->update($updateData);
+                                    $updated++;
+                                }
+                            } else {
+                                Fastener::create($row);
+                                $imported++;
+                            }
+                        } catch (\Throwable $e) {
+                            $errors[] = 'Baris #'.($idx + 1).': '.$e->getMessage();
+                        }
                     }
-                } else {
-                    Fastener::create($row);
-                    $imported++;
-                }
-            } catch (\Throwable $e) {
-                $errors[] = 'Baris #'.($idx + 1).': '.$e->getMessage();
+                });
             }
-        }
+        });
 
         return [
             'imported' => $imported,
