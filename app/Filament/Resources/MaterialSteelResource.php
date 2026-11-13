@@ -850,7 +850,7 @@ class MaterialSteelResource extends Resource
                         'Q4' => 'primary',
                         default => 'gray',
                     })
-                    ->sortable(['year', 'quarter']),
+                    ->sortable(['quarter', 'year']),
 
                 Tables\Columns\TextColumn::make('supplier_name')
                     ->label('Supplier')
@@ -966,7 +966,7 @@ class MaterialSteelResource extends Resource
                     ->alignRight()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
-            ->defaultSort('year', 'desc')
+            ->defaultSort(fn (Builder $query) => $query->orderBy('year', 'desc')->orderBy('quarter', 'desc'))
             ->toggleColumnsTriggerAction(fn (Tables\Actions\Action $action) => $action->hidden())
             ->filters([
                 Tables\Filters\SelectFilter::make('quarter')

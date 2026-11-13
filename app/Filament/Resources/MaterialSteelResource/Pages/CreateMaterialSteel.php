@@ -104,7 +104,8 @@ class CreateMaterialSteel extends CreateRecord
                                 })
                                 ->default(fn () => (int) ($this->data['year'] ?? date('Y')))
                                 ->required()
-                                ->live(),
+                                ->live()
+                                ->afterStateUpdated(fn (Forms\Set $set) => $set('source_record_id', null)),
 
                             Forms\Components\Select::make('target_quarter')
                                 ->label('Kuartal yang Akan Diisi')
@@ -126,21 +127,53 @@ class CreateMaterialSteel extends CreateRecord
                                     };
                                 })
                                 ->required()
-                                ->live(),
+                                ->live()
+                                ->afterStateUpdated(fn (Forms\Set $set) => $set('source_record_id', null)),
                         ]),
 
                     Forms\Components\Select::make('source_record_id')
                         ->label('Pilih Spesifikasi Baja & Supplier')
                         ->placeholder('-- Pilih Spesifikasi Baja Acuan --')
+                        ->helperText('Hanya menampilkan spesifikasi baja yang belum ada di kuartal target.')
                         ->searchable()
                         ->live()
                         ->options(function (Forms\Get $get) {
                             $y = (int) ($get('source_year') ?: date('Y'));
                             $q = $get('source_quarter') ?: 'Q1';
 
+                            $targetY = (int) ($get('target_year') ?: ($this->data['year'] ?? date('Y')));
+                            $targetQ = $get('target_quarter') ?: ($this->data['quarter'] ?? 'Q1');
+
+                            $isDifferentPeriod = ($y !== $targetY || $q !== $targetQ);
+
+                            $existingTargetKeys = [];
+                            if ($isDifferentPeriod) {
+                                $existingTargetKeys = MaterialSteel::where('year', $targetY)
+                                    ->where('quarter', $targetQ)
+                                    ->get(['steel_spec', 'supplier_id', 'supplier_name', 'double_thickness'])
+                                    ->map(function ($item) {
+                                        $supp = $item->supplier_id ?? $item->supplier_name ?? '';
+                                        $thick = $item->double_thickness ?? '';
+
+                                        return "{$item->steel_spec}|{$supp}|{$thick}";
+                                    })
+                                    ->all();
+                            }
+
                             return MaterialSteel::where('year', $y)
                                 ->where('quarter', $q)
                                 ->get()
+                                ->filter(function ($item) use ($isDifferentPeriod, $existingTargetKeys) {
+                                    if (! $isDifferentPeriod || empty($existingTargetKeys)) {
+                                        return true;
+                                    }
+
+                                    $supp = $item->supplier_id ?? $item->supplier_name ?? '';
+                                    $thick = $item->double_thickness ?? '';
+                                    $key = "{$item->steel_spec}|{$supp}|{$thick}";
+
+                                    return ! in_array($key, $existingTargetKeys, true);
+                                })
                                 ->mapWithKeys(function ($item) {
                                     $coil = number_format((float) $item->coil_price, 4);
                                     $sheet = number_format((float) $item->sheet_price, 4);

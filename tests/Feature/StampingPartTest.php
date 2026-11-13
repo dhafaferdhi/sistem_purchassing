@@ -660,6 +660,65 @@ class StampingPartTest extends TestCase
             ->assertSet('data.sheet_price', 1.55);
     }
 
+    public function test_stamping_part_pull_previous_excludes_already_existing_parts_in_target_quarter(): void
+    {
+        $this->actingAs($this->admin);
+
+        // Part 1: Ada di Q1 dan SUDAH ada di Q2
+        $part1Q1 = StampingPart::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'part_number' => 'STAMP-EXCLUDE-001',
+            'part_name' => 'SUDAH ADA DI Q2',
+            'steel_spec' => 'SPHC 1.6',
+            'sheet_price' => 1.55,
+            'part_cost' => 12000.0,
+        ]);
+
+        StampingPart::create([
+            'year' => 2026,
+            'quarter' => 'Q2',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'part_number' => 'STAMP-EXCLUDE-001',
+            'part_name' => 'SUDAH ADA DI Q2',
+            'steel_spec' => 'SPHC 1.6',
+            'sheet_price' => 1.55,
+            'part_cost' => 12000.0,
+        ]);
+
+        // Part 2: Ada di Q1 dan BELUM ada di Q2
+        $part2Q1 = StampingPart::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'part_number' => 'STAMP-REMAINING-002',
+            'part_name' => 'BELUM ADA DI Q2',
+            'steel_spec' => 'SPHC 1.6',
+            'sheet_price' => 1.60,
+            'part_cost' => 13500.0,
+        ]);
+
+        $component = Livewire::test(CreateStampingPart::class)
+            ->set('data.year', 2026)
+            ->set('data.quarter', 'Q2')
+            ->mountAction('pull_previous');
+
+        $form = $component->instance()->getMountedActionForm();
+        $select = collect($form->getFlatComponents())->first(fn ($c) => $c instanceof \Filament\Forms\Components\Select && $c->getName() === 'source_record_id');
+        $this->assertNotNull($select);
+        $options = $select->getOptions();
+
+        $this->assertArrayHasKey('stamping:'.$part2Q1->id, $options);
+        $this->assertArrayNotHasKey('stamping:'.$part1Q1->id, $options);
+    }
+
     public function test_stamping_part_pull_previous_applies_manual_rate_and_sheet_price_across_quarters(): void
     {
         $this->actingAs($this->admin);

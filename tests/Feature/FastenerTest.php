@@ -507,6 +507,65 @@ class FastenerTest extends TestCase
             ->assertSet('data.steel_spec', 'SWRCH10A');
     }
 
+    public function test_fastener_pull_previous_excludes_already_existing_parts_in_target_quarter(): void
+    {
+        $this->actingAs($this->admin);
+
+        // Part 1: Ada di Q1 dan SUDAH ditarik/ada di Q2
+        $part1Q1 = Fastener::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'part_number' => 'FAST-EXCLUDE-001',
+            'part_name' => 'SUDAH ADA DI Q2',
+            'steel_spec' => 'SWCH-10A',
+            'wire_price_usd_kg' => 1.5,
+            'part_cost' => 600.0,
+        ]);
+
+        Fastener::create([
+            'year' => 2026,
+            'quarter' => 'Q2',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'part_number' => 'FAST-EXCLUDE-001',
+            'part_name' => 'SUDAH ADA DI Q2',
+            'steel_spec' => 'SWCH-10A',
+            'wire_price_usd_kg' => 1.5,
+            'part_cost' => 600.0,
+        ]);
+
+        // Part 2: Ada di Q1 dan BELUM ada di Q2
+        $part2Q1 = Fastener::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'vendor_code' => $this->supplier->code,
+            'supplier_name' => $this->supplier->name,
+            'part_number' => 'FAST-REMAINING-002',
+            'part_name' => 'BELUM ADA DI Q2',
+            'steel_spec' => 'SWCH-10A',
+            'wire_price_usd_kg' => 1.6,
+            'part_cost' => 700.0,
+        ]);
+
+        $component = Livewire::test(CreateFastener::class)
+            ->set('data.year', 2026)
+            ->set('data.quarter', 'Q2')
+            ->mountAction('pull_previous');
+
+        $form = $component->instance()->getMountedActionForm();
+        $select = collect($form->getFlatComponents())->first(fn ($c) => $c instanceof \Filament\Forms\Components\Select && $c->getName() === 'source_record_id');
+        $this->assertNotNull($select);
+        $options = $select->getOptions();
+
+        $this->assertArrayHasKey('fastener:'.$part2Q1->id, $options);
+        $this->assertArrayNotHasKey('fastener:'.$part1Q1->id, $options);
+    }
+
     public function test_fastener_pull_previous_applies_manual_rate_and_wire_price_across_quarters(): void
     {
         $this->actingAs($this->admin);

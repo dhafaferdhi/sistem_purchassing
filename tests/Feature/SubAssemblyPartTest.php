@@ -168,6 +168,57 @@ class SubAssemblyPartTest extends TestCase
             ]);
     }
 
+    public function test_sub_assembly_pull_previous_excludes_already_existing_parts_in_target_quarter(): void
+    {
+        $this->actingAs($this->admin);
+
+        $part1Q1 = SubAssemblyPart::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplierTcf->id,
+            'vendor_code' => $this->supplierTcf->code,
+            'supplier_name' => $this->supplierTcf->name,
+            'part_number' => 'SUB-EXCLUDE-001',
+            'part_name' => 'SUDAH ADA DI Q2',
+            'part_cost' => 50000.0,
+        ]);
+
+        SubAssemblyPart::create([
+            'year' => 2026,
+            'quarter' => 'Q2',
+            'supplier_id' => $this->supplierTcf->id,
+            'vendor_code' => $this->supplierTcf->code,
+            'supplier_name' => $this->supplierTcf->name,
+            'part_number' => 'SUB-EXCLUDE-001',
+            'part_name' => 'SUDAH ADA DI Q2',
+            'part_cost' => 50000.0,
+        ]);
+
+        $part2Q1 = SubAssemblyPart::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplierTcf->id,
+            'vendor_code' => $this->supplierTcf->code,
+            'supplier_name' => $this->supplierTcf->name,
+            'part_number' => 'SUB-REMAINING-002',
+            'part_name' => 'BELUM ADA DI Q2',
+            'part_cost' => 60000.0,
+        ]);
+
+        $component = Livewire::test(CreateSubAssemblyPart::class)
+            ->set('data.year', 2026)
+            ->set('data.quarter', 'Q2')
+            ->mountAction('pull_previous');
+
+        $form = $component->instance()->getMountedActionForm();
+        $select = collect($form->getFlatComponents())->first(fn ($c) => $c instanceof \Filament\Forms\Components\Select && $c->getName() === 'source_record_id');
+        $this->assertNotNull($select);
+        $options = $select->getOptions();
+
+        $this->assertArrayHasKey($part2Q1->id, $options);
+        $this->assertArrayNotHasKey($part1Q1->id, $options);
+    }
+
     public function test_material_steel_supports_ap_prices(): void
     {
         $steel = MaterialSteel::create([

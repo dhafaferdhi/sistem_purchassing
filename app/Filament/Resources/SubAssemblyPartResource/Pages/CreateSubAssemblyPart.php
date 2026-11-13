@@ -94,7 +94,8 @@ class CreateSubAssemblyPart extends CreateRecord
                                 })
                                 ->default(fn () => (int) ($this->data['year'] ?? date('Y')))
                                 ->required()
-                                ->live(),
+                                ->live()
+                                ->afterStateUpdated(fn (Forms\Set $set) => $set('source_record_id', null)),
 
                             Forms\Components\Select::make('target_quarter')
                                 ->label('Kuartal yang Akan Diisi')
@@ -116,20 +117,41 @@ class CreateSubAssemblyPart extends CreateRecord
                                     };
                                 })
                                 ->required()
-                                ->live(),
+                                ->live()
+                                ->afterStateUpdated(fn (Forms\Set $set) => $set('source_record_id', null)),
                         ]),
 
                     Forms\Components\Select::make('source_record_id')
                         ->label('Pilih Sub-Assembly Part Acuan')
                         ->placeholder('-- Pilih Sub-Assembly Part Acuan --')
+                        ->helperText('Hanya menampilkan sub-assembly yang belum ada di kuartal target.')
                         ->searchable()
                         ->live()
                         ->options(function (Forms\Get $get) {
                             $y = (int) ($get('source_year') ?: date('Y'));
                             $q = $get('source_quarter') ?: 'Q1';
 
-                            return SubAssemblyPart::where('year', $y)
-                                ->where('quarter', $q)
+                            $targetY = (int) ($get('target_year') ?: ($this->data['year'] ?? date('Y')));
+                            $targetQ = $get('target_quarter') ?: ($this->data['quarter'] ?? 'Q1');
+
+                            $isDifferentPeriod = ($y !== $targetY || $q !== $targetQ);
+
+                            $sourceQuery = SubAssemblyPart::where('year', $y)->where('quarter', $q);
+
+                            if ($isDifferentPeriod) {
+                                $existingPartNumbers = SubAssemblyPart::where('year', $targetY)
+                                    ->where('quarter', $targetQ)
+                                    ->whereNotNull('part_number')
+                                    ->where('part_number', '!=', '')
+                                    ->pluck('part_number')
+                                    ->all();
+
+                                if (! empty($existingPartNumbers)) {
+                                    $sourceQuery->whereNotIn('part_number', $existingPartNumbers);
+                                }
+                            }
+
+                            return $sourceQuery
                                 ->get()
                                 ->mapWithKeys(function ($item) {
                                     $cost = number_format((float) $item->part_cost, 2, ',', '.');

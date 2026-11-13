@@ -125,7 +125,7 @@ class CurrencyResource extends Resource
     {
         return $table
             ->recordUrl(null)
-            ->defaultSort('year', 'desc')
+            ->defaultSort(fn (Builder $query) => $query->orderBy('year', 'desc')->orderBy('quarter', 'desc')->orderBy('month', 'desc'))
             ->columns([
                 Tables\Columns\TextColumn::make('period')
                     ->label('Kuartal')
@@ -138,7 +138,7 @@ class CurrencyResource extends Resource
                         'Q4' => 'primary',
                         default => 'gray',
                     })
-                    ->sortable(['year', 'quarter']),
+                    ->sortable(['quarter', 'year']),
                 Tables\Columns\TextColumn::make('year')
                     ->label('Tahun')
                     ->badge()

@@ -157,39 +157,80 @@ class CreateStampingPart extends CreateRecord
                         Forms\Components\Select::make('source_record_id')
                             ->label('Pilih Part Stamping Acuan')
                             ->placeholder('-- Pilih Part Stamping Acuan --')
+                            ->helperText('Hanya menampilkan part yang belum ada di kuartal target.')
                             ->searchable()
                             ->live()
                             ->options(function (Forms\Get $get) {
                                 $y = (int) ($get('source_year') ?: date('Y'));
                                 $q = $get('source_quarter') ?: 'Q1';
 
-                                $stampings = StampingPart::where('year', $y)
-                                    ->where('quarter', $q)
-                                    ->get()
-                                    ->mapWithKeys(function ($item) {
-                                        $cost = number_format((float) $item->part_cost, 2, ',', '.');
-                                        $spec = $item->steel_spec ?: 'Spec -';
-                                        $label = "{$item->part_number} - {$item->part_name} ({$spec}) — {$item->supplier_name} [Cost: Rp {$cost}]";
+                                $targetY = (int) ($get('target_year') ?: ($this->data['year'] ?? date('Y')));
+                                $targetQ = $get('target_quarter') ?: ($this->data['quarter'] ?? 'Q1');
 
-                                        return ['stamping:'.$item->id => $label];
-                                    })
-                                    ->toArray();
+                                $isDifferentPeriod = ($y !== $targetY || $q !== $targetQ);
 
-                                if (empty($stampings)) {
-                                    return MaterialSteel::where('year', $y)
-                                        ->where('quarter', $q)
+                                $sourceQuery = StampingPart::where('year', $y)->where('quarter', $q);
+                                $hasSourceStampings = (clone $sourceQuery)->exists();
+
+                                if ($hasSourceStampings) {
+                                    if ($isDifferentPeriod) {
+                                        $existingPartNumbers = StampingPart::where('year', $targetY)
+                                            ->where('quarter', $targetQ)
+                                            ->whereNotNull('part_number')
+                                            ->where('part_number', '!=', '')
+                                            ->pluck('part_number')
+                                            ->all();
+
+                                        $existingSpecsForEmptyPn = StampingPart::where('year', $targetY)
+                                            ->where('quarter', $targetQ)
+                                            ->where(fn ($query) => $query->whereNull('part_number')->orWhere('part_number', ''))
+                                            ->pluck('steel_spec')
+                                            ->filter()
+                                            ->all();
+
+                                        if (! empty($existingPartNumbers)) {
+                                            $sourceQuery->whereNotIn('part_number', $existingPartNumbers);
+                                        }
+
+                                        if (! empty($existingSpecsForEmptyPn)) {
+                                            $sourceQuery->where(function ($sub) use ($existingSpecsForEmptyPn) {
+                                                $sub->whereNotNull('part_number')
+                                                    ->where('part_number', '!=', '')
+                                                    ->orWhereNotIn('steel_spec', $existingSpecsForEmptyPn);
+                                            });
+                                        }
+                                    }
+
+                                    return $sourceQuery
                                         ->get()
                                         ->mapWithKeys(function ($item) {
-                                            $coil = number_format((float) $item->coil_price, 4);
-                                            $sheet = number_format((float) $item->sheet_price, 4);
-                                            $label = "[Material Steel] {$item->steel_spec} — {$item->supplier_name} [Coil: \${$coil} | Sheet: \${$sheet}]";
+                                            $cost = number_format((float) $item->part_cost, 2, ',', '.');
+                                            $spec = $item->steel_spec ?: 'Spec -';
+                                            $label = "{$item->part_number} - {$item->part_name} ({$spec}) — {$item->supplier_name} [Cost: Rp {$cost}]";
 
-                                            return ['steel:'.$item->id => $label];
+                                            return ['stamping:'.$item->id => $label];
                                         })
                                         ->toArray();
                                 }
 
-                                return $stampings;
+                                $existingSpecs = StampingPart::where('year', $targetY)
+                                    ->where('quarter', $targetQ)
+                                    ->pluck('steel_spec')
+                                    ->filter()
+                                    ->all();
+
+                                return MaterialSteel::where('year', $y)
+                                    ->where('quarter', $q)
+                                    ->when($isDifferentPeriod && ! empty($existingSpecs), fn ($query) => $query->whereNotIn('steel_spec', $existingSpecs))
+                                    ->get()
+                                    ->mapWithKeys(function ($item) {
+                                        $coil = number_format((float) $item->coil_price, 4);
+                                        $sheet = number_format((float) $item->sheet_price, 4);
+                                        $label = "[Material Steel] {$item->steel_spec} — {$item->supplier_name} [Coil: \${$coil} | Sheet: \${$sheet}]";
+
+                                        return ['steel:'.$item->id => $label];
+                                    })
+                                    ->toArray();
                             })
                             ->afterStateUpdated(function ($state, Forms\Set $set, Forms\Get $get) {
                                 if (! $state) {

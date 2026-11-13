@@ -1032,6 +1032,72 @@ class MaterialSteelQuarterlyTest extends TestCase
         ]);
     }
 
+    public function test_material_steel_pull_previous_excludes_already_existing_specs_in_target_quarter(): void
+    {
+        $this->actingAs($this->admin);
+
+        $spec1Q1 = MaterialSteel::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'supplier_name' => $this->supplier->name,
+            'vendor_code' => $this->supplier->code,
+            'steel_spec' => 'SPCC-EXCLUDE-001',
+            'double_thickness' => '1.2',
+            'currency_id' => $this->currency->id,
+            'currency_code' => 'USD',
+            'steel_price' => 1.2,
+            'coil_price' => 1.2,
+            'sheet_price' => 1.25,
+            'exchange_rate' => 16000,
+        ]);
+
+        MaterialSteel::create([
+            'year' => 2026,
+            'quarter' => 'Q2',
+            'supplier_id' => $this->supplier->id,
+            'supplier_name' => $this->supplier->name,
+            'vendor_code' => $this->supplier->code,
+            'steel_spec' => 'SPCC-EXCLUDE-001',
+            'double_thickness' => '1.2',
+            'currency_id' => $this->currency->id,
+            'currency_code' => 'USD',
+            'steel_price' => 1.2,
+            'coil_price' => 1.2,
+            'sheet_price' => 1.25,
+            'exchange_rate' => 16500,
+        ]);
+
+        $spec2Q1 = MaterialSteel::create([
+            'year' => 2026,
+            'quarter' => 'Q1',
+            'supplier_id' => $this->supplier->id,
+            'supplier_name' => $this->supplier->name,
+            'vendor_code' => $this->supplier->code,
+            'steel_spec' => 'SPCC-REMAINING-002',
+            'double_thickness' => '1.4',
+            'currency_id' => $this->currency->id,
+            'currency_code' => 'USD',
+            'steel_price' => 1.3,
+            'coil_price' => 1.3,
+            'sheet_price' => 1.35,
+            'exchange_rate' => 16000,
+        ]);
+
+        $component = Livewire::test(CreateMaterialSteel::class)
+            ->set('data.year', 2026)
+            ->set('data.quarter', 'Q2')
+            ->mountAction('pull_previous');
+
+        $form = $component->instance()->getMountedActionForm();
+        $select = collect($form->getFlatComponents())->first(fn ($c) => $c instanceof \Filament\Forms\Components\Select && $c->getName() === 'source_record_id');
+        $this->assertNotNull($select);
+        $options = $select->getOptions();
+
+        $this->assertArrayHasKey($spec2Q1->id, $options);
+        $this->assertArrayNotHasKey($spec1Q1->id, $options);
+    }
+
     public function test_material_steel_gap_formula_and_idr_rate_calculation(): void
     {
         $this->actingAs($this->admin);

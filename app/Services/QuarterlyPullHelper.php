@@ -127,7 +127,8 @@ class QuarterlyPullHelper
                             return (int) ($data['year'] ?? date('Y'));
                         })
                         ->required()
-                        ->live(),
+                        ->live()
+                        ->afterStateUpdated(fn (Forms\Set $set) => $set('source_record_id', null)),
 
                     Forms\Components\Select::make('target_quarter')
                         ->label('Kuartal yang Akan Diisi')
@@ -139,7 +140,8 @@ class QuarterlyPullHelper
                             return static::getNextQuarter($sq);
                         })
                         ->required()
-                        ->live(),
+                        ->live()
+                        ->afterStateUpdated(fn (Forms\Set $set) => $set('source_record_id', null)),
                 ]),
         ];
     }

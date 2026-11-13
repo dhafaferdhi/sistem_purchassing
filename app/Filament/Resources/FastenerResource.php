@@ -1229,7 +1229,7 @@ class FastenerResource extends Resource
     {
         return $table
             ->columns(static::getTableColumns())
-            ->defaultSort('year', 'desc')
+            ->defaultSort(fn (Builder $query) => $query->orderBy('year', 'desc')->orderBy('quarter', 'desc'))
             ->filters(static::getTableFilters())
             ->filtersTriggerAction(
                 fn (Tables\Actions\Action $action) => $action
@@ -1258,7 +1258,7 @@ class FastenerResource extends Resource
                     'Q4' => 'primary',
                     default => 'gray',
                 })
-                ->sortable(['year', 'quarter']),
+                ->sortable(['quarter', 'year']),
 
             Tables\Columns\TextColumn::make('supplier_name')
                 ->label('Supplier')

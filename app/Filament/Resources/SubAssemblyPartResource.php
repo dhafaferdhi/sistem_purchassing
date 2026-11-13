@@ -19,6 +19,7 @@ use Filament\Support\Enums\MaxWidth;
 use Filament\Tables;
 use Filament\Tables\Enums\ActionsPosition;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\HtmlString;
 
 class SubAssemblyPartResource extends Resource
@@ -590,7 +591,8 @@ class SubAssemblyPartResource extends Resource
                         'Q3' => 'warning',
                         'Q4' => 'primary',
                         default => 'gray',
-                    }),
+                    })
+                    ->sortable(),
 
                 Tables\Columns\TextColumn::make('year')
                     ->label('Tahun')
@@ -654,7 +656,7 @@ class SubAssemblyPartResource extends Resource
                     ->label('ECI No')
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
-            ->defaultSort('year', 'desc')
+            ->defaultSort(fn (Builder $query) => $query->orderBy('year', 'desc')->orderBy('quarter', 'desc'))
             ->toggleColumnsTriggerAction(fn (Tables\Actions\Action $action) => $action->hidden())
             ->filters([
                 Tables\Filters\SelectFilter::make('quarter')
