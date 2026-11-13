@@ -67,6 +67,7 @@ class GlobalVariableResource extends Resource
                     ->label('Key')
                     ->badge()
                     ->color('gray')
+                    ->alignCenter()
                     ->searchable(),
                 Tables\Columns\TextColumn::make('value')
                     ->label('Nilai')
@@ -80,6 +81,7 @@ class GlobalVariableResource extends Resource
 
                         return number_format($state, 4);
                     })
+                    ->alignRight()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('updatedBy.name')
                     ->label('Diperbarui Oleh')
@@ -88,6 +90,7 @@ class GlobalVariableResource extends Resource
                 Tables\Columns\TextColumn::make('updated_at')
                     ->label('Terakhir Diubah')
                     ->dateTime('d M Y H:i')
+                    ->alignCenter()
                     ->sortable(),
             ])
             ->filters([

@@ -1291,6 +1291,7 @@ class StampingPartResource extends Resource
                     'Q4' => 'primary',
                     default => 'gray',
                 })
+                ->alignCenter()
                 ->sortable(['quarter', 'year']),
 
             Tables\Columns\TextColumn::make('supplier_name')
@@ -1320,6 +1321,7 @@ class StampingPartResource extends Resource
             Tables\Columns\TextColumn::make('quotation_date')
                 ->label('Quotation Date')
                 ->date('d M Y')
+                ->alignCenter()
                 ->sortable()
                 ->toggleable(isToggledHiddenByDefault: true),
 
@@ -1338,6 +1340,7 @@ class StampingPartResource extends Resource
             Tables\Columns\TextColumn::make('double_thickness')
                 ->label('Thickness (mm)')
                 ->wrapHeader()
+                ->alignCenter()
                 ->formatStateUsing(function ($state) {
                     if ($state === null || $state === '') {
                         return '-';
@@ -1350,7 +1353,7 @@ class StampingPartResource extends Resource
                 ->sortable(),
 
             Tables\Columns\TextColumn::make('exchange_rate')
-                ->label('Kurs USD')
+                ->label('Kurs USD (Rp)')
                 ->wrapHeader()
                 ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
                 ->alignRight()
@@ -1364,7 +1367,7 @@ class StampingPartResource extends Resource
                 ->sortable(),
 
             Tables\Columns\TextColumn::make('coil_price_idr')
-                ->label('Coil (IDR)')
+                ->label('Coil (Rp)')
                 ->wrapHeader()
                 ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
                 ->alignRight()
@@ -1378,7 +1381,7 @@ class StampingPartResource extends Resource
                 ->sortable(),
 
             Tables\Columns\TextColumn::make('sheet_price_idr')
-                ->label('Sheet (IDR)')
+                ->label('Sheet (Rp)')
                 ->wrapHeader()
                 ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
                 ->alignRight()

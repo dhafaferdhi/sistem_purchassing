@@ -156,6 +156,7 @@ class ProcessResource extends Resource
                 Tables\Columns\TextColumn::make('stage_type')
                     ->label('Tahapan')
                     ->badge()
+                    ->alignCenter()
                     ->color(fn (string $state): string => match ($state) {
                         'Blanking', 'Piercing' => 'info',
                         'Bending', 'Drawing' => 'warning',
@@ -173,23 +174,27 @@ class ProcessResource extends Resource
                     ->label('Tipe Mesin')
                     ->badge()
                     ->color('purple')
+                    ->alignCenter()
                     ->placeholder('-'),
 
                 Tables\Columns\TextColumn::make('machine.tonnage')
                     ->label('Tonase')
                     ->badge()
                     ->color('gray')
+                    ->alignCenter()
                     ->placeholder('-'),
 
                 Tables\Columns\TextColumn::make('dies_code')
                     ->label('Kode Dies')
                     ->badge()
                     ->color('success')
+                    ->alignCenter()
                     ->placeholder('-'),
 
                 Tables\Columns\TextColumn::make('default_cost')
-                    ->label('Biaya Standar')
+                    ->label('Biaya Standar (Rp)')
                     ->formatStateUsing(fn ($state) => 'Rp '.number_format($state, 2, ',', '.'))
+                    ->alignRight()
                     ->sortable(),
             ])
             ->filters([

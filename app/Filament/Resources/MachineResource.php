@@ -111,6 +111,7 @@ class MachineResource extends Resource
                 Tables\Columns\TextColumn::make('stamping_type')
                     ->label('Tipe Stamping')
                     ->badge()
+                    ->alignCenter()
                     ->color(fn (string $state): string => match ($state) {
                         'Progressive' => 'success',
                         'Tandem' => 'warning',
@@ -122,16 +123,19 @@ class MachineResource extends Resource
                     ->label('Tonase')
                     ->badge()
                     ->color('info')
+                    ->alignCenter()
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('hourly_rate')
-                    ->label('Cost Per Hour (Mesin)')
+                    ->label('Cost Per Hour (Rp)')
                     ->formatStateUsing(fn ($state) => 'Rp '.number_format($state, 0, ',', '.').' / jam')
+                    ->alignRight()
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('default_capacity_per_hour')
                     ->label('Kapasitas Output')
                     ->formatStateUsing(fn ($state) => $state.' pcs/jam')
+                    ->alignRight()
                     ->sortable(),
             ])
             ->filters([

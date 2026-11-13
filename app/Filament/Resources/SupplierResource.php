@@ -87,6 +87,7 @@ class SupplierResource extends Resource
                     ->label('Vendor Code')
                     ->badge()
                     ->color('gray')
+                    ->alignCenter()
                     ->sortable()
                     ->searchable(),
 
@@ -99,6 +100,7 @@ class SupplierResource extends Resource
                 Tables\Columns\TextColumn::make('category')
                     ->label('Kategori')
                     ->badge()
+                    ->alignCenter()
                     ->color(fn (string $state): string => match ($state) {
                         'Stamping & Steel' => 'info',
                         'Fastener' => 'primary',
@@ -113,6 +115,7 @@ class SupplierResource extends Resource
                     ->counts('vendorItems')
                     ->badge()
                     ->color('success')
+                    ->alignCenter()
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('contact_person')

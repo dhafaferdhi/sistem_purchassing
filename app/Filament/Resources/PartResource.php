@@ -194,6 +194,7 @@ class PartResource extends Resource
                 Tables\Columns\TextColumn::make('item_category')
                     ->label('Kategori Part')
                     ->badge()
+                    ->alignCenter()
                     ->color(fn (string $state): string => match ($state) {
                         'Material' => 'danger',
                         'Fastener' => 'info',
@@ -209,8 +210,9 @@ class PartResource extends Resource
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('weight')
-                    ->label('Berat')
-                    ->formatStateUsing(fn ($state) => number_format($state, 4).' kg')
+                    ->label('Berat (kg)')
+                    ->formatStateUsing(fn ($state) => $state !== null ? number_format((float) $state, 4, ',', '.').' kg' : '-')
+                    ->alignRight()
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('vendor_items_count')
@@ -218,6 +220,7 @@ class PartResource extends Resource
                     ->counts('vendorItems')
                     ->badge()
                     ->color('success')
+                    ->alignCenter()
                     ->sortable(),
             ])
             ->filters([

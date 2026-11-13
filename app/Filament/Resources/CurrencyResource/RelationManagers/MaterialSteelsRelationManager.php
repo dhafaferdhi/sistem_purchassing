@@ -72,7 +72,8 @@ class MaterialSteelsRelationManager extends RelationManager
                     ->searchable(),
 
                 Tables\Columns\TextColumn::make('double_thickness')
-                    ->label(new HtmlString('<div>Thickness</div><div class="text-[11px] font-normal text-gray-500 dark:text-gray-400">(mm)</div>'))
+                    ->label('Thickness (mm)')
+                    ->alignCenter()
                     ->formatStateUsing(function ($state) {
                         if ($state === null || $state === '') {
                             return '-';
@@ -84,13 +85,13 @@ class MaterialSteelsRelationManager extends RelationManager
                     ->searchable(),
 
                 Tables\Columns\TextColumn::make('gap_steel_usd')
-                    ->label(new HtmlString('<div>Gap</div><div class="text-[11px] font-normal text-gray-500 dark:text-gray-400">$/MT</div>'))
+                    ->label('Gap ($/MT)')
                     ->formatStateUsing(fn ($record) => MaterialSteelResource::formatUsd($record->gap_steel_usd, $record->currency_code ?? 'USD'))
                     ->weight('bold')
                     ->alignRight(),
 
                 Tables\Columns\TextColumn::make('exchange_rate')
-                    ->label('Kurs USD')
+                    ->label('Kurs USD (Rp)')
                     ->formatStateUsing(fn ($state) => MaterialSteelResource::formatIdr($state, true))
                     ->alignRight(),
 

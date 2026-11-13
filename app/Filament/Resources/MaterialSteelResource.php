@@ -850,6 +850,7 @@ class MaterialSteelResource extends Resource
                         'Q4' => 'primary',
                         default => 'gray',
                     })
+                    ->alignCenter()
                     ->sortable(['quarter', 'year']),
 
                 Tables\Columns\TextColumn::make('supplier_name')
@@ -865,8 +866,9 @@ class MaterialSteelResource extends Resource
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('double_thickness')
-                    ->label(new HtmlString('<div>Thickness</div><div class="text-[11px] font-normal text-gray-500 dark:text-gray-400">(mm)</div>'))
+                    ->label('Thickness (mm)')
                     ->wrapHeader()
+                    ->alignCenter()
                     ->formatStateUsing(function ($state) {
                         if ($state === null || $state === '') {
                             return '-';
@@ -879,7 +881,7 @@ class MaterialSteelResource extends Resource
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('hr_steel_usd')
-                    ->label(new HtmlString('<div>Gap HRC</div><div class="text-[11px] font-normal text-gray-500 dark:text-gray-400">$/MT</div>'))
+                    ->label('Gap HRC ($/MT)')
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state, MaterialSteel $record) => static::formatUsd($state, $record->currency_code))
                     ->weight('bold')
@@ -887,7 +889,7 @@ class MaterialSteelResource extends Resource
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('cr_steel_usd')
-                    ->label(new HtmlString('<div>Gap CRC</div><div class="text-[11px] font-normal text-gray-500 dark:text-gray-400">$/MT</div>'))
+                    ->label('Gap CRC ($/MT)')
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state, MaterialSteel $record) => static::formatUsd($state, $record->currency_code))
                     ->weight('bold')
@@ -895,14 +897,14 @@ class MaterialSteelResource extends Resource
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('exchange_rate')
-                    ->label('Kurs USD')
+                    ->label('Kurs USD (Rp)')
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
                     ->alignRight()
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('gap_steel_usd')
-                    ->label(new HtmlString('<div>Gap</div><div class="text-[11px] font-normal text-gray-500 dark:text-gray-400">$/MT</div>'))
+                    ->label('Gap ($/MT)')
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state, MaterialSteel $record) => static::formatUsd($state, $record->currency_code))
                     ->weight('bold')
@@ -917,7 +919,7 @@ class MaterialSteelResource extends Resource
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('coil_price_idr')
-                    ->label('Coil (IDR)')
+                    ->label('Coil (Rp)')
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
                     ->alignRight()
@@ -931,7 +933,7 @@ class MaterialSteelResource extends Resource
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('sheet_price_idr')
-                    ->label('Sheet (IDR)')
+                    ->label('Sheet (Rp)')
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
                     ->alignRight()
@@ -946,7 +948,7 @@ class MaterialSteelResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('ap_coil_price_idr')
-                    ->label('AP Coil (IDR)')
+                    ->label('AP Coil (Rp)')
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
                     ->alignRight()
@@ -960,7 +962,7 @@ class MaterialSteelResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('ap_sheet_price_idr')
-                    ->label('AP Sheet (IDR)')
+                    ->label('AP Sheet (Rp)')
                     ->wrapHeader()
                     ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
                     ->alignRight()

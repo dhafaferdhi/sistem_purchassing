@@ -138,21 +138,25 @@ class CurrencyResource extends Resource
                         'Q4' => 'primary',
                         default => 'gray',
                     })
+                    ->alignCenter()
                     ->sortable(['quarter', 'year']),
                 Tables\Columns\TextColumn::make('year')
                     ->label('Tahun')
                     ->badge()
                     ->color('primary')
+                    ->alignCenter()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('quarter')
                     ->label('Kuartal Ref')
                     ->badge()
                     ->color('gray')
+                    ->alignCenter()
                     ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('month')
                     ->label('Bulan')
                     ->badge()
                     ->color('gray')
+                    ->alignCenter()
                     ->formatStateUsing(fn ($state) => match ((int) $state) {
                         1 => 'Januari',
                         2 => 'Februari',
@@ -175,6 +179,7 @@ class CurrencyResource extends Resource
                     ->badge()
                     ->color('info')
                     ->weight('bold')
+                    ->alignCenter()
                     ->searchable(),
                 Tables\Columns\TextColumn::make('name')
                     ->label('Nama Mata Uang')
@@ -183,34 +188,39 @@ class CurrencyResource extends Resource
                     ->label('Simbol')
                     ->alignCenter(),
                 Tables\Columns\TextColumn::make('exchange_rate_to_idr')
-                    ->label('Kurs ke IDR')
+                    ->label('Kurs (Rp)')
                     ->formatStateUsing(fn ($state) => 'Rp '.number_format((float) $state, 0, ',', '.'))
+                    ->alignRight()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('material_steels_count')
                     ->counts('materialSteels')
-                    ->label('Linked Material Steel')
+                    ->label('Material Steel')
                     ->badge()
                     ->color(fn (int $state): string => $state > 0 ? 'success' : 'gray')
-                    ->suffix(' baja')
+                    ->suffix(' item')
+                    ->alignCenter()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('stamping_parts_count')
                     ->counts('stampingParts')
-                    ->label('Linked Stamping Part')
+                    ->label('Stamping Part')
                     ->badge()
                     ->color(fn (int $state): string => $state > 0 ? 'info' : 'gray')
-                    ->suffix(' part')
+                    ->suffix(' item')
+                    ->alignCenter()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('fasteners_count')
                     ->counts('fasteners')
-                    ->label('Linked Fasteners')
+                    ->label('Fastener')
                     ->badge()
                     ->color(fn (int $state): string => $state > 0 ? 'warning' : 'gray')
-                    ->suffix(' fasteners')
+                    ->suffix(' item')
+                    ->alignCenter()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('last_updated_at')
                     ->label('Terakhir Dihitung Ulang')
                     ->dateTime('d M Y H:i')
                     ->placeholder('Belum pernah')
+                    ->alignCenter()
                     ->sortable(),
             ])
             ->filters([

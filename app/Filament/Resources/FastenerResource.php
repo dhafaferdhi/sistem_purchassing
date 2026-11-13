@@ -1258,6 +1258,7 @@ class FastenerResource extends Resource
                     'Q4' => 'primary',
                     default => 'gray',
                 })
+                ->alignCenter()
                 ->sortable(['quarter', 'year']),
 
             Tables\Columns\TextColumn::make('supplier_name')
@@ -1288,8 +1289,9 @@ class FastenerResource extends Resource
                 ->sortable(),
 
             Tables\Columns\TextColumn::make('double_thickness')
-                ->label('Dia / Thick (mm)')
+                ->label('Thickness (mm)')
                 ->wrapHeader()
+                ->alignCenter()
                 ->formatStateUsing(function ($state, Fastener $record) {
                     $val = ($state !== null && $state !== '') ? $state : $record->diameter;
                     if ($val === null || $val === '') {
@@ -1303,7 +1305,7 @@ class FastenerResource extends Resource
                 ->sortable(),
 
             Tables\Columns\TextColumn::make('exchange_rate')
-                ->label('Kurs USD')
+                ->label('Kurs USD (Rp)')
                 ->wrapHeader()
                 ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
                 ->alignRight()
@@ -1351,13 +1353,13 @@ class FastenerResource extends Resource
                 ->toggleable(isToggledHiddenByDefault: true),
 
             Tables\Columns\TextColumn::make('wire_price_idr_kg')
-                ->label('Wire IDR/Kg')
+                ->label('Wire (Rp/Kg)')
                 ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
                 ->alignRight()
                 ->toggleable(isToggledHiddenByDefault: true),
 
             Tables\Columns\TextColumn::make('wire_price_pc')
-                ->label('Wire Cost/pc')
+                ->label('Wire Cost/pc (Rp)')
                 ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? 'Rp '.number_format((float) $state, 2, ',', '.') : '-')
                 ->alignRight()
                 ->toggleable(isToggledHiddenByDefault: true),

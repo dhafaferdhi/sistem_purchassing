@@ -134,6 +134,7 @@ class MaterialResource extends Resource
                 Tables\Columns\TextColumn::make('main_category')
                     ->label('Kategori Utama')
                     ->badge()
+                    ->alignCenter()
                     ->color(fn (string $state): string => match ($state) {
                         'Steel' => 'info',
                         'Non-Steel' => 'warning',
@@ -145,6 +146,7 @@ class MaterialResource extends Resource
                     ->label('Sub-Kategori')
                     ->badge()
                     ->color('gray')
+                    ->alignCenter()
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('supplier.name')
@@ -159,6 +161,7 @@ class MaterialResource extends Resource
 
                         return $sym.' '.number_format($state, 4, ',', '.').' / '.$record->unit;
                     })
+                    ->alignRight()
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('parts_count')
@@ -166,6 +169,7 @@ class MaterialResource extends Resource
                     ->counts('parts')
                     ->badge()
                     ->color('success')
+                    ->alignCenter()
                     ->sortable(),
             ])
             ->filters([

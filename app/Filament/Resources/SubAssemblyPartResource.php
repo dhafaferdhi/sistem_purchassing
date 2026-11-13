@@ -560,6 +560,28 @@ class SubAssemblyPartResource extends Resource
     {
         return $table
             ->columns([
+                Tables\Columns\TextColumn::make('period')
+                    ->label('Kuartal')
+                    ->badge()
+                    ->state(fn (SubAssemblyPart $record) => "{$record->year} - {$record->quarter}")
+                    ->color(fn (SubAssemblyPart $record): string => match ($record->quarter) {
+                        'Q1' => 'info',
+                        'Q2' => 'success',
+                        'Q3' => 'warning',
+                        'Q4' => 'primary',
+                        default => 'gray',
+                    })
+                    ->alignCenter()
+                    ->sortable(['quarter', 'year']),
+
+                Tables\Columns\TextColumn::make('supplier_name')
+                    ->label('Supplier')
+                    ->weight('bold')
+                    ->badge()
+                    ->color('gray')
+                    ->searchable()
+                    ->sortable(),
+
                 Tables\Columns\TextColumn::make('part_number')
                     ->label('Part Number')
                     ->searchable()
@@ -567,23 +589,52 @@ class SubAssemblyPartResource extends Resource
                     ->weight('bold'),
 
                 Tables\Columns\TextColumn::make('part_name')
-                    ->label('Nama Part Sub-Assy')
+                    ->label('Part Name')
                     ->searchable()
+                    ->sortable()
                     ->wrap(),
 
                 Tables\Columns\TextColumn::make('model_name')
                     ->label('Model')
                     ->badge()
-                    ->color('info'),
+                    ->color('info')
+                    ->alignCenter()
+                    ->sortable(),
 
-                Tables\Columns\TextColumn::make('supplier_name')
-                    ->label('Supplier')
-                    ->badge()
-                    ->color('gray')
-                    ->searchable(),
+                Tables\Columns\TextColumn::make('material_total')
+                    ->label('Total Material (Rp)')
+                    ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
+                    ->alignRight()
+                    ->sortable(),
+
+                Tables\Columns\TextColumn::make('process_total')
+                    ->label('Total Proses (Rp)')
+                    ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
+                    ->alignRight()
+                    ->sortable(),
+
+                Tables\Columns\TextColumn::make('subtotal')
+                    ->label('Subtotal (Rp)')
+                    ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
+                    ->alignRight()
+                    ->sortable(),
+
+                Tables\Columns\TextColumn::make('tooling_depreciation')
+                    ->label('Tooling (Rp)')
+                    ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
+                    ->alignRight()
+                    ->sortable(),
+
+                Tables\Columns\TextColumn::make('part_cost')
+                    ->label('Total Cost (Rp)')
+                    ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
+                    ->weight('black')
+                    ->color('success')
+                    ->alignRight()
+                    ->sortable(),
 
                 Tables\Columns\TextColumn::make('quarter')
-                    ->label('Kuartal')
+                    ->label('Kuartal Ref')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
                         'Q1' => 'info',
@@ -592,61 +643,31 @@ class SubAssemblyPartResource extends Resource
                         'Q4' => 'primary',
                         default => 'gray',
                     })
+                    ->toggleable(isToggledHiddenByDefault: true)
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('year')
-                    ->label('Tahun')
-                    ->sortable(),
-
-                Tables\Columns\TextColumn::make('material_total')
-                    ->label('Total Material')
-                    ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
-                    ->alignRight()
-                    ->sortable(),
-
-                Tables\Columns\TextColumn::make('process_total')
-                    ->label('Total Proses')
-                    ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
-                    ->alignRight()
-                    ->sortable(),
-
-                Tables\Columns\TextColumn::make('subtotal')
-                    ->label('Subtotal')
-                    ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
-                    ->alignRight()
+                    ->label('Tahun Ref')
+                    ->toggleable(isToggledHiddenByDefault: true)
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('overhead_supplied_cost')
-                    ->label('O/H Cost')
+                    ->label('O/H Cost (Rp)')
                     ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
                     ->alignRight()
                     ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('profit_cost')
-                    ->label('Profit')
+                    ->label('Profit (Rp)')
                     ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
                     ->alignRight()
                     ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('packing_cost')
-                    ->label('Packing')
+                    ->label('Packing (Rp)')
                     ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
                     ->alignRight()
                     ->toggleable(isToggledHiddenByDefault: true),
-
-                Tables\Columns\TextColumn::make('tooling_depreciation')
-                    ->label('Tooling Depr')
-                    ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
-                    ->alignRight()
-                    ->toggleable(isToggledHiddenByDefault: true),
-
-                Tables\Columns\TextColumn::make('part_cost')
-                    ->label('Part Cost Akhir')
-                    ->formatStateUsing(fn ($state) => static::formatIdr($state, true))
-                    ->weight('black')
-                    ->color('success')
-                    ->alignRight()
-                    ->sortable(),
 
                 Tables\Columns\TextColumn::make('drawing_reference')
                     ->label('Drawing Ref')
