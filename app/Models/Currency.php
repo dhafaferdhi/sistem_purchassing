@@ -23,6 +23,25 @@ class Currency extends Model
         'name',
         'symbol',
         'exchange_rate_to_idr',
+        'gap_ap_usd',
+        'gap_ap_kg_usd',
+        'gap_ap_idr',
+        'gap_ar_usd',
+        'gap_ar_kg_usd',
+        'gap_ar_idr',
+        'gap_hrc_usd',
+        'gap_hrc_kg_usd',
+        'gap_hrc_idr',
+        'gap_crc_usd',
+        'gap_crc_kg_usd',
+        'gap_crc_idr',
+        'gap_hrc_ar_usd',
+        'gap_hrc_ar_kg_usd',
+        'gap_hrc_ar_idr',
+        'gap_crc_ar_usd',
+        'gap_crc_ar_kg_usd',
+        'gap_crc_ar_idr',
+        'notes',
         'last_updated_at',
     ];
 
@@ -30,6 +49,24 @@ class Currency extends Model
         'year' => 2026,
         'quarter' => 'Q1',
         'month' => 10,
+        'gap_ap_usd' => 0,
+        'gap_ap_kg_usd' => 0,
+        'gap_ap_idr' => 0,
+        'gap_ar_usd' => 0,
+        'gap_ar_kg_usd' => 0,
+        'gap_ar_idr' => 0,
+        'gap_hrc_usd' => 0,
+        'gap_hrc_kg_usd' => 0,
+        'gap_hrc_idr' => 0,
+        'gap_crc_usd' => 0,
+        'gap_crc_kg_usd' => 0,
+        'gap_crc_idr' => 0,
+        'gap_hrc_ar_usd' => 0,
+        'gap_hrc_ar_kg_usd' => 0,
+        'gap_hrc_ar_idr' => 0,
+        'gap_crc_ar_usd' => 0,
+        'gap_crc_ar_kg_usd' => 0,
+        'gap_crc_ar_idr' => 0,
     ];
 
     protected function casts(): array
@@ -38,6 +75,24 @@ class Currency extends Model
             'year' => 'integer',
             'month' => 'integer',
             'exchange_rate_to_idr' => 'decimal:4',
+            'gap_ap_usd' => 'decimal:4',
+            'gap_ap_kg_usd' => 'decimal:4',
+            'gap_ap_idr' => 'decimal:2',
+            'gap_ar_usd' => 'decimal:4',
+            'gap_ar_kg_usd' => 'decimal:4',
+            'gap_ar_idr' => 'decimal:2',
+            'gap_hrc_usd' => 'decimal:4',
+            'gap_hrc_kg_usd' => 'decimal:4',
+            'gap_hrc_idr' => 'decimal:2',
+            'gap_crc_usd' => 'decimal:4',
+            'gap_crc_kg_usd' => 'decimal:4',
+            'gap_crc_idr' => 'decimal:2',
+            'gap_hrc_ar_usd' => 'decimal:4',
+            'gap_hrc_ar_kg_usd' => 'decimal:4',
+            'gap_hrc_ar_idr' => 'decimal:2',
+            'gap_crc_ar_usd' => 'decimal:4',
+            'gap_crc_ar_kg_usd' => 'decimal:4',
+            'gap_crc_ar_idr' => 'decimal:2',
             'last_updated_at' => 'datetime',
         ];
     }
@@ -45,6 +100,23 @@ class Currency extends Model
     protected static function booted(): void
     {
         static::saving(function (Currency $currency) {
+            if (empty($currency->name)) {
+                $currency->name = match (strtoupper((string) ($currency->code ?: 'USD'))) {
+                    'USD' => 'US Dollar',
+                    'JPY', 'YEN' => 'Japanese Yen',
+                    'IDR' => 'Indonesian Rupiah',
+                    default => $currency->code ?: 'Currency',
+                };
+            }
+            if (empty($currency->symbol)) {
+                $currency->symbol = match (strtoupper((string) ($currency->code ?: 'USD'))) {
+                    'USD' => '$',
+                    'JPY', 'YEN' => '¥',
+                    'IDR' => 'Rp',
+                    default => '$',
+                };
+            }
+
             if ($currency->quarter && empty($currency->month)) {
                 $currency->month = match ($currency->quarter) {
                     'Q1' => 1,
@@ -62,6 +134,73 @@ class Currency extends Model
                     default => 'Q1',
                 };
             }
+
+            // Otomatis hitung Gap $/kg dan Gap IDR dari Gap $/MT dan Kurs Dollar
+            // Rumus: Gap ($/Kg) = Gap ($/MT) / 1000
+            // Rumus: Gap (IDR)  = Gap ($/Kg) * Kurs Dollar
+            $rate = (float) ($currency->exchange_rate_to_idr ?? 0);
+
+            // 1. Perhitungan Gap AP (Pembelian)
+            if ($currency->gap_ap_usd !== null) {
+                $currency->gap_ap_kg_usd = round((float) $currency->gap_ap_usd / 1000, 4);
+                $currency->gap_ap_idr = round($currency->gap_ap_kg_usd * $rate, 2);
+
+                // Defaultkan rincian HRC & CRC AP dari gap_ap_usd jika belum dispesifikasikan atau jika gap_ap_usd berubah
+                if ($currency->isDirty('gap_ap_usd') && ! $currency->isDirty('gap_hrc_usd')) {
+                    $currency->gap_hrc_usd = $currency->gap_ap_usd;
+                }
+                if ($currency->isDirty('gap_ap_usd') && ! $currency->isDirty('gap_crc_usd')) {
+                    $currency->gap_crc_usd = $currency->gap_ap_usd;
+                }
+                if ((float) ($currency->gap_hrc_usd ?? 0) == 0 && (float) $currency->gap_ap_usd != 0) {
+                    $currency->gap_hrc_usd = $currency->gap_ap_usd;
+                }
+                if ((float) ($currency->gap_crc_usd ?? 0) == 0 && (float) $currency->gap_ap_usd != 0) {
+                    $currency->gap_crc_usd = $currency->gap_ap_usd;
+                }
+            } elseif ($currency->gap_hrc_usd !== null && (float) $currency->gap_hrc_usd != 0) {
+                $currency->gap_ap_usd = $currency->gap_hrc_usd;
+                $currency->gap_ap_kg_usd = round((float) $currency->gap_hrc_usd / 1000, 4);
+                $currency->gap_ap_idr = round($currency->gap_ap_kg_usd * $rate, 2);
+            }
+
+            if ($currency->gap_hrc_usd !== null) {
+                $currency->gap_hrc_kg_usd = round((float) $currency->gap_hrc_usd / 1000, 4);
+                $currency->gap_hrc_idr = round($currency->gap_hrc_kg_usd * $rate, 2);
+            }
+            if ($currency->gap_crc_usd !== null) {
+                $currency->gap_crc_kg_usd = round((float) $currency->gap_crc_usd / 1000, 4);
+                $currency->gap_crc_idr = round($currency->gap_crc_kg_usd * $rate, 2);
+            }
+
+            // 2. Perhitungan Gap AR (Penjualan)
+            if ($currency->gap_ar_usd !== null) {
+                $currency->gap_ar_kg_usd = round((float) $currency->gap_ar_usd / 1000, 4);
+                $currency->gap_ar_idr = round($currency->gap_ar_kg_usd * $rate, 2);
+
+                // Defaultkan rincian HRC AR & CRC AR dari gap_ar_usd jika belum dispesifikasikan atau jika gap_ar_usd berubah
+                if ($currency->isDirty('gap_ar_usd') && ! $currency->isDirty('gap_hrc_ar_usd')) {
+                    $currency->gap_hrc_ar_usd = $currency->gap_ar_usd;
+                }
+                if ($currency->isDirty('gap_ar_usd') && ! $currency->isDirty('gap_crc_ar_usd')) {
+                    $currency->gap_crc_ar_usd = $currency->gap_ar_usd;
+                }
+                if ((float) ($currency->gap_hrc_ar_usd ?? 0) == 0 && (float) $currency->gap_ar_usd != 0) {
+                    $currency->gap_hrc_ar_usd = $currency->gap_ar_usd;
+                }
+                if ((float) ($currency->gap_crc_ar_usd ?? 0) == 0 && (float) $currency->gap_ar_usd != 0) {
+                    $currency->gap_crc_ar_usd = $currency->gap_ar_usd;
+                }
+            }
+
+            if ($currency->gap_hrc_ar_usd !== null) {
+                $currency->gap_hrc_ar_kg_usd = round((float) $currency->gap_hrc_ar_usd / 1000, 4);
+                $currency->gap_hrc_ar_idr = round($currency->gap_hrc_ar_kg_usd * $rate, 2);
+            }
+            if ($currency->gap_crc_ar_usd !== null) {
+                $currency->gap_crc_ar_kg_usd = round((float) $currency->gap_crc_ar_usd / 1000, 4);
+                $currency->gap_crc_ar_idr = round($currency->gap_crc_ar_kg_usd * $rate, 2);
+            }
         });
 
         static::saved(function (Currency $currency) {
@@ -71,8 +210,19 @@ class Currency extends Model
                 return;
             }
 
-            // Otomatis hitung ulang seluruh data Material Steel & Stamping Part jika nilai kurs, tahun, kuartal, bulan, atau kode berubah
-            if ($currency->wasChanged('exchange_rate_to_idr') || $currency->wasChanged('year') || $currency->wasChanged('quarter') || $currency->wasChanged('month') || $currency->wasChanged('code')) {
+            // Otomatis hitung ulang seluruh data Material Steel & Stamping Part jika nilai kurs, gap, tahun, kuartal, bulan, atau kode berubah
+            if ($currency->wasChanged('exchange_rate_to_idr')
+                || $currency->wasChanged('gap_ap_usd')
+                || $currency->wasChanged('gap_ar_usd')
+                || $currency->wasChanged('gap_hrc_usd')
+                || $currency->wasChanged('gap_crc_usd')
+                || $currency->wasChanged('gap_hrc_ar_usd')
+                || $currency->wasChanged('gap_crc_ar_usd')
+                || $currency->wasChanged('year')
+                || $currency->wasChanged('quarter')
+                || $currency->wasChanged('month')
+                || $currency->wasChanged('code')) {
+                CurrencyRecalculationService::syncQuarterlyBenchmarkToRecords($currency, true);
                 CurrencyRecalculationService::dispatchOrRunForCurrency($currency);
             }
         });
@@ -208,6 +358,79 @@ class Currency extends Model
                 ->first()
             ?? static::where('code', $code ?: 'USD')->first()
             ?? static::first();
+    }
+
+    public static function syncFromMaterialSteel(MaterialSteel $steel): ?self
+    {
+        if (empty($steel->year) || empty($steel->quarter)) {
+            return null;
+        }
+
+        $month = match ($steel->quarter) {
+            'Q1' => 1,
+            'Q2' => 4,
+            'Q3' => 7,
+            'Q4' => 10,
+            default => 1,
+        };
+
+        $code = strtoupper((string) ($steel->currency_code ?: 'USD'));
+        $currency = static::where('code', $code)
+            ->where('year', $steel->year)
+            ->where(function ($q) use ($steel, $month) {
+                $q->where('quarter', $steel->quarter)
+                    ->orWhere('month', $month);
+            })
+            ->first();
+
+        if (! $currency) {
+            $currency = new static([
+                'code' => $code,
+                'year' => $steel->year,
+                'quarter' => $steel->quarter,
+                'month' => $month,
+                'name' => match ($code) {
+                    'JPY', 'YEN' => 'Japanese Yen',
+                    'IDR' => 'Indonesian Rupiah',
+                    default => 'US Dollar',
+                },
+                'symbol' => match ($code) {
+                    'JPY', 'YEN' => '¥',
+                    'IDR' => 'Rp',
+                    default => '$',
+                },
+                'exchange_rate_to_idr' => $steel->exchange_rate ?: 16000,
+            ]);
+        } elseif ($steel->exchange_rate && (float) $steel->exchange_rate > 0) {
+            $currency->exchange_rate_to_idr = $steel->exchange_rate;
+            if (empty($currency->quarter)) {
+                $currency->quarter = $steel->quarter;
+            }
+        }
+
+        $isAr = strtoupper((string) ($steel->price_type ?: 'AP')) === 'AR';
+        $steelType = MaterialSteel::determineSteelType($steel->steel_spec);
+        $gapMt = (float) ($steel->gap_steel_usd ?? 0);
+        $hrMt = (float) ($steel->hr_steel_usd ?? $gapMt);
+        $crMt = (float) ($steel->cr_steel_usd ?? $gapMt);
+
+        if ($isAr) {
+            if ($gapMt != 0.0 || $hrMt != 0.0 || $crMt != 0.0) {
+                $currency->gap_ar_usd = $gapMt;
+                $currency->gap_hrc_ar_usd = ($steelType === 'HR') ? ($hrMt ?: $gapMt) : ($currency->gap_hrc_ar_usd ?? $gapMt);
+                $currency->gap_crc_ar_usd = ($steelType === 'CR') ? ($crMt ?: $gapMt) : ($currency->gap_crc_ar_usd ?? $gapMt);
+            }
+        } else {
+            if ($gapMt != 0.0 || $hrMt != 0.0 || $crMt != 0.0) {
+                $currency->gap_ap_usd = $gapMt;
+                $currency->gap_hrc_usd = ($steelType === 'HR') ? ($hrMt ?: $gapMt) : ($currency->gap_hrc_usd ?? $gapMt);
+                $currency->gap_crc_usd = ($steelType === 'CR') ? ($crMt ?: $gapMt) : ($currency->gap_crc_usd ?? $gapMt);
+            }
+        }
+
+        $currency->saveQuietly();
+
+        return $currency;
     }
 
     public function materials(): HasMany

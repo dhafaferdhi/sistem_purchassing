@@ -10,16 +10,20 @@ class MaterialSteel extends Model
 {
     public static bool $disableQuarterlyCascade = false;
 
+    public static bool $disableApArSync = false;
+
     public int $lastCascadedCount = 0;
 
     protected $fillable = [
         'year',
         'quarter',
+        'price_type',
         'supplier_id',
         'vendor_code',
         'supplier_name',
         'material_id',
         'steel_spec',
+        'steel_category',
         'double_thickness',
         'size',
         'currency_id',
@@ -62,6 +66,8 @@ class MaterialSteel extends Model
     protected $attributes = [
         'year' => 2026,
         'quarter' => 'Q1',
+        'price_type' => 'AP',
+        'steel_category' => 'HRC',
         'currency_code' => 'USD',
         'steel_price' => 0,
         'exchange_rate' => 16000,
@@ -111,7 +117,20 @@ class MaterialSteel extends Model
 
     protected static function booted(): void
     {
+        static::deleting(function (MaterialSteel $model) {
+            if (! static::$disableApArSync) {
+                $model->deleteApArCounterpart();
+            }
+        });
+
         static::saved(function (MaterialSteel $model) {
+            if (! static::$disableApArSync) {
+                $model->syncApArCounterpart();
+            }
+
+            // Selalu sinkronkan kurs dan gap ke Currency master record
+            Currency::syncFromMaterialSteel($model);
+
             if (static::$disableQuarterlyCascade) {
                 return;
             }
@@ -163,28 +182,35 @@ class MaterialSteel extends Model
                 $model->steel_spec = static::cleanSteelSpec($model->steel_spec);
             }
 
+            // Sinkronisasi kategori baja (HRC / CRC)
+            if (! empty($model->steel_category)) {
+                $model->steel_category = strtoupper(trim((string) $model->steel_category));
+            } else {
+                $model->steel_category = (static::determineSteelType($model->steel_spec) === 'HR') ? 'HRC' : 'CRC';
+            }
+
             $sheetPrice = (float) ($model->sheet_price ?? 0);
             $coilPrice = (float) ($model->coil_price ?? 0);
             $rate = (float) ($model->exchange_rate ?? 1);
 
-            // Sinkronisasi nilai HR Dolar/MT & CR Dolar/MT
-            $steelType = static::determineSteelType($model->steel_spec);
+            // Sinkronisasi nilai HR Dolar/MT & CR Dolar/MT sesuai kategori baja
+            $steelType = ($model->steel_category === 'CRC') ? 'CR' : (($model->steel_category === 'HRC') ? 'HR' : static::determineSteelType($model->steel_spec));
             $hasHr = $model->hr_steel_usd !== null && (float) $model->hr_steel_usd != 0.0;
             $hasCr = $model->cr_steel_usd !== null && (float) $model->cr_steel_usd != 0.0;
 
             if ($steelType === 'HR') {
+                $model->steel_category = 'HRC';
+                $model->cr_steel_usd = 0;
                 if ($hasHr) {
                     $model->gap_steel_usd = (float) $model->hr_steel_usd;
-                } elseif ($hasCr) {
-                    $model->gap_steel_usd = (float) $model->cr_steel_usd;
                 } elseif ($model->gap_steel_usd !== null && (float) $model->gap_steel_usd != 0.0) {
                     $model->hr_steel_usd = (float) $model->gap_steel_usd;
                 }
             } else {
+                $model->steel_category = 'CRC';
+                $model->hr_steel_usd = 0;
                 if ($hasCr) {
                     $model->gap_steel_usd = (float) $model->cr_steel_usd;
-                } elseif ($hasHr) {
-                    $model->gap_steel_usd = (float) $model->hr_steel_usd;
                 } elseif ($model->gap_steel_usd !== null && (float) $model->gap_steel_usd != 0.0) {
                     $model->cr_steel_usd = (float) $model->gap_steel_usd;
                 }
@@ -209,7 +235,8 @@ class MaterialSteel extends Model
                     $model->year,
                     $model->supplier_id,
                     $model->steel_spec,
-                    $model->double_thickness
+                    $model->double_thickness,
+                    $model->price_type
                 );
                 if ($prev) {
                     $appliedKg = (float) $model->gap_steel_kg_usd;
@@ -388,8 +415,18 @@ class MaterialSteel extends Model
     /**
      * Tentukan klasifikasi kategori baja: Hot Rolled (HR) atau Cold Rolled (CR).
      */
-    public static function determineSteelType(?string $spec): string
+    public static function determineSteelType(?string $spec, ?string $category = null): string
     {
+        if ($category) {
+            $cat = strtoupper(trim($category));
+            if ($cat === 'HRC' || $cat === 'HR') {
+                return 'HR';
+            }
+            if ($cat === 'CRC' || $cat === 'CR') {
+                return 'CR';
+            }
+        }
+
         $clean = strtoupper(trim((string) $spec));
 
         // Hot Rolled: seri SPH (SPHC, SPHD, SPHE, SPH270, SPH440, SPH590), SAPH
@@ -403,12 +440,12 @@ class MaterialSteel extends Model
 
     public function isHotRolled(): bool
     {
-        return static::determineSteelType($this->steel_spec) === 'HR';
+        return static::determineSteelType($this->steel_spec, $this->steel_category) === 'HR';
     }
 
     public function isColdRolled(): bool
     {
-        return static::determineSteelType($this->steel_spec) === 'CR';
+        return static::determineSteelType($this->steel_spec, $this->steel_category) === 'CR';
     }
 
     public static function getPreviousQuarterInfo(string $quarter, int $year): array
@@ -493,6 +530,9 @@ class MaterialSteel extends Model
             : null;
 
         $query = static::where('year', $nextYear)->where('quarter', $nextQuarter);
+        if (! empty($source->price_type)) {
+            $query->where('price_type', $source->price_type);
+        }
 
         if ($source->supplier_id) {
             $query->where(function ($q) use ($source) {
@@ -617,7 +657,7 @@ class MaterialSteel extends Model
         return $updatedCount;
     }
 
-    public static function findPreviousQuarterData(string $quarter, int $year, ?int $supplierId = null, ?string $spec = null, ?string $thickness = null): ?array
+    public static function findPreviousQuarterData(string $quarter, int $year, ?int $supplierId = null, ?string $spec = null, ?string $thickness = null, ?string $priceType = null): ?array
     {
         $info = static::getPreviousQuarterInfo($quarter, $year);
         $prevQuarter = $info['prev_quarter'];
@@ -627,6 +667,9 @@ class MaterialSteel extends Model
         $cleanThickness = ! empty($thickness) ? trim(preg_replace('/[a-zA-Z\s]+/', '', (string) $thickness)) : null;
 
         $query = static::where('year', $prevYear)->where('quarter', $prevQuarter);
+        if ($priceType) {
+            $query->where('price_type', $priceType);
+        }
         if ($supplierId) {
             $query->where('supplier_id', $supplierId);
         }
@@ -649,6 +692,7 @@ class MaterialSteel extends Model
         if (! $record && $supplierId) {
             $record = static::where('year', $prevYear)
                 ->where('quarter', $prevQuarter)
+                ->when($priceType, fn ($q) => $q->where('price_type', $priceType))
                 ->where('supplier_id', $supplierId)
                 ->latest('id')
                 ->first();
@@ -657,6 +701,7 @@ class MaterialSteel extends Model
         if (! $record) {
             $record = static::where('year', $prevYear)
                 ->where('quarter', $prevQuarter)
+                ->when($priceType, fn ($q) => $q->where('price_type', $priceType))
                 ->latest('id')
                 ->first();
         }
@@ -689,6 +734,287 @@ class MaterialSteel extends Model
             'gap_steel_kg_usd' => (float) $record->gap_steel_kg_usd,
             'hr_steel_usd' => (float) $record->hr_steel_usd,
             'cr_steel_usd' => (float) $record->cr_steel_usd,
+            'price_type' => $record->price_type ?? 'AP',
         ];
+    }
+
+    /**
+     * Otomatis sinkronkan data antara Material Steel AP dan Material Steel AR secara timbal balik.
+     */
+    public function syncApArCounterpart(): ?self
+    {
+        if (static::$disableApArSync) {
+            return null;
+        }
+
+        $currentType = strtoupper((string) ($this->price_type ?: 'AP'));
+        if (! in_array($currentType, ['AP', 'AR'], true)) {
+            return null;
+        }
+
+        $targetType = ($currentType === 'AR') ? 'AP' : 'AR';
+
+        $origSpec = $this->getOriginal('steel_spec') ?: $this->steel_spec;
+        $origThickness = $this->getOriginal('double_thickness') !== null ? $this->getOriginal('double_thickness') : $this->double_thickness;
+        $origSupplier = $this->getOriginal('supplier_id') ?: $this->supplier_id;
+        $origYear = $this->getOriginal('year') ?: $this->year;
+        $origQuarter = $this->getOriginal('quarter') ?: $this->quarter;
+
+        // 1. Cari counterpart dengan kriteria original
+        $query = static::where('year', $origYear)
+            ->where('quarter', $origQuarter)
+            ->where('price_type', $targetType);
+
+        if (! empty($origSpec)) {
+            $query->where('steel_spec', $origSpec);
+        }
+
+        if ($origThickness !== null && $origThickness !== '') {
+            $query->where('double_thickness', $origThickness);
+        } else {
+            $query->where(function ($q) {
+                $q->whereNull('double_thickness')->orWhere('double_thickness', '');
+            });
+        }
+
+        if ($origSupplier) {
+            $query->where('supplier_id', $origSupplier);
+        } else {
+            $query->whereNull('supplier_id');
+        }
+
+        $counterpart = $query->first();
+
+        // 2. Jika belum ditemukan, cari dengan nilai current
+        if (! $counterpart && ($origSpec !== $this->steel_spec || $origThickness !== $this->double_thickness || $origSupplier !== $this->supplier_id || $origYear !== $this->year || $origQuarter !== $this->quarter)) {
+            $currentQuery = static::where('year', $this->year)
+                ->where('quarter', $this->quarter)
+                ->where('price_type', $targetType);
+
+            if (! empty($this->steel_spec)) {
+                $currentQuery->where('steel_spec', $this->steel_spec);
+            }
+
+            if ($this->double_thickness !== null && $this->double_thickness !== '') {
+                $currentQuery->where('double_thickness', $this->double_thickness);
+            } else {
+                $currentQuery->where(function ($q) {
+                    $q->whereNull('double_thickness')->orWhere('double_thickness', '');
+                });
+            }
+
+            if ($this->supplier_id) {
+                $currentQuery->where('supplier_id', $this->supplier_id);
+            } else {
+                $currentQuery->whereNull('supplier_id');
+            }
+
+            $counterpart = $currentQuery->first();
+        }
+
+        // 3. Jika belum ada, inisialisasi record baru
+        if (! $counterpart) {
+            $counterpart = new static();
+            $counterpart->price_type = $targetType;
+        }
+
+        // 4. Sinkronkan patokan Gap dan Kurs dari Currency
+        // PENTING: Gap AR dan Gap AP terisolasi! Counterpart mempertahankan gap-nya sendiri jika sudah ada,
+        // atau mengambil dari Currency untuk tipe target ($currency->gap_ar_usd untuk AR, $currency->gap_ap_usd untuk AP).
+        // JANGAN PERNAH menyalin gap dari $this jika berbeda tipe!
+        $currency = $this->currency_id
+            ? Currency::find($this->currency_id)
+            : Currency::where('code', $this->currency_code ?: 'USD')
+                ->where('year', $this->year)
+                ->where('quarter', $this->quarter)
+                ->first();
+
+        $steelType = static::determineSteelType($this->steel_spec);
+        $targetGapMt = 0.0;
+        $targetHr = 0.0;
+        $targetCr = 0.0;
+
+        if ($counterpart->exists && $counterpart->gap_steel_usd !== null) {
+            $targetGapMt = (float) $counterpart->gap_steel_usd;
+            $targetHr = $counterpart->hr_steel_usd;
+            $targetCr = $counterpart->cr_steel_usd;
+        } elseif ($currency) {
+            if ($targetType === 'AR') {
+                $hrcAr = (float) ($currency->gap_hrc_ar_usd ?? $currency->gap_ar_usd ?? 0);
+                $crcAr = (float) ($currency->gap_crc_ar_usd ?? $currency->gap_ar_usd ?? 0);
+                $targetGapMt = ($steelType === 'HR') ? $hrcAr : $crcAr;
+                $targetHr = $hrcAr;
+                $targetCr = $crcAr;
+            } else {
+                $hrcAp = (float) ($currency->gap_hrc_usd ?? $currency->gap_ap_usd ?? 0);
+                $crcAp = (float) ($currency->gap_crc_usd ?? $currency->gap_ap_usd ?? 0);
+                $targetGapMt = ($steelType === 'HR') ? $hrcAp : $crcAp;
+                $targetHr = $hrcAp;
+                $targetCr = $crcAp;
+            }
+        }
+
+        $targetGapKg = round($targetGapMt / 1000, 4);
+        $rate = (float) ($this->exchange_rate ?? 1);
+
+        $counterpart->year = $this->year;
+        $counterpart->quarter = $this->quarter;
+        $counterpart->price_type = $targetType;
+        $counterpart->supplier_id = $this->supplier_id;
+        $counterpart->vendor_code = $this->vendor_code;
+        $counterpart->supplier_name = $this->supplier_name;
+        $counterpart->material_id = $this->material_id;
+        $counterpart->steel_spec = $this->steel_spec;
+        $counterpart->steel_category = $this->steel_category ?: (($steelType === 'HR') ? 'HRC' : 'CRC');
+        $counterpart->double_thickness = $this->double_thickness;
+        $counterpart->size = $this->size;
+        $counterpart->currency_id = $currency ? $currency->id : $this->currency_id;
+        $counterpart->currency_code = $this->currency_code ?: 'USD';
+        $counterpart->exchange_rate = $this->exchange_rate;
+        $counterpart->coil_price = $this->coil_price;
+        $counterpart->coil_price_idr = $this->coil_price_idr;
+        $counterpart->sheet_price = $this->sheet_price;
+        $counterpart->sheet_price_idr = $this->sheet_price_idr;
+        $counterpart->steel_price = $this->steel_price;
+        $counterpart->steel_price_idr = $this->steel_price_idr;
+        $counterpart->ap_coil_price = $this->ap_coil_price;
+        $counterpart->ap_coil_price_idr = $this->ap_coil_price_idr;
+        $counterpart->ap_sheet_price = $this->ap_sheet_price;
+        $counterpart->ap_sheet_price_idr = $this->ap_sheet_price_idr;
+        $counterpart->gap_steel_usd = $targetGapMt;
+        $counterpart->gap_steel_kg_usd = $targetGapKg;
+        $counterpart->gap_steel_idr = round($targetGapKg * $rate, 2);
+        $counterpart->hr_steel_usd = $targetHr;
+        $counterpart->cr_steel_usd = $targetCr;
+        $counterpart->fluktuasi_jfe = $targetGapKg;
+        $counterpart->status = $this->status ?: 'Active';
+        $counterpart->notes = $this->notes;
+        $counterpart->created_by = $this->created_by ?? auth()->id();
+
+        static::$disableApArSync = true;
+        try {
+            $counterpart->save();
+            return $counterpart;
+        } finally {
+            static::$disableApArSync = false;
+        }
+    }
+
+    /**
+     * Pindai dan sinkronkan seluruh data Material Steel AP <-> AR yang belum memiliki pasangan di database.
+     *
+     * @return array{created_ar: int, created_ap: int}
+     */
+    public static function syncAllMissingCounterparts(?int $year = null, ?string $quarter = null): array
+    {
+        $createdAr = 0;
+        $createdAp = 0;
+
+        $apQuery = static::where(function ($q) {
+            $q->where('price_type', 'AP')->orWhereNull('price_type');
+        });
+        if ($year) {
+            $apQuery->where('year', $year);
+        }
+        if ($quarter) {
+            $apQuery->where('quarter', $quarter);
+        }
+
+        foreach ($apQuery->get() as $ap) {
+            $counterpart = static::where('year', $ap->year)
+                ->where('quarter', $ap->quarter)
+                ->where('price_type', 'AR')
+                ->where('steel_spec', $ap->steel_spec)
+                ->when($ap->double_thickness !== null && $ap->double_thickness !== '', fn ($q) => $q->where('double_thickness', $ap->double_thickness), fn ($q) => $q->where(fn ($sub) => $sub->whereNull('double_thickness')->orWhere('double_thickness', '')))
+                ->when($ap->supplier_id, fn ($q) => $q->where('supplier_id', $ap->supplier_id), fn ($q) => $q->whereNull('supplier_id'))
+                ->first();
+
+            if (! $counterpart) {
+                $ap->syncApArCounterpart();
+                $createdAr++;
+            }
+        }
+
+        $arQuery = static::where('price_type', 'AR');
+        if ($year) {
+            $arQuery->where('year', $year);
+        }
+        if ($quarter) {
+            $arQuery->where('quarter', $quarter);
+        }
+
+        foreach ($arQuery->get() as $ar) {
+            $counterpart = static::where('year', $ar->year)
+                ->where('quarter', $ar->quarter)
+                ->where(fn ($q) => $q->where('price_type', 'AP')->orWhereNull('price_type'))
+                ->where('steel_spec', $ar->steel_spec)
+                ->when($ar->double_thickness !== null && $ar->double_thickness !== '', fn ($q) => $q->where('double_thickness', $ar->double_thickness), fn ($q) => $q->where(fn ($sub) => $sub->whereNull('double_thickness')->orWhere('double_thickness', '')))
+                ->when($ar->supplier_id, fn ($q) => $q->where('supplier_id', $ar->supplier_id), fn ($q) => $q->whereNull('supplier_id'))
+                ->first();
+
+            if (! $counterpart) {
+                $ar->syncApArCounterpart();
+                $createdAp++;
+            }
+        }
+
+        return ['created_ar' => $createdAr, 'created_ap' => $createdAp];
+    }
+
+    /**
+     * Otomatis hapus item counterpart (AP <-> AR) jika item pasangannya dihapus.
+     */
+    public function deleteApArCounterpart(): void
+    {
+        if (static::$disableApArSync) {
+            return;
+        }
+
+        $currentType = strtoupper((string) ($this->price_type ?: 'AP'));
+        if (! in_array($currentType, ['AP', 'AR'], true)) {
+            return;
+        }
+
+        $targetType = ($currentType === 'AR') ? 'AP' : 'AR';
+
+        $query = static::where('id', '!=', $this->id)
+            ->where('year', $this->year)
+            ->where('quarter', $this->quarter)
+            ->where('price_type', $targetType);
+
+        if (! empty($this->steel_spec)) {
+            $cleanSpec = static::cleanSteelSpec($this->steel_spec);
+            $query->where(function ($q) use ($cleanSpec) {
+                $q->where('steel_spec', $this->steel_spec)
+                    ->orWhere('steel_spec', $cleanSpec);
+            });
+        }
+
+        if ($this->double_thickness !== null && $this->double_thickness !== '') {
+            $query->where('double_thickness', $this->double_thickness);
+        } else {
+            $query->where(function ($q) {
+                $q->whereNull('double_thickness')->orWhere('double_thickness', '');
+            });
+        }
+
+        if ($this->supplier_id) {
+            $query->where('supplier_id', $this->supplier_id);
+        } else {
+            $query->whereNull('supplier_id');
+        }
+
+        $counterparts = $query->get();
+
+        if ($counterparts->isNotEmpty()) {
+            static::$disableApArSync = true;
+            try {
+                foreach ($counterparts as $counterpart) {
+                    $counterpart->delete();
+                }
+            } finally {
+                static::$disableApArSync = false;
+            }
+        }
     }
 }

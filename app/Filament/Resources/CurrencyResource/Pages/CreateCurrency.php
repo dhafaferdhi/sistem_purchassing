@@ -14,7 +14,7 @@ class CreateCurrency extends CreateRecord
 {
     protected static string $resource = CurrencyResource::class;
 
-    protected static ?string $title = 'Tambah Kurs Mata Uang';
+    protected static ?string $title = 'Tambah Kurs & Gap Kuartalan';
 
     public function mount(): void
     {
@@ -28,11 +28,33 @@ class CreateCurrency extends CreateRecord
         $jpy = Currency::where('code', 'JPY')->where('year', $year)->where('quarter', $quarter)->first()
             ?? Currency::where('code', 'JPY')->latest('id')->first();
 
+        $rateUsd = (float) ($usd ? $usd->exchange_rate_to_idr : 16000);
+        $gapAp = (float) ($usd ? ($usd->gap_ap_usd ?? $usd->gap_hrc_usd ?? 0) : 0);
+        $gapAr = (float) ($usd ? ($usd->gap_ar_usd ?? 0) : 0);
+        $gapHrc = (float) ($usd ? ($usd->gap_hrc_usd ?? $gapAp) : 0);
+        $gapCrc = (float) ($usd ? ($usd->gap_crc_usd ?? $gapAp) : 0);
+        $gapHrcAr = (float) ($usd ? ($usd->gap_hrc_ar_usd ?? $gapAr) : 0);
+        $gapCrcAr = (float) ($usd ? ($usd->gap_crc_ar_usd ?? $gapAr) : 0);
+
+        $apKg = round($gapAp / 1000, 4);
+        $arKg = round($gapAr / 1000, 4);
+
         $this->form->fill([
             'year' => $year,
             'quarter' => $quarter,
-            'kurs_usd' => $usd ? $usd->exchange_rate_to_idr : 16000,
+            'kurs_usd' => $rateUsd,
             'kurs_jpy' => $jpy ? $jpy->exchange_rate_to_idr : 105,
+            'gap_ap_usd' => $gapAp,
+            'gap_ap_kg_usd' => number_format($apKg, 4, '.', ''),
+            'gap_ap_idr' => 'Rp ' . number_format(round($apKg * $rateUsd), 0, ',', '.'),
+            'gap_ar_usd' => $gapAr,
+            'gap_ar_kg_usd' => number_format($arKg, 4, '.', ''),
+            'gap_ar_idr' => 'Rp ' . number_format(round($arKg * $rateUsd), 0, ',', '.'),
+            'gap_hrc_usd' => $gapHrc,
+            'gap_crc_usd' => $gapCrc,
+            'gap_hrc_ar_usd' => $gapHrcAr,
+            'gap_crc_ar_usd' => $gapCrcAr,
+            'notes' => $usd ? $usd->notes : null,
         ]);
     }
 
@@ -41,7 +63,14 @@ class CreateCurrency extends CreateRecord
         $year = (int) $data['year'];
         $quarter = $data['quarter'];
         $rateUsd = (float) $data['kurs_usd'];
-        $rateJpy = (float) $data['kurs_jpy'];
+        $rateJpy = (float) ($data['kurs_jpy'] ?? 105);
+        $gapAp = isset($data['gap_ap_usd']) ? (float) $data['gap_ap_usd'] : 0.0;
+        $gapAr = isset($data['gap_ar_usd']) ? (float) $data['gap_ar_usd'] : 0.0;
+        $gapHrc = isset($data['gap_hrc_usd']) && (float) $data['gap_hrc_usd'] != 0.0 ? (float) $data['gap_hrc_usd'] : $gapAp;
+        $gapCrc = isset($data['gap_crc_usd']) && (float) $data['gap_crc_usd'] != 0.0 ? (float) $data['gap_crc_usd'] : $gapAp;
+        $gapHrcAr = isset($data['gap_hrc_ar_usd']) && (float) $data['gap_hrc_ar_usd'] != 0.0 ? (float) $data['gap_hrc_ar_usd'] : $gapAr;
+        $gapCrcAr = isset($data['gap_crc_ar_usd']) && (float) $data['gap_crc_ar_usd'] != 0.0 ? (float) $data['gap_crc_ar_usd'] : $gapAr;
+        $notes = $data['notes'] ?? null;
 
         $month = match ($quarter) {
             'Q1' => 1,
@@ -51,7 +80,7 @@ class CreateCurrency extends CreateRecord
             default => 1,
         };
 
-        // 1. Simpan atau Update Kurs USD
+        // 1. Simpan atau Update Kurs USD & Patokan Gap Baja AP & AR
         $usd = Currency::updateOrCreate(
             [
                 'code' => 'USD',
@@ -63,6 +92,13 @@ class CreateCurrency extends CreateRecord
                 'symbol' => '$',
                 'exchange_rate_to_idr' => $rateUsd,
                 'month' => $month,
+                'gap_ap_usd' => $gapAp,
+                'gap_ar_usd' => $gapAr,
+                'gap_hrc_usd' => $gapHrc,
+                'gap_crc_usd' => $gapCrc,
+                'gap_hrc_ar_usd' => $gapHrcAr,
+                'gap_crc_ar_usd' => $gapCrcAr,
+                'notes' => $notes,
             ]
         );
 
@@ -81,9 +117,8 @@ class CreateCurrency extends CreateRecord
             ]
         );
 
-        // 3. Otomatis hitung ulang ke Material Steel, Stamping Part, dan Fasteners
-        CurrencyRecalculationService::recalculateForCurrency($usd);
-        CurrencyRecalculationService::recalculateForCurrency($jpy);
+        // 3. Otomatis sync patokan kurs & gap ke records kuartal yang bersangkutan
+        CurrencyRecalculationService::syncQuarterlyBenchmarkToRecords($usd, true);
 
         return $usd;
     }
@@ -102,8 +137,8 @@ class CreateCurrency extends CreateRecord
     {
         return Notification::make()
             ->success()
-            ->title('Kurs Berhasil Disimpan!')
-            ->body('Kurs USD & JPY berhasil disimpan dan harga pada Material Steel, Stamping Part, serta Fasteners telah otomatis diperbarui.');
+            ->title('Kurs & Gap Kuartalan Berhasil Disimpan!')
+            ->body('Kurs USD & JPY beserta Gap HRC & CRC berhasil disimpan dan seluruh master data Material Steel, Stamping Part, serta Fasteners periode ini otomatis terhubung dan diperbarui.');
     }
 
     protected function getHeaderActions(): array

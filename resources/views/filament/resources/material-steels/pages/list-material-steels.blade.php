@@ -6,27 +6,37 @@
 >
     <style>
         /* Compact & Fit table style agar Material Steel tidak perlu horizontal scroll (slide) */
-        .fi-resource-material-steels .fi-ta-content {
+        .fi-resource-material-steels .fi-ta-content,
+        .fi-resource-material-steel-aps .fi-ta-content,
+        .fi-resource-material-steel-ars .fi-ta-content {
             overflow-x: auto;
         }
-        .fi-resource-material-steels .fi-ta-table {
+        .fi-resource-material-steels .fi-ta-table,
+        .fi-resource-material-steel-aps .fi-ta-table,
+        .fi-resource-material-steel-ars .fi-ta-table {
             table-layout: auto !important;
             width: 100% !important;
         }
-        .fi-resource-material-steels th.fi-ta-header-cell {
+        .fi-resource-material-steels th.fi-ta-header-cell,
+        .fi-resource-material-steel-aps th.fi-ta-header-cell,
+        .fi-resource-material-steel-ars th.fi-ta-header-cell {
             padding-left: 0.5rem !important;
             padding-right: 0.5rem !important;
             padding-top: 0.65rem !important;
             padding-bottom: 0.65rem !important;
             vertical-align: middle !important;
         }
-        .fi-resource-material-steels td.fi-ta-cell {
+        .fi-resource-material-steels td.fi-ta-cell,
+        .fi-resource-material-steel-aps td.fi-ta-cell,
+        .fi-resource-material-steel-ars td.fi-ta-cell {
             padding-left: 0.45rem !important;
             padding-right: 0.45rem !important;
             padding-top: 0.45rem !important;
             padding-bottom: 0.45rem !important;
         }
-        .fi-resource-material-steels .fi-ta-header-cell-label {
+        .fi-resource-material-steels .fi-ta-header-cell-label,
+        .fi-resource-material-steel-aps .fi-ta-header-cell-label,
+        .fi-resource-material-steel-ars .fi-ta-header-cell-label {
             font-size: 0.875rem !important;
             font-weight: 700 !important;
             line-height: 1.25 !important;
@@ -34,36 +44,50 @@
             letter-spacing: -0.01em !important;
             color: #111827 !important;
         }
-        .dark .fi-resource-material-steels .fi-ta-header-cell-label {
+        .dark .fi-resource-material-steels .fi-ta-header-cell-label,
+        .dark .fi-resource-material-steel-aps .fi-ta-header-cell-label,
+        .dark .fi-resource-material-steel-ars .fi-ta-header-cell-label {
             color: #f9fafb !important;
         }
-        .fi-resource-material-steels .fi-ta-text-item {
+        .fi-resource-material-steels .fi-ta-text-item,
+        .fi-resource-material-steel-aps .fi-ta-text-item,
+        .fi-resource-material-steel-ars .fi-ta-text-item {
             font-size: 0.8125rem !important;
             line-height: 1.25 !important;
         }
-        .fi-resource-material-steels .fi-ta-text-item-description {
+        .fi-resource-material-steels .fi-ta-text-item-description,
+        .fi-resource-material-steel-aps .fi-ta-text-item-description,
+        .fi-resource-material-steel-ars .fi-ta-text-item-description {
             font-size: 0.675rem !important;
             line-height: 1.1 !important;
         }
-        .fi-resource-material-steels .fi-badge {
+        .fi-resource-material-steels .fi-badge,
+        .fi-resource-material-steel-aps .fi-badge,
+        .fi-resource-material-steel-ars .fi-badge {
             padding-left: 0.35rem !important;
             padding-right: 0.35rem !important;
             padding-top: 0.05rem !important;
             padding-bottom: 0.05rem !important;
             font-size: 0.7rem !important;
         }
-        .fi-resource-material-steels .fi-ta-actions {
+        .fi-resource-material-steels .fi-ta-actions,
+        .fi-resource-material-steel-aps .fi-ta-actions,
+        .fi-resource-material-steel-ars .fi-ta-actions {
             gap: 0.2rem !important;
             justify-content: flex-end;
         }
-        .fi-resource-material-steels .fi-ta-actions .fi-icon-btn {
+        .fi-resource-material-steels .fi-ta-actions .fi-icon-btn,
+        .fi-resource-material-steel-aps .fi-ta-actions .fi-icon-btn,
+        .fi-resource-material-steel-ars .fi-ta-actions .fi-icon-btn {
             width: 1.75rem !important;
             height: 1.75rem !important;
             padding: 0.25rem !important;
         }
 
         /* Sembunyikan ikon panah sort ke atas dan ke bawah di samping kanan nama kolom */
-        .fi-resource-material-steels .fi-ta-header-cell-sort-icon {
+        .fi-resource-material-steels .fi-ta-header-cell-sort-icon,
+        .fi-resource-material-steel-aps .fi-ta-header-cell-sort-icon,
+        .fi-resource-material-steel-ars .fi-ta-header-cell-sort-icon {
             display: none !important;
         }
 
@@ -75,7 +99,23 @@
         .fi-resource-material-steels button:has(svg[class*="view-columns"]),
         .fi-resource-material-steels [aria-label*="Toggle columns" i],
         .fi-resource-material-steels [aria-label*="toggle columns" i],
-        .fi-resource-material-steels [aria-label*="kolom" i] {
+        .fi-resource-material-steels [aria-label*="kolom" i],
+        .fi-resource-material-steel-aps .fi-ta-col-toggle,
+        .fi-resource-material-steel-aps .fi-ta-col-toggle-btn,
+        .fi-resource-material-steel-aps [wire\:key*="table.column-toggle"],
+        .fi-resource-material-steel-aps button[wire\:click*="toggleTableColumnForm"],
+        .fi-resource-material-steel-aps button:has(svg[class*="view-columns"]),
+        .fi-resource-material-steel-aps [aria-label*="Toggle columns" i],
+        .fi-resource-material-steel-aps [aria-label*="toggle columns" i],
+        .fi-resource-material-steel-aps [aria-label*="kolom" i],
+        .fi-resource-material-steel-ars .fi-ta-col-toggle,
+        .fi-resource-material-steel-ars .fi-ta-col-toggle-btn,
+        .fi-resource-material-steel-ars [wire\:key*="table.column-toggle"],
+        .fi-resource-material-steel-ars button[wire\:click*="toggleTableColumnForm"],
+        .fi-resource-material-steel-ars button:has(svg[class*="view-columns"]),
+        .fi-resource-material-steel-ars [aria-label*="Toggle columns" i],
+        .fi-resource-material-steel-ars [aria-label*="toggle columns" i],
+        .fi-resource-material-steel-ars [aria-label*="kolom" i] {
             display: none !important;
         }
     </style>

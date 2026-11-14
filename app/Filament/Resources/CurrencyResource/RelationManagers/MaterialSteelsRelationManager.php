@@ -55,6 +55,16 @@ class MaterialSteelsRelationManager extends RelationManager
                     })
                     ->sortable(),
 
+                Tables\Columns\TextColumn::make('price_type')
+                    ->label('Tipe')
+                    ->badge()
+                    ->color(fn (?string $state): string => match ($state) {
+                        'AR' => 'warning',
+                        default => 'info',
+                    })
+                    ->default('AP')
+                    ->sortable(),
+
                 Tables\Columns\TextColumn::make('vendor_code')
                     ->label('Vendor Code')
                     ->badge()

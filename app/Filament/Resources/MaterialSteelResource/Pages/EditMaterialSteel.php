@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\MaterialSteelResource\Pages;
 
 use App\Filament\Resources\MaterialSteelResource;
+use App\Models\Currency;
 use App\Models\Material;
 use App\Models\MaterialSteel;
 use App\Models\Supplier;
@@ -46,7 +47,7 @@ class EditMaterialSteel extends EditRecord
     {
         $quarter = $data['quarter'] ?? 'Q1';
         $spec = $data['steel_spec'] ?? '';
-        $steelType = MaterialSteel::determineSteelType($spec);
+        $steelType = MaterialSteel::determineSteelType($spec, $data['steel_category'] ?? null);
 
         $hasHr = isset($data['hr_steel_usd']) && $data['hr_steel_usd'] !== null && (float) $data['hr_steel_usd'] != 0.0;
         $hasCr = isset($data['cr_steel_usd']) && $data['cr_steel_usd'] !== null && (float) $data['cr_steel_usd'] != 0.0;
@@ -65,8 +66,15 @@ class EditMaterialSteel extends EditRecord
         return $data;
     }
 
+    protected function getPriceType(): string
+    {
+        return 'AP';
+    }
+
     protected function mutateFormDataBeforeSave(array $data): array
     {
+        $data['price_type'] = $this->getPriceType();
+
         // Pastikan vendor_code dan supplier_name terisi atau buat supplier otomatis jika diinput manual
         if (empty($data['supplier_id']) && ! empty($data['supplier_name'])) {
             $supplier = Supplier::resolveScopedSupplier(
@@ -94,7 +102,7 @@ class EditMaterialSteel extends EditRecord
         $sheetPrice = (float) ($data['sheet_price'] ?? 0);
 
         $spec = $data['steel_spec'] ?? '';
-        $steelType = MaterialSteel::determineSteelType($spec);
+        $steelType = MaterialSteel::determineSteelType($spec, $data['steel_category'] ?? null);
 
         $hrVal = isset($data['hr_steel_usd']) && $data['hr_steel_usd'] !== '' ? (float) $data['hr_steel_usd'] : null;
         $crVal = isset($data['cr_steel_usd']) && $data['cr_steel_usd'] !== '' ? (float) $data['cr_steel_usd'] : null;
@@ -163,6 +171,11 @@ class EditMaterialSteel extends EditRecord
                 ->send();
         }
 
+        // Pastikan counterpart (AP <-> AR) disinkronkan secara eksplisit
+        $record->syncApArCounterpart();
+        // Dan sinkronkan nilai ke Currency master record
+        Currency::syncFromMaterialSteel($record);
+
         // Jika dikaitkan dengan Master Material tertentu, perbarui harga dasar (basic_rate) material tersebut
         if ($record->material_id) {
             $material = Material::find($record->material_id);
@@ -177,5 +190,16 @@ class EditMaterialSteel extends EditRecord
     protected function getRedirectUrl(): string
     {
         return $this->getResource()::getUrl('index');
+    }
+
+    protected function getSavedNotification(): ?Notification
+    {
+        $type = $this->getPriceType();
+        $counterpart = $type === 'AP' ? 'AR' : 'AP';
+
+        return Notification::make()
+            ->success()
+            ->title("Material Steel {$type} Berhasil Diperbarui")
+            ->body("Perubahan data {$type} otomatis disinkronkan ke Material Steel {$counterpart}.");
     }
 }

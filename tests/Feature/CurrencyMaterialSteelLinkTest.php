@@ -91,103 +91,134 @@ class CurrencyMaterialSteelLinkTest extends TestCase
 
     public function test_currency_has_many_material_steels_relation(): void
     {
-        $currency = Currency::create([
-            'year' => 2026,
-            'code' => 'USD',
-            'name' => 'US Dollar',
-            'symbol' => '$',
-            'exchange_rate_to_idr' => 16000.0,
-        ]);
+        MaterialSteel::$disableApArSync = true;
+        try {
+            $currency = Currency::create([
+                'year' => 2026,
+                'code' => 'USD',
+                'name' => 'US Dollar',
+                'symbol' => '$',
+                'exchange_rate_to_idr' => 16000.0,
+            ]);
 
-        $steel1 = MaterialSteel::create([
-            'year' => 2026,
-            'quarter' => 'Q1',
-            'supplier_id' => $this->supplier->id,
-            'vendor_code' => $this->supplier->code,
-            'supplier_name' => $this->supplier->name,
-            'steel_spec' => 'SPCC 1.2mm',
-            'currency_id' => $currency->id,
-            'currency_code' => 'USD',
-            'steel_price' => 1.8000,
-            'exchange_rate' => 16000.0,
-            'steel_price_idr' => 28800.0,
-        ]);
+            $steel1 = MaterialSteel::create([
+                'year' => 2026,
+                'quarter' => 'Q1',
+                'supplier_id' => $this->supplier->id,
+                'vendor_code' => $this->supplier->code,
+                'supplier_name' => $this->supplier->name,
+                'steel_spec' => 'SPCC 1.2mm',
+                'currency_id' => $currency->id,
+                'currency_code' => 'USD',
+                'steel_price' => 1.8000,
+                'exchange_rate' => 16000.0,
+                'steel_price_idr' => 28800.0,
+            ]);
 
-        $steel2 = MaterialSteel::create([
-            'year' => 2026,
-            'quarter' => 'Q2',
-            'supplier_id' => $this->supplier->id,
-            'vendor_code' => $this->supplier->code,
-            'supplier_name' => $this->supplier->name,
-            'steel_spec' => 'SPHC 2.0mm',
-            'currency_id' => $currency->id,
-            'currency_code' => 'USD',
-            'steel_price' => 2.0000,
-            'exchange_rate' => 16000.0,
-            'steel_price_idr' => 32000.0,
-        ]);
+            $steel2 = MaterialSteel::create([
+                'year' => 2026,
+                'quarter' => 'Q2',
+                'supplier_id' => $this->supplier->id,
+                'vendor_code' => $this->supplier->code,
+                'supplier_name' => $this->supplier->name,
+                'steel_spec' => 'SPHC 2.0mm',
+                'currency_id' => $currency->id,
+                'currency_code' => 'USD',
+                'steel_price' => 2.0000,
+                'exchange_rate' => 16000.0,
+                'steel_price_idr' => 32000.0,
+            ]);
 
-        $this->assertCount(2, $currency->materialSteels);
-        $this->assertTrue($currency->materialSteels->contains($steel1));
-        $this->assertTrue($currency->materialSteels->contains($steel2));
+            $this->assertCount(2, $currency->materialSteels);
+            $this->assertTrue($currency->materialSteels->contains($steel1));
+            $this->assertTrue($currency->materialSteels->contains($steel2));
+        } finally {
+            MaterialSteel::$disableApArSync = false;
+        }
     }
 
     public function test_currency_recalculation_service_syncs_rate_to_material_steels(): void
     {
-        $currency = Currency::create([
-            'year' => 2026,
-            'code' => 'USD',
-            'name' => 'US Dollar',
-            'symbol' => '$',
-            'exchange_rate_to_idr' => 16000.0,
-        ]);
+        MaterialSteel::$disableApArSync = true;
+        try {
+            $currency = Currency::create([
+                'year' => 2026,
+                'code' => 'USD',
+                'name' => 'US Dollar',
+                'symbol' => '$',
+                'exchange_rate_to_idr' => 16000.0,
+            ]);
 
-        $steel = MaterialSteel::create([
-            'year' => 2026,
-            'quarter' => 'Q1',
-            'supplier_id' => $this->supplier->id,
-            'vendor_code' => $this->supplier->code,
-            'supplier_name' => $this->supplier->name,
-            'steel_spec' => 'SPCC 1.2mm',
-            'currency_id' => $currency->id,
-            'currency_code' => 'USD',
-            'steel_price' => 2.0000,
-            'exchange_rate' => 16000.0,
-            'steel_price_idr' => 32000.0,
-        ]);
+            $steel = MaterialSteel::create([
+                'year' => 2026,
+                'quarter' => 'Q1',
+                'supplier_id' => $this->supplier->id,
+                'vendor_code' => $this->supplier->code,
+                'supplier_name' => $this->supplier->name,
+                'steel_spec' => 'SPCC 1.2mm',
+                'currency_id' => $currency->id,
+                'currency_code' => 'USD',
+                'steel_price' => 2.0000,
+                'exchange_rate' => 16000.0,
+                'steel_price_idr' => 32000.0,
+            ]);
 
-        // Perbarui kurs dari 16.000 ke 16.500
-        $currency->update(['exchange_rate_to_idr' => 16500.0]);
+            // Perbarui kurs dari 16.000 ke 16.500
+            $currency->update(['exchange_rate_to_idr' => 16500.0]);
 
-        $updatedCount = CurrencyRecalculationService::recalculateMaterialSteelsForCurrency($currency);
+            $updatedCount = CurrencyRecalculationService::recalculateMaterialSteelsForCurrency($currency);
 
-        $this->assertEquals(1, $updatedCount);
+            $this->assertEquals(1, $updatedCount);
 
-        $steel->refresh();
-        $this->assertEquals(16500.0, (float) $steel->exchange_rate);
-        $this->assertEquals(33000.0, (float) $steel->steel_price_idr);
+            $steel->refresh();
+            $this->assertEquals(16500.0, (float) $steel->exchange_rate);
+            $this->assertEquals(33000.0, (float) $steel->steel_price_idr);
+        } finally {
+            MaterialSteel::$disableApArSync = false;
+        }
     }
 
     public function test_currency_filament_table_lists_year_and_filter(): void
     {
-        Currency::create([
+        $usd25_q1 = Currency::create([
             'year' => 2025,
-            'code' => 'USD-25',
-            'name' => 'US Dollar 2025',
+            'quarter' => 'Q1',
+            'month' => 1,
+            'code' => 'USD',
+            'name' => 'US Dollar 2025 Q1',
             'exchange_rate_to_idr' => 15500.0,
         ]);
 
-        Currency::create([
+        $usd25_q2 = Currency::create([
+            'year' => 2025,
+            'quarter' => 'Q2',
+            'month' => 4,
+            'code' => 'USD',
+            'name' => 'US Dollar 2025 Q2',
+            'exchange_rate_to_idr' => 15600.0,
+        ]);
+
+        $usd26_q1 = Currency::create([
             'year' => 2026,
-            'code' => 'USD-26',
-            'name' => 'US Dollar 2026',
+            'quarter' => 'Q1',
+            'month' => 1,
+            'code' => 'USD',
+            'name' => 'US Dollar 2026 Q1',
             'exchange_rate_to_idr' => 16200.0,
         ]);
 
         Livewire::actingAs($this->admin)
             ->test(ListCurrencies::class)
+            ->set('selectedYear', 2025)
+            ->set('selectedQuarter', 'Q1')
             ->assertSuccessful()
-            ->assertCanSeeTableRecords(Currency::all());
+            ->assertSet('rateUsd', 15500.0)
+            ->set('selectedYear', 2026)
+            ->set('selectedQuarter', 'Q1')
+            ->assertSet('rateUsd', 16200.0)
+            ->set('selectedYear', 2025)
+            ->set('selectedQuarter', 'Q2')
+            ->assertSet('rateUsd', 15600.0);
     }
 
     public function test_currency_edit_page_renders_material_steels_relation(): void
@@ -213,7 +244,7 @@ class CurrencyMaterialSteelLinkTest extends TestCase
             'steel_price_idr' => 40000.0,
         ]);
 
-        $this->assertContains(
+        $this->assertNotContains(
             MaterialSteelsRelationManager::class,
             CurrencyResource::getRelations()
         );
@@ -231,6 +262,8 @@ class CurrencyMaterialSteelLinkTest extends TestCase
     {
         $currency = Currency::create([
             'year' => 2026,
+            'quarter' => 'Q1',
+            'month' => 1,
             'code' => 'USD',
             'name' => 'US Dollar',
             'symbol' => '$',
@@ -298,6 +331,8 @@ class CurrencyMaterialSteelLinkTest extends TestCase
     {
         $currency = Currency::create([
             'year' => 2026,
+            'quarter' => 'Q2',
+            'month' => 4,
             'code' => 'USD',
             'name' => 'US Dollar',
             'symbol' => '$',
@@ -333,8 +368,11 @@ class CurrencyMaterialSteelLinkTest extends TestCase
         ]);
 
         // Simulasikan ubah kurs melalui action tabel di menu Currency
+        // Simulasikan ubah kurs melalui action tabel di menu Currency
         Livewire::actingAs($this->admin)
             ->test(ListCurrencies::class)
+            ->set('selectedYear', $currency->year)
+            ->set('selectedQuarter', $currency->quarter)
             ->callTableAction('quick_update_rate', $currency, data: [
                 'exchange_rate_to_idr' => 17000.0,
             ])
@@ -377,7 +415,7 @@ class CurrencyMaterialSteelLinkTest extends TestCase
             'exchange_rate' => 16000.0,
         ]);
 
-        $this->assertContains(
+        $this->assertNotContains(
             StampingPartsRelationManager::class,
             CurrencyResource::getRelations()
         );
@@ -720,5 +758,78 @@ class CurrencyMaterialSteelLinkTest extends TestCase
             'id' => $idr->id,
             'code' => 'IDR',
         ]);
+    }
+
+    public function test_home_form_submits_rates_and_recalculates_benchmarks(): void
+    {
+        Livewire::actingAs($this->admin)
+            ->test(ListCurrencies::class)
+            ->set('selectedYear', 2027)
+            ->set('selectedQuarter', 'Q1')
+            ->set('rateUsd', 16500.0)
+            ->set('gapApUsd', -57.0)
+            ->set('gapArUsd', -50.0)
+            ->call('submitRates')
+            ->assertHasNoErrors()
+            ->assertNotified();
+
+        $saved = Currency::where('code', 'USD')->where('year', 2027)->where('quarter', 'Q1')->first();
+        $this->assertNotNull($saved);
+        $this->assertEquals(16500.0, (float) $saved->exchange_rate_to_idr);
+        $this->assertEquals(-57.0, (float) $saved->gap_ap_usd);
+        $this->assertEquals(-50.0, (float) $saved->gap_ar_usd);
+    }
+
+    public function test_home_form_autosaves_on_rate_change_without_submit_and_isolates_other_quarters(): void
+    {
+        // Setup Q4 2026 and Q1 2027
+        $q4_2026 = Currency::create([
+            'year' => 2026,
+            'quarter' => 'Q4',
+            'month' => 10,
+            'code' => 'USD',
+            'name' => 'US Dollar',
+            'symbol' => '$',
+            'exchange_rate_to_idr' => 16000.0,
+            'gap_ap_usd' => 10.0,
+            'gap_ar_usd' => 12.0,
+        ]);
+
+        $q1_2027 = Currency::create([
+            'year' => 2027,
+            'quarter' => 'Q1',
+            'month' => 1,
+            'code' => 'USD',
+            'name' => 'US Dollar',
+            'symbol' => '$',
+            'exchange_rate_to_idr' => 16200.0,
+            'gap_ap_usd' => -50.0,
+            'gap_ar_usd' => -45.0,
+        ]);
+
+        // Auto-save by changing rateUsd on Q1 2027 (simulating wire:model.blur)
+        Livewire::actingAs($this->admin)
+            ->test(ListCurrencies::class)
+            ->set('selectedYear', 2027)
+            ->set('selectedQuarter', 'Q1')
+            ->set('rateUsd', 16800.0) // triggers updatedRateUsd() -> autoSave()
+            ->assertHasNoErrors()
+            ->assertNotified();
+
+        // Verify Q1 2027 updated
+        $q1_2027->refresh();
+        $this->assertEquals(16800.0, (float) $q1_2027->exchange_rate_to_idr);
+
+        // Verify Q4 2026 is strictly isolated and UNTOUCHED
+        $q4_2026->refresh();
+        $this->assertEquals(16000.0, (float) $q4_2026->exchange_rate_to_idr);
+        $this->assertEquals(10.0, (float) $q4_2026->gap_ap_usd);
+        $this->assertEquals(12.0, (float) $q4_2026->gap_ar_usd);
+    }
+
+    public function test_home_tabs_from_all_to_q4_are_removed_cleanly(): void
+    {
+        $page = new ListCurrencies();
+        $this->assertEmpty($page->getTabs());
     }
 }

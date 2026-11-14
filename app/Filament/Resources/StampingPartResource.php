@@ -91,6 +91,19 @@ class StampingPartResource extends Resource
             $set('currency_id', $curr->id);
             $set('currency_code', $curr->code);
             $set('exchange_rate', (float) $curr->exchange_rate_to_idr);
+
+            if ($curr->gap_hrc_usd !== null || $curr->gap_crc_usd !== null) {
+                $hrcMt = (float) ($curr->gap_hrc_usd ?? 0);
+                $crcMt = (float) ($curr->gap_crc_usd ?? 0);
+                $set('hr_steel_usd', $hrcMt);
+                $set('cr_steel_usd', $crcMt);
+
+                $spec = $get('steel_spec');
+                $steelType = StampingPart::determineSteelType($spec);
+                $activeGap = ($steelType === 'HR') ? $hrcMt : $crcMt;
+                $set('gap_steel_usd', $activeGap);
+                $set('gap_steel_kg_usd', round($activeGap / 1000, 4));
+            }
         }
 
         static::recalculateFormPrices($get, $set);

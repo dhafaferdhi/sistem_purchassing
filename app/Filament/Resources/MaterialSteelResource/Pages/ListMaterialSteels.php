@@ -20,6 +20,11 @@ class ListMaterialSteels extends ListRecords
 
     protected static string $view = 'filament.resources.material-steels.pages.list-material-steels';
 
+    protected function getPriceType(): string
+    {
+        return 'AP';
+    }
+
     public function getMaxContentWidth(): MaxWidth|string|null
     {
         return MaxWidth::Full;
@@ -79,6 +84,7 @@ class ListMaterialSteels extends ListRecords
                     $defaults = [
                         'year' => (int) ($data['default_year'] ?? date('Y')),
                         'quarter' => $data['default_quarter'] ?? 'Q2',
+                        'price_type' => $this->getPriceType(),
                     ];
                     $updateExisting = (bool) ($data['update_existing'] ?? true);
 

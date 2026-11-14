@@ -146,10 +146,19 @@ class CreateMaterialSteel extends CreateRecord
 
                             $isDifferentPeriod = ($y !== $targetY || $q !== $targetQ);
 
+                            $priceType = $this->getPriceType();
+
                             $existingTargetKeys = [];
                             if ($isDifferentPeriod) {
                                 $existingTargetKeys = MaterialSteel::where('year', $targetY)
                                     ->where('quarter', $targetQ)
+                                    ->where(function ($q) use ($priceType) {
+                                        if ($priceType === 'AR') {
+                                            $q->where('price_type', 'AR');
+                                        } else {
+                                            $q->where('price_type', 'AP')->orWhereNull('price_type');
+                                        }
+                                    })
                                     ->get(['steel_spec', 'supplier_id', 'supplier_name', 'double_thickness'])
                                     ->map(function ($item) {
                                         $supp = $item->supplier_id ?? $item->supplier_name ?? '';
@@ -162,6 +171,13 @@ class CreateMaterialSteel extends CreateRecord
 
                             return MaterialSteel::where('year', $y)
                                 ->where('quarter', $q)
+                                ->where(function ($q) use ($priceType) {
+                                    if ($priceType === 'AR') {
+                                        $q->where('price_type', 'AR');
+                                    } else {
+                                        $q->where('price_type', 'AP')->orWhereNull('price_type');
+                                    }
+                                })
                                 ->get()
                                 ->filter(function ($item) use ($isDifferentPeriod, $existingTargetKeys) {
                                     if (! $isDifferentPeriod || empty($existingTargetKeys)) {
@@ -394,6 +410,11 @@ class CreateMaterialSteel extends CreateRecord
             ->label('Simpan');
     }
 
+    protected function getPriceType(): string
+    {
+        return 'AP';
+    }
+
     public static function canCreateAnother(): bool
     {
         return false;
@@ -401,6 +422,8 @@ class CreateMaterialSteel extends CreateRecord
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
+        $data['price_type'] = $this->getPriceType();
+
         // Pastikan vendor_code dan supplier_name terisi atau buat supplier otomatis jika diinput manual
         if (empty($data['supplier_id']) && ! empty($data['supplier_name'])) {
             $supplier = Supplier::resolveScopedSupplier(
@@ -451,7 +474,7 @@ class CreateMaterialSteel extends CreateRecord
         );
 
         $spec = $data['steel_spec'] ?? '';
-        $steelType = MaterialSteel::determineSteelType($spec);
+        $steelType = MaterialSteel::determineSteelType($spec, $data['steel_category'] ?? null);
 
         $hrVal = isset($data['hr_steel_usd']) && $data['hr_steel_usd'] !== '' ? (float) $data['hr_steel_usd'] : null;
         $crVal = isset($data['cr_steel_usd']) && $data['cr_steel_usd'] !== '' ? (float) $data['cr_steel_usd'] : null;
@@ -507,6 +530,11 @@ class CreateMaterialSteel extends CreateRecord
         /** @var MaterialSteel $record */
         $record = $this->record;
 
+        // Pastikan counterpart (AP <-> AR) disinkronkan secara eksplisit
+        $record->syncApArCounterpart();
+        // Dan sinkronkan nilai ke Currency master record
+        Currency::syncFromMaterialSteel($record);
+
         // Jika dikaitkan dengan Master Material tertentu, perbarui harga dasar (basic_rate) material tersebut
         if ($record->material_id) {
             $material = Material::find($record->material_id);
@@ -521,5 +549,16 @@ class CreateMaterialSteel extends CreateRecord
     protected function getRedirectUrl(): string
     {
         return $this->getResource()::getUrl('index');
+    }
+
+    protected function getCreatedNotification(): ?Notification
+    {
+        $type = $this->getPriceType();
+        $counterpart = $type === 'AP' ? 'AR' : 'AP';
+
+        return Notification::make()
+            ->success()
+            ->title("Material Steel {$type} Berhasil Disimpan")
+            ->body("Data {$type} berhasil disimpan dan otomatis disinkronkan ke Material Steel {$counterpart}.");
     }
 }

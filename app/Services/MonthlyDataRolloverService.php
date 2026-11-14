@@ -173,6 +173,7 @@ class MonthlyDataRolloverService
                         ->where('supplier_id', $source->supplier_id)
                         ->where('steel_spec', $source->steel_spec)
                         ->where('double_thickness', $source->double_thickness)
+                        ->where('price_type', $source->price_type ?? 'AP')
                         ->first();
 
                     if ($existing && $duplicateHandling === 'skip') {
@@ -735,7 +736,11 @@ class MonthlyDataRolloverService
                 'user_id' => $defaultUserId,
             ]);
 
-            Log::info("Monthly Rollover Sukses: {$sourceYear}-{$sourceQuarter} -> {$targetYear}-{$targetQuarter} (Currencies: {$currStats['total']}, Steels: {$steelStats['copied']}/{$steelStats['updated']}, Stamping: {$stampingStats['copied']}/{$stampingStats['updated']}, Fasteners: {$fastenerStats['copied']}/{$fastenerStats['updated']})");
+            try {
+                Log::info("Monthly Rollover Sukses: {$sourceYear}-{$sourceQuarter} -> {$targetYear}-{$targetQuarter} (Currencies: {$currStats['total']}, Steels: {$steelStats['copied']}/{$steelStats['updated']}, Stamping: {$stampingStats['copied']}/{$stampingStats['updated']}, Fasteners: {$fastenerStats['copied']}/{$fastenerStats['updated']})");
+            } catch (\Throwable) {
+                // Ignore log stream failure in test/parallel run
+            }
 
             return [
                 'currencies' => $currStats,

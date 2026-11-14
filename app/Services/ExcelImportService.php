@@ -1726,10 +1726,14 @@ class ExcelImportService
                                 $row['supplier_name'] = $supplier->name;
                             }
 
-                            // Cek apakah data sudah ada berdasarkan (year, quarter, steel_spec, double_thickness, supplier_id)
+                            $priceType = $row['price_type'] ?? $defaults['price_type'] ?? 'AP';
+                            $row['price_type'] = $priceType;
+
+                            // Cek apakah data sudah ada berdasarkan (year, quarter, price_type, steel_spec, double_thickness, supplier_id)
                             $existing = MaterialSteel::where('year', $row['year'])
                                 ->where('quarter', $row['quarter'])
                                 ->where('steel_spec', $row['steel_spec'])
+                                ->where('price_type', $priceType)
                                 ->when(! empty($row['double_thickness']), fn ($q) => $q->where('double_thickness', $row['double_thickness']))
                                 ->when($supplierId, fn ($q) => $q->where('supplier_id', $supplierId))
                                 ->first();
